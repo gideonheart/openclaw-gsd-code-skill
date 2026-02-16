@@ -1,0 +1,11 @@
+[Unit]
+Description=Run OpenClaw agent recovery shortly after boot
+
+[Timer]
+OnBootSec=45s
+AccuracySec=10s
+Unit=recover-openclaw-agents.service
+Persistent=false
+
+[Install]
+WantedBy=timers.target

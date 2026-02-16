@@ -1,0 +1,18 @@
+{
+  "global_status_openclaw_session_id": "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+  "global_status_openclaw_session_key": "agent:your-agent:telegram:group:-1000000000000:topic:1",
+  "agents": [
+    {
+      "agent_id": "example-agent",
+      "enabled": true,
+      "auto_wake": true,
+      "topic_id": 1,
+      "openclaw_session_id": "11111111-2222-3333-4444-555555555555",
+      "working_directory": "/home/user",
+      "tmux_session_name": "example-main",
+      "claude_resume_target": "",
+      "claude_launch_command": "claude --dangerously-skip-permissions",
+      "claude_post_launch_mode": "resume_then_agent_pick"
+    }
+  ]
+}
