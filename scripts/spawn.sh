@@ -99,39 +99,45 @@ upsert_agent_entry_in_registry() {
   local tmux_session_name="$4"
 
   local tmp_file="${registry_file_path}.tmp"
+  local lock_file="${registry_file_path}.lock"
 
-  jq --arg agent_id "$agent_name" \
-     --arg workdir "$working_directory" \
-     --arg session_name "$tmux_session_name" \
-     '
-  if (.agents | map(.agent_id) | index($agent_id)) then
-    .agents |= map(
-      if .agent_id == $agent_id then
-        . + {
-          "working_directory": $workdir,
-          "tmux_session_name": $session_name
-        }
-      else . end
-    )
-  else
-    .agents += [{
-      "agent_id": $agent_id,
-      "enabled": true,
-      "auto_wake": true,
-      "topic_id": 1,
-      "openclaw_session_id": "",
-      "working_directory": $workdir,
-      "tmux_session_name": $session_name,
-      "claude_resume_target": "",
-      "claude_launch_command": "claude --dangerously-skip-permissions",
-      "claude_post_launch_mode": "resume_then_agent_pick",
-      "system_prompt": "",
-      "hook_settings": {}
-    }]
-  end
-' "$registry_file_path" > "$tmp_file"
+  (
+    flock -x 200
 
-  mv "$tmp_file" "$registry_file_path"
+    jq --arg agent_id "$agent_name" \
+       --arg workdir "$working_directory" \
+       --arg session_name "$tmux_session_name" \
+       '
+    if (.agents | map(.agent_id) | index($agent_id)) then
+      .agents |= map(
+        if .agent_id == $agent_id then
+          . + {
+            "working_directory": $workdir,
+            "tmux_session_name": $session_name
+          }
+        else . end
+      )
+    else
+      .agents += [{
+        "agent_id": $agent_id,
+        "enabled": true,
+        "auto_wake": true,
+        "topic_id": 1,
+        "openclaw_session_id": "",
+        "working_directory": $workdir,
+        "tmux_session_name": $session_name,
+        "claude_resume_target": "",
+        "claude_launch_command": "claude --dangerously-skip-permissions",
+        "claude_post_launch_mode": "resume_then_agent_pick",
+        "system_prompt": "",
+        "hook_settings": {}
+      }]
+    end
+  ' "$registry_file_path" > "$tmp_file"
+
+    mv "$tmp_file" "$registry_file_path"
+
+  ) 200>"$lock_file"
 }
 
 compose_system_prompt() {

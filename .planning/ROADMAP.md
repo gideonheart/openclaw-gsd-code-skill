@@ -72,7 +72,7 @@ Plans:
   3. spawn.sh has no autoresponder flag or launch logic
   4. spawn.sh has no hardcoded strict_prompt function
   5. spawn.sh uses jq for all registry operations (no Python upsert)
-  6. Per-agent system_prompt always appends to default (never replaces)
+  6. Per-agent system_prompt replaces default when present (replacement model per CONTEXT.md locked decision)
   7. recover-openclaw-agents.sh extracts system_prompt per agent from registry and passes via --append-system-prompt on launch
   8. Recovery script handles missing system_prompt field gracefully with fallback default
   9. Recovery script uses per-agent error handling (no set -e abort) and sends summary even on partial success
