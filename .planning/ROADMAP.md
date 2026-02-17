@@ -57,10 +57,10 @@ Plans:
   5. gsd-session-hook.sh removed from SessionStart hooks array in settings.json
   6. New Claude Code sessions fire all hooks instead of spawning hook-watcher.sh
   7. Existing sessions with running hook-watcher continue working (brief overlap tolerated)
-**Plans**: TBD
+**Plans**: 1 plan
 
 Plans:
-- [ ] 02-01: TBD
+- [ ] 02-01-PLAN.md -- Create idempotent registration script, wire all 5 hooks into settings.json, remove gsd-session-hook.sh from SessionStart
 
 ### Phase 3: Launcher Updates
 **Goal**: Update spawn.sh and recover-openclaw-agents.sh to use system_prompt from registry with fallback defaults, using jq for all registry operations
