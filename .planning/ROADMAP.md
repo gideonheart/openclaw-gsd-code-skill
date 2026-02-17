@@ -38,12 +38,12 @@ Decimal phases appear between their surrounding integers in numeric order.
   11. config/default-system-prompt.txt exists with minimal GSD workflow guidance, tracked in git
   12. Wake message format includes structured sections, session identity, state hint, trigger type, and context pressure with warning level
   13. No Python dependency — all registry operations use jq
-**Plans**: TBD
+**Plans**: 3 plans
 
 Plans:
-- [ ] 01-01: TBD
-- [ ] 01-02: TBD
-- [ ] 01-03: TBD
+- [ ] 01-01-PLAN.md -- Foundation: registry schema (system_prompt, hook_settings), default system prompt, menu-driver type action
+- [ ] 01-02-PLAN.md -- Wake-capable hooks: stop-hook.sh, notification-idle-hook.sh, notification-permission-hook.sh
+- [ ] 01-03-PLAN.md -- Lifecycle hooks: session-end-hook.sh, pre-compact-hook.sh
 
 ### Phase 2: Hook Wiring
 **Goal**: Register all hooks globally in settings.json (Stop, Notification idle_prompt, Notification permission_prompt, SessionEnd, PreCompact) and remove SessionStart hook watcher launcher
