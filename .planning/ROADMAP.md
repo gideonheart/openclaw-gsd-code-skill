@@ -106,10 +106,11 @@ Plans:
   1. SKILL.md documents hook architecture (all 5 hook scripts), hybrid mode, hook_settings configuration, and system_prompt
   2. README.md documents updated registry schema with system_prompt field, hook_settings object, and recovery flow with all hooks
   3. Script list reflects removed scripts (autoresponder, hook-watcher, gsd-session-hook) and added hook scripts (stop-hook, notification-idle-hook, notification-permission-hook, session-end-hook, pre-compact-hook)
-**Plans**: TBD
+**Plans**: 2 plans
 
 Plans:
-- [ ] 05-01: TBD
+- [ ] 05-01-PLAN.md -- Agent-facing docs: rewrite SKILL.md with progressive disclosure, create docs/hooks.md, update TOOLS.md
+- [ ] 05-02-PLAN.md -- Admin-facing docs: rewrite README.md with pre-flight checklist, registry schema, operational runbook
 
 ## Progress
 
@@ -122,4 +123,4 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 | 2. Hook Wiring | 0/1 | Not started | - |
 | 3. Launcher Updates | 0/2 | Complete    | 2026-02-17 |
 | 4. Cleanup | 0/1 | Not started | - |
-| 5. Documentation | 0/1 | Not started | - |
+| 5. Documentation | 0/2 | Not started | - |
