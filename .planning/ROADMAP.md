@@ -14,7 +14,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 
 - [ ] **Phase 1: Additive Changes** - Create new hook scripts, config files, and registry schema without disrupting existing sessions
 - [ ] **Phase 2: Hook Wiring** - Register all hooks globally, remove SessionStart hook watcher
-- [ ] **Phase 3: Launcher Updates** - Update spawn and recovery scripts for system prompt support (jq-only)
+- [x] **Phase 3: Launcher Updates** - Update spawn and recovery scripts for system prompt support (jq-only) (completed 2026-02-17)
 - [ ] **Phase 4: Cleanup** - Remove obsolete polling scripts
 - [ ] **Phase 5: Documentation** - Update skill documentation with new architecture
 
@@ -120,6 +120,6 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 |-------|----------------|--------|-----------|
 | 1. Additive Changes | 0/3 | Not started | - |
 | 2. Hook Wiring | 0/1 | Not started | - |
-| 3. Launcher Updates | 0/2 | Not started | - |
+| 3. Launcher Updates | 0/2 | Complete    | 2026-02-17 |
 | 4. Cleanup | 0/1 | Not started | - |
 | 5. Documentation | 0/1 | Not started | - |
