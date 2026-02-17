@@ -5,33 +5,34 @@
 See: .planning/PROJECT.md (updated 2026-02-17)
 
 **Core value:** Reliable, intelligent agent session lifecycle — launch, recover, and respond without human intervention
-**Current focus:** Phase 1 - Additive Changes
+**Current focus:** Phase 2 - Hook Wiring
 
 ## Current Position
 
-Phase: 1 of 5 (Additive Changes)
-Plan: 2 of 3 phase plans completed (8 total plans across all phases)
-Status: Executing Phase 1
-Last activity: 2026-02-17 - Completed 01-additive-changes-02-PLAN.md (Hook Scripts with Wake Message System)
+Phase: 2 of 5 (Hook Wiring)
+Plan: 1 of 1 phase plans completed (8 total plans across all phases)
+Status: Completed Phase 2
+Last activity: 2026-02-17 - Completed 02-hook-wiring-01-PLAN.md (Hook Registration Script)
 
-Progress: [███░░░░░░░] 25.0%
+Progress: [████░░░░░░] 37.5%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 2
-- Average duration: 2.5 minutes
-- Total execution time: 0.08 hours
+- Total plans completed: 3
+- Average duration: 2.0 minutes
+- Total execution time: 0.10 hours
 
 **By Phase:**
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
 | 01-additive-changes | 2 | 5 min | 2.5 min |
+| 02-hook-wiring | 1 | 1 min | 1.0 min |
 
 **Recent Trend:**
-- Last 5 plans: 1 min, 4 min
-- Trend: Steady execution
+- Last 5 plans: 1 min, 4 min, 1 min
+- Trend: Efficient execution
 
 *Updated after each plan completion*
 
@@ -39,6 +40,7 @@ Progress: [███░░░░░░░] 25.0%
 |-------|------|----------|-------|-------|
 | 01-additive-changes | P01 | 1 min | 2 | 3 |
 | 01-additive-changes | P02 | 4 min | 2 | 3 |
+| 02-hook-wiring | P01 | 1 min | 2 | 1 |
 
 ## Accumulated Context
 
@@ -58,6 +60,9 @@ Recent decisions affecting current work:
 - Delete autoresponder + hook-watcher: Replaced by hook system; keeping both creates confusion
 - [Phase 01-additive-changes]: Use comment fields in JSON for schema documentation (self-documenting registry)
 - [Phase 01-additive-changes]: Default system prompt focuses only on GSD workflow (role/personality from SOUL.md)
+- [Phase 02-hook-wiring]: PreCompact with no matcher (fires on both auto and manual) for full visibility
+- [Phase 02-hook-wiring]: Stop/Notification/PreCompact timeout: 600s, SessionEnd uses default
+- [Phase 02-hook-wiring]: Registration script in scripts/ (executable utility, not static config)
 
 ### Pending Todos
 
@@ -76,8 +81,8 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-02-17 (plan execution)
-Stopped at: Completed 01-additive-changes-02-PLAN.md
-Resume file: .planning/phases/01-additive-changes/01-02-SUMMARY.md
+Stopped at: Completed 02-hook-wiring-01-PLAN.md
+Resume file: .planning/phases/02-hook-wiring/02-01-SUMMARY.md
 
 ---
-*Last updated: 2026-02-17 after completing plan 01-02*
+*Last updated: 2026-02-17 after completing plan 02-01*
