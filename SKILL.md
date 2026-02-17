@@ -1,85 +1,154 @@
 ---
 name: gsd-code-skill
-description: Launch a strict GSD-only Claude Code session (slash-commands only) with deterministic git preflight + first-command selection.
-metadata: {"openclaw":{"emoji":"🧭","os":["linux"],"requires":{"bins":["tmux","git","claude"]}}}
+description: Hook-driven GSD-only Claude Code sessions with deterministic recovery and event-based agent control
+metadata: {"openclaw":{"emoji":"🧭","os":["linux"],"requires":{"bins":["tmux","git","claude","jq"]}}}
 ---
 
 # gsd-code-skill
 
-Deterministically start a **Claude Code** session where the agent is constrained to output **only slash commands**, primarily `/gsd:*` from **get-shit-done**.
+Launch Claude Code sessions constrained to GSD (Get Shit Done) workflow commands with event-driven hook control and automatic crash recovery.
 
-This is designed to be used from OpenClaw as a “coding skill” launcher.
+## Quick Start
 
-## What it does
+Three steps to launch a managed GSD session:
 
-- Creates a tmux session in the target repo directory
-- Runs `claude --dangerously-skip-permissions` with a strict `--append-system-prompt`
-- Runs a lightweight git preflight (no network)
-- Chooses the first slash-command to send:
-  - If repo is **non-empty** and `CLAUDE.md` missing → `/init`
-  - Else if `.planning/` exists → `/gsd:resume-work`
-  - Else if a PRD file exists → `/gsd:new-project @PRD.md`
-  - Else → `/gsd:help`
+```bash
+# 1. Configure agent entry in recovery registry (or let spawn.sh auto-create)
+# Edit: skills/gsd-code-skill/config/recovery-registry.json
+
+# 2. Register hooks in ~/.claude/settings.json (one-time setup)
+skills/gsd-code-skill/scripts/register-hooks.sh
+
+# 3. Spawn the session
+skills/gsd-code-skill/scripts/spawn.sh <agent-name> <workdir> [first-command]
+```
+
+Example:
+
+```bash
+skills/gsd-code-skill/scripts/spawn.sh gideon /home/forge/.openclaw/workspace
+```
+
+The session starts in tmux with GSD system prompt, auto-detects the first command, and hooks handle all agent control.
+
+## Lifecycle
+
+Sessions follow this flow: **spawn** -> **hooks control session** -> **crash/reboot** -> **systemd timer** -> **recovery** -> **agents resume**.
+
+Hooks fire on Claude Code events (Stop, Notification, SessionEnd, PreCompact) and send structured wake messages to the OpenClaw agent. The agent inspects session state, decides next action, and drives the TUI using `menu-driver.sh`.
+
+After reboot or OOM, the systemd timer runs recovery, which restores tmux sessions, relaunches Claude Code, wakes OpenClaw agents, and resumes work automatically.
 
 ## Scripts
 
-### `scripts/spawn.sh <session-name> <workdir> [--prd <path>]`
+### Session Management
 
-Examples:
-
-```bash
-# Start a strict GSD Claude session in a repo
-skills/gsd-code-skill/scripts/spawn.sh warden-gsd /home/forge/warden.kingdom.lv --prd PRD.md
-
-# Start in an arbitrary directory (no PRD)
-skills/gsd-code-skill/scripts/spawn.sh gideon-gsd /tmp/some-repo
-```
-
-Output:
-- prints a short summary including the chosen first command
-- tmux session is running in background; attach with:
-  - `tmux attach -t <session-name>`
-- Hook-driven event system handles agent control; use `scripts/menu-driver.sh` as deterministic TUI helper for agent-driven menu navigation
-
-### `scripts/menu-driver.sh <session> <action> [args]`
-
-Deterministic tmux helper for agent-driven menu navigation.
-
-Examples:
+**spawn.sh** - Launch a new GSD Claude Code session in tmux
 
 ```bash
-# show latest pane content
-skills/gsd-code-skill/scripts/menu-driver.sh warden-mc-gsd snapshot
-
-# atomically clear context then start next command
-skills/gsd-code-skill/scripts/menu-driver.sh warden-mc-gsd clear_then "/gsd:plan-phase 9"
-
-# choose option 1 in a numbered menu
-skills/gsd-code-skill/scripts/menu-driver.sh warden-mc-gsd choose 1
+scripts/spawn.sh <agent-name> <workdir> [first-command]
 ```
 
-### `scripts/recover-openclaw-agents.sh [--registry <path>] [--dry-run] [--skip-session-id-sync]`
+Behavior:
+- Auto-creates registry entry for unknown agents
+- Composes system prompt (CLI override > registry agent prompt > default file)
+- Auto-detects first command: `/init`, `/gsd:resume-work`, `/gsd:new-project @PRD.md`, or `/gsd:help`
+- Resolves tmux session name conflicts with `-2` suffix
 
-Deterministic reboot/OOM recovery orchestrator for many agents.
+Example:
 
-What it does:
+```bash
+scripts/spawn.sh warden /home/forge/warden.kingdom.lv
+```
 
-1. Reads a per-agent registry JSON (`config/recovery-registry.json`)
-2. Filters `enabled=true && auto_wake=true`
-3. Ensures tmux session exists for each agent in the correct workdir
-4. Launches Claude Code in tmux if not already running
-5. Wakes the exact OpenClaw session id (`openclaw_session_id`) with deterministic instructions
-6. Sends one global summary to `global_status_openclaw_session_id`
+Use `--help` for full options including `--system-prompt`.
 
-Includes:
+**recover-openclaw-agents.sh** - Deterministic multi-agent recovery after reboot/OOM
 
-- Example registry: `config/recovery-registry.example.json`
-- Session id sync helper: `scripts/sync-recovery-registry-session-ids.sh`
-- systemd unit template: `systemd/recover-openclaw-agents.service`
-- systemd timer template: `systemd/recover-openclaw-agents.timer`
+```bash
+scripts/recover-openclaw-agents.sh [--registry <path>] [--skip-session-id-sync]
+```
+
+Reads recovery registry, filters `enabled=true && auto_wake=true`, ensures tmux sessions exist, launches Claude Code if missing, sends deterministic wake instructions to OpenClaw agents. Silent on success, sends Telegram notification only on failures.
+
+Use `--help` for full options.
+
+**sync-recovery-registry-session-ids.sh** - Refresh OpenClaw session IDs in registry
+
+```bash
+scripts/sync-recovery-registry-session-ids.sh [--registry <path>] [--dry-run]
+```
+
+Syncs `openclaw_session_id` values from `/home/forge/.openclaw/agents/<agent_id>/sessions/sessions.json` by selecting the most recently updated `agent:<agent_id>:openai:*` session. Auto-run by recovery script unless `--skip-session-id-sync` is used.
+
+Use `--help` for full options.
+
+### Hooks
+
+All hooks fire automatically on Claude Code events. For behavior specs, configuration, and edge cases, load `docs/hooks.md`.
+
+**stop-hook.sh** - Fires when Claude finishes responding
+
+**notification-idle-hook.sh** - Fires when Claude waits for user input (idle_prompt)
+
+**notification-permission-hook.sh** - Fires on permission dialogs (permission_prompt)
+
+**session-end-hook.sh** - Fires when Claude Code session terminates
+
+**pre-compact-hook.sh** - Fires before Claude Code compacts context window
+
+All hooks:
+- Exit in <5ms for non-managed sessions
+- Support async (default) or bidirectional mode via `hook_settings.hook_mode`
+- Use three-tier fallback for configuration: per-agent > global > hardcoded defaults
+
+### Utilities
+
+**menu-driver.sh** - Deterministic tmux TUI helper for agent-driven menu navigation
+
+```bash
+scripts/menu-driver.sh <session> <action> [args]
+```
+
+Actions: `snapshot`, `enter`, `esc`, `clear_then <cmd>`, `choose <n>`, `type <text>`, `submit`
+
+Example:
+
+```bash
+scripts/menu-driver.sh warden-main snapshot
+scripts/menu-driver.sh warden-main choose 1
+scripts/menu-driver.sh warden-main clear_then "/gsd:resume-work"
+```
+
+Use `--help` for full action list.
+
+**register-hooks.sh** - Idempotent hook registration in ~/.claude/settings.json
+
+```bash
+scripts/register-hooks.sh
+```
+
+Registers all 5 hook events (Stop, Notification [idle_prompt + permission_prompt], SessionEnd, PreCompact) and removes obsolete `gsd-session-hook.sh` from SessionStart. Creates backup before modifying settings. Restart all Claude Code sessions after registration to activate new hooks.
+
+## Configuration
+
+**Recovery registry:** `config/recovery-registry.json`
+
+Three-tier fallback system:
+1. Global settings in top-level `hook_settings` object
+2. Per-agent overrides in `agents[].hook_settings`
+3. Hardcoded defaults in hook scripts
+
+See README.md for full registry schema (agent fields, hook_settings fields, session keys).
+
+**System prompt:** `config/default-system-prompt.txt`
+
+Replacement model: per-agent `system_prompt` in registry replaces default entirely (not appends). CLI `--system-prompt` override takes precedence over both.
+
+**Hooks:** Registered in `~/.claude/settings.json` via `scripts/register-hooks.sh`
 
 ## Notes
 
-- Recovery runbook and systemd setup are documented in `README.md` in this skill directory.
-- This does **not** disable or modify global GSD command installation.
-- It enforces behavior by starting Claude with a strict system prompt.
+- Recovery runbook and systemd setup documented in README.md
+- No Python dependency: all registry operations use jq
+- Hook system replaces old polling architecture (autoresponder, hook-watcher deleted in phase 04)
