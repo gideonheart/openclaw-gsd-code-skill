@@ -77,11 +77,11 @@ Plans:
   8. Recovery script handles missing system_prompt field gracefully with fallback default
   9. Recovery script uses per-agent error handling (no set -e abort) and sends summary even on partial success
   10. Registry writes use atomic pattern with flock to prevent corruption
-**Plans**: TBD
+**Plans**: 2 plans
 
 Plans:
-- [ ] 03-01: TBD
-- [ ] 03-02: TBD
+- [ ] 03-01-PLAN.md -- Rewrite spawn.sh as registry-driven jq-only launcher (agent-name primary key, system prompt composition, remove legacy code)
+- [ ] 03-02-PLAN.md -- Rewrite recover-openclaw-agents.sh with jq-only registry operations, per-agent system prompts, failure-only Telegram reporting
 
 ### Phase 4: Cleanup
 **Goal**: Remove obsolete polling scripts (autoresponder, hook-watcher, gsd-session-hook) now that spawn and recovery no longer launch them
