@@ -19,7 +19,7 @@ This milestone adds event-driven agent control to replace polling-based menu det
 | Claude Code CLI | 2.1.44 | Session runtime with --append-system-prompt | Latest stable, hook support confirmed |
 | OpenClaw CLI | 2026.2.16 | Agent messaging, event wake | Current production version |
 | jq | 1.7 | JSON parsing in bash scripts | Ubiquitous JSON CLI tool |
-| Python 3 | 3.x (embedded) | Recovery registry upsert only | Minimal use, JSON manipulation |
+| ~~Python 3~~ | ~~3.x (embedded)~~ | ~~Recovery registry upsert only~~ | **REMOVED** — replaced by jq for all registry operations (cross-platform, no dependency) |
 
 **Rationale:** All existing. No upgrades needed. No new dependencies.
 
@@ -75,10 +75,15 @@ When hook returns JSON to stdout with exit code 0:
 - `reason`: Required when decision is "block". Tells Claude why to continue.
 
 **Integration pattern for this skill:**
-We NEVER block. Hook fires → capture state → background message to OpenClaw → exit 0 immediately.
+Hybrid mode: Default async (background message to OpenClaw → exit 0 immediately). Optional bidirectional per-agent (wait for OpenClaw response → return decision:block with reason → Claude continues with injected instruction).
 
 ```bash
+# Async mode (default):
 exit 0  # No JSON output = allow Claude to stop normally
+
+# Bidirectional mode (per-agent via hook_settings.hook_mode):
+# Wait for OpenClaw response, then:
+echo '{"decision":"block","reason":"OpenClaw instruction here"}' && exit 0
 ```
 
 #### Hook Configuration (settings.json)
@@ -218,6 +223,14 @@ OPENCLAW_SESSION_ID=$(jq -r \
 
 ```json
 {
+  "global_status_openclaw_session_id": "uuid",
+  "global_status_openclaw_session_key": "agent:...",
+  "hook_settings": {
+    "pane_capture_lines": 120,
+    "context_pressure_threshold": 50,
+    "autocompact_pct": 50,
+    "hook_mode": "async"
+  },
   "agents": [
     {
       "agent_id": "warden",
@@ -230,43 +243,60 @@ OPENCLAW_SESSION_ID=$(jq -r \
       "claude_resume_target": "",
       "claude_launch_command": "claude --dangerously-skip-permissions",
       "claude_post_launch_mode": "resume_then_agent_pick",
-      "system_prompt": "You are Warden, a GSD-driven development agent. Prefer /gsd:* commands for structured work. Use /gsd:quick for small tasks, /gsd:debug for bugs. Make atomic commits."
+      "system_prompt": "Prefer /gsd:quick for small tasks, /gsd:debug for bugs. Make atomic commits.",
+      "hook_settings": {
+        "pane_capture_lines": 150,
+        "hook_mode": "bidirectional"
+      }
     }
   ]
 }
 ```
 
-**Field:**
-- `system_prompt`: String. Custom system prompt for this agent's Claude Code session. Empty string = use default.
+**New fields:**
+- `system_prompt` (top-level per agent): String. Custom system prompt appended to default. Empty = default only.
+- `hook_settings` (global at root): Default hook configuration for all agents
+- `hook_settings` (per agent): Override specific fields (three-tier fallback: per-agent > global > hardcoded, per-field merge)
+- `hook_settings.pane_capture_lines`: Number. Lines of pane to capture.
+- `hook_settings.context_pressure_threshold`: Number. Percentage to trigger warning.
+- `hook_settings.autocompact_pct`: Number. CLAUDE_AUTOCOMPACT_PCT_OVERRIDE value.
+- `hook_settings.hook_mode`: "async" | "bidirectional". Communication mode.
 
-**Why:** Replace hardcoded strict_prompt() in spawn.sh. Per-agent customization without code changes.
+**Why:** Replace hardcoded strict_prompt() in spawn.sh. Per-agent customization without code changes. Strict known fields only.
 
 **Default when empty:**
-```
-You are a GSD-driven development agent. Prefer /gsd:* commands for structured work.
-Use /gsd:quick for small tasks, /gsd:debug for bugs, /gsd:plan-phase for planning.
-Make atomic commits. Follow GSD workflow principles.
-```
+Stored in `config/default-system-prompt.txt` (tracked in git). Minimal GSD workflow guidance:
+- /gsd:* commands, /clear, /resume
+- No role/personality (agents get that from SOUL.md and AGENTS.md)
+- Per-agent system_prompt always appends to this default, never replaces
 
 **Usage in spawn.sh:**
 ```bash
-# After upsert_recovery_registry_entry, read back the system_prompt
-SYSTEM_PROMPT=$(jq -r \
+# Read default from file
+DEFAULT_PROMPT="$(cat config/default-system-prompt.txt)"
+
+# Read per-agent override from registry
+AGENT_PROMPT=$(jq -r \
   --arg agent_id "$effective_agent_id" \
   '.agents[] | select(.agent_id == $agent_id) | .system_prompt // ""' \
   "$registry_file_path")
 
-if [ -z "$SYSTEM_PROMPT" ]; then
-  SYSTEM_PROMPT="You are a GSD-driven development agent..."
-fi
+# Combine: default + per-agent (always append, never replace)
+FULL_PROMPT="${DEFAULT_PROMPT}"
+[ -n "$AGENT_PROMPT" ] && FULL_PROMPT="${FULL_PROMPT}\n\n${AGENT_PROMPT}"
 
-claude_cmd="claude --dangerously-skip-permissions --append-system-prompt $(printf %q "$SYSTEM_PROMPT")"
+claude_cmd="claude --dangerously-skip-permissions --append-system-prompt $(printf %q "$FULL_PROMPT")"
 ```
 
-**Python upsert addition:**
-```python
-matching_entry.setdefault("system_prompt", "")
+**jq upsert (replaces Python):**
+```bash
+# Add system_prompt with default empty string if missing
+jq --arg agent_id "$AGENT_ID" \
+  '(.agents[] | select(.agent_id == $agent_id)) += {system_prompt: (.system_prompt // "")}' \
+  "$REGISTRY_FILE" > "${REGISTRY_FILE}.tmp" && mv "${REGISTRY_FILE}.tmp" "$REGISTRY_FILE"
 ```
+
+**NOTE:** Per discussion decision, ALL registry operations use jq. Python upsert is removed.
 
 ## Supporting Libraries (No Changes)
 
@@ -274,7 +304,7 @@ matching_entry.setdefault("system_prompt", "")
 |---------|---------|---------|-----------|
 | sha1sum | coreutils | Pane content hashing for deduplication | hook-watcher.sh (being removed) |
 | grep | GNU grep | Pattern matching in captured panes | All monitoring scripts |
-| Python json | stdlib | Recovery registry JSON manipulation | spawn.sh, recover-openclaw-agents.sh |
+| ~~Python json~~ | ~~stdlib~~ | ~~Recovery registry JSON manipulation~~ | **REMOVED** — jq handles all registry read/write operations |
 
 **Rationale:** All standard Unix tools. No installation needed.
 

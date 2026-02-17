@@ -104,12 +104,17 @@ Supporting Components:
 
 | Component | Responsibility | Changes |
 |-----------|----------------|---------|
-| stop-hook.sh | **NEW** - Stop hook entry point, guards check, pane capture, agent lookup, OpenClaw wake | Replaces autoresponder.sh + hook-watcher.sh |
+| stop-hook.sh | **NEW** - Stop hook entry point, guards check, pane capture, agent lookup, OpenClaw wake, hybrid mode | Replaces autoresponder.sh + hook-watcher.sh |
+| notification-idle-hook.sh | **NEW** - Notification hook for idle_prompt events | Notifies OpenClaw when Claude waits for user input |
+| notification-permission-hook.sh | **NEW** - Notification hook for permission_prompt events | Future-proofing for fine-grained permission handling |
+| session-end-hook.sh | **NEW** - SessionEnd hook | Notifies OpenClaw immediately when session terminates |
+| pre-compact-hook.sh | **NEW** - PreCompact hook | Captures state before context compaction |
+| config/default-system-prompt.txt | **NEW** - Default system prompt file | Tracked in git, minimal GSD workflow guidance |
 | menu-driver.sh | **MODIFIED** - Atomic TUI actions | Add `type <text>` action for freeform input |
-| spawn.sh | **MODIFIED** - Session launcher | Remove autoresponder logic, add --system-prompt flag, read system_prompt from registry |
-| recover-openclaw-agents.sh | **MODIFIED** - Multi-agent recovery | Extract system_prompt from registry, pass via --append-system-prompt |
-| recovery-registry.json | **MODIFIED** - Agent metadata store | Add system_prompt field per agent |
-| ~/.claude/settings.json | **MODIFIED** - Claude Code global hooks | Add Stop hook, remove gsd-session-hook.sh from SessionStart |
+| spawn.sh | **MODIFIED** - Session launcher | Remove autoresponder logic, add --system-prompt flag, read system_prompt from registry, jq replaces Python |
+| recover-openclaw-agents.sh | **MODIFIED** - Multi-agent recovery | Extract system_prompt from registry, pass via --append-system-prompt, jq replaces Python |
+| recovery-registry.json | **MODIFIED** - Agent metadata store | Add system_prompt field, hook_settings object (global + per-agent) |
+| ~/.claude/settings.json | **MODIFIED** - Claude Code global hooks | Add all hooks (Stop, Notification, SessionEnd, PreCompact), remove gsd-session-hook.sh from SessionStart |
 | autoresponder.sh | **DELETED** - Polling-based menu responder | Obsolete |
 | hook-watcher.sh | **DELETED** - Polling-based menu detector | Obsolete |
 | gsd-session-hook.sh | **DELETED** - SessionStart launcher for hook-watcher | Obsolete |
@@ -186,30 +191,26 @@ type)
 - Add `--system-prompt <text>` flag for explicit override
 - After registry upsert, read `system_prompt` field from registry entry
 - Fall back to sensible default if registry field empty
-- Update Python upsert function to `setdefault("system_prompt", "")`
+- Use jq for registry upsert (replaces Python)
 
-**Default system prompt (when registry empty):**
-```
-You are a GSD-driven development agent. Prefer /gsd:* commands for structured work.
-Use /gsd:quick for small tasks, /gsd:debug for bugs, /gsd:plan-phase for planning.
-Make atomic commits. Follow GSD workflow principles.
-```
+**Default system prompt:**
+Stored in `config/default-system-prompt.txt` (tracked in git). Per-agent system_prompt always appends to default, never replaces.
 
 **Data flow:**
-```python
-# In upsert_recovery_registry_entry Python block
-matching_entry.setdefault("system_prompt", "")
+```bash
+# Read default from external file
+DEFAULT_PROMPT="$(cat config/default-system-prompt.txt)"
 
-# After upsert (new bash logic)
-SYSTEM_PROMPT="$(jq -r --arg agent_id "$effective_agent_id" \
+# Read per-agent override from registry via jq
+AGENT_PROMPT="$(jq -r --arg agent_id "$effective_agent_id" \
   '.agents[] | select(.agent_id == $agent_id) | .system_prompt // ""' \
   "$registry_path")"
 
-if [ -z "$SYSTEM_PROMPT" ]; then
-  SYSTEM_PROMPT="Default prompt here..."
-fi
+# Combine: default always included, per-agent appended
+FULL_PROMPT="${DEFAULT_PROMPT}"
+[ -n "$AGENT_PROMPT" ] && FULL_PROMPT="${FULL_PROMPT}\n\n${AGENT_PROMPT}"
 
-claude_cmd="claude --dangerously-skip-permissions --append-system-prompt $(printf %q "$SYSTEM_PROMPT")"
+claude_cmd="claude --dangerously-skip-permissions --append-system-prompt $(printf %q "$FULL_PROMPT")"
 ```
 
 ### 5. recover-openclaw-agents.sh → System Prompt Injection
@@ -217,31 +218,24 @@ claude_cmd="claude --dangerously-skip-permissions --append-system-prompt $(print
 **File:** recover-openclaw-agents.sh (MODIFIED)
 
 **Changes:**
-- Extract `system_prompt` from each agent's registry entry in Python parser
+- Extract `system_prompt` from each agent's registry entry via jq (replaces Python parser)
 - Pass system_prompt to `ensure_claude_is_running_in_tmux()` function
-- Append via `--append-system-prompt` when launching Claude
+- Append via `--append-system-prompt` when launching Claude (default + per-agent combined)
 - Keep existing post-launch command logic (`/resume` or `/gsd:resume-work`)
 - Simplify `send_recovery_instruction_to_openclaw_session` note that Stop hook now active
 
 **Data flow:**
-```python
-# In parse_registry_to_json_lines Python block
-print(json.dumps({
-    "type": "agent",
-    "agent_index": index,
-    "agent": agent,  # Now includes system_prompt field
-}))
-```
-
 ```bash
+# Extract per-agent system_prompt via jq (replaces Python parser)
+AGENT_PROMPT="$(echo "$AGENT_JSON" | jq -r '.system_prompt // ""')"
+
 # In ensure_claude_is_running_in_tmux (new parameter)
 local system_prompt="$4"  # New parameter
+local default_prompt="$(cat config/default-system-prompt.txt)"
+local full_prompt="${default_prompt}"
+[ -n "$system_prompt" ] && full_prompt="${full_prompt}\n\n${system_prompt}"
 
-if [ -n "$system_prompt" ]; then
-  local claude_cmd="${base_claude_launch_command} --append-system-prompt $(printf %q "$system_prompt")"
-else
-  local claude_cmd="${base_claude_launch_command}"
-fi
+local claude_cmd="${base_claude_launch_command} --append-system-prompt $(printf %q "$full_prompt")"
 ```
 
 ### 6. ~/.claude/settings.json → Hook Registration
@@ -383,6 +377,12 @@ Claude Code receives input
 {
   "global_status_openclaw_session_id": "uuid",
   "global_status_openclaw_session_key": "agent:...",
+  "hook_settings": {
+    "pane_capture_lines": 120,
+    "context_pressure_threshold": 50,
+    "autocompact_pct": 50,
+    "hook_mode": "async"
+  },
   "agents": [
     {
       "agent_id": "warden",
@@ -395,13 +395,21 @@ Claude Code receives input
       "claude_resume_target": "",
       "claude_launch_command": "claude --dangerously-skip-permissions",
       "claude_post_launch_mode": "resume_then_agent_pick",
-      "system_prompt": "You are Warden, a GSD-driven development agent..."
+      "system_prompt": "Prefer /gsd:quick for small tasks, /gsd:debug for bugs.",
+      "hook_settings": {
+        "pane_capture_lines": 150,
+        "hook_mode": "bidirectional"
+      }
     }
   ]
 }
 ```
 
-**New field:** `system_prompt` (string, defaults to empty string, optional per agent)
+**New fields:**
+- `system_prompt` (top-level per agent, string, defaults to empty string)
+- `hook_settings` (global at root, nested object with strict known fields)
+- `hook_settings` (per agent, overrides global on per-field basis)
+- Three-tier fallback: per-agent > global > hardcoded defaults
 
 ## Build Order and Dependencies
 
@@ -696,9 +704,10 @@ exit 0
 - sync-recovery-registry-session-ids.sh (updates session IDs)
 
 **Schema evolution:**
-- Use `setdefault()` in Python for new fields
+- Use jq with `// default` for missing fields (no Python)
 - Old readers ignore new fields (forward compatibility)
 - New readers provide defaults for missing fields (backward compatibility)
+- Strict known fields only — no open-ended keys in hook_settings
 
 **Trade-offs:**
 - Pro: Single source of truth, no sync issues

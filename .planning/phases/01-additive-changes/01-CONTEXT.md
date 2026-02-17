@@ -29,6 +29,23 @@ Create all new hook scripts, menu-driver type action, and registry schema additi
 - Hybrid communication mode: default async (capture + background openclaw call + exit 0), with optional bidirectional mode per-agent (`hook_settings.hook_mode: "async" | "bidirectional"`)
 - In bidirectional mode: hook waits for OpenClaw response, returns `{ "decision": "block", "reason": "..." }` to inject instructions into Claude
 - SessionEnd hook notifies OpenClaw immediately when session terminates (faster recovery than daemon alone)
+- All hook scripts share common guard patterns: stdin consumption, stop_hook_active check, $TMUX validation, registry lookup
+
+### Hook Technical Context (from research)
+
+- Claude Code has 14 hook event types total; we use 5: Stop, Notification (idle_prompt), Notification (permission_prompt), SessionEnd, PreCompact
+- Stop hooks fire when Claude finishes responding — they do NOT fire on user interrupts
+- Hooks snapshot at startup: changes to settings.json require session restart to take effect
+- Hook timeout is 10 minutes by default (configurable per hook)
+- Exit code 0 with JSON: Claude parses stdout for decisions. Exit code 2: stderr fed back as error
+- `decision: "block"` with `reason` makes Claude continue working with that reason as its next instruction
+- `continue: false` with `stopReason` halts Claude entirely (different from blocking)
+- All matching hooks run in parallel; identical handlers are deduplicated
+- Stop and Notification(idle_prompt) do NOT support matchers — they always fire
+- Notification(permission_prompt) uses matcher `permission_prompt`
+- `--append-system-prompt` appends to Claude's default prompt (preserves built-in capabilities)
+- `--append-system-prompt-file <path>` loads from file directly (alternative to reading in bash)
+- `CLAUDE_AUTOCOMPACT_PCT_OVERRIDE` env var triggers compaction at custom percentage
 
 ### Default System Prompt
 

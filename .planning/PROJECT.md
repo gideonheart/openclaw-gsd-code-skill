@@ -13,8 +13,10 @@ Reliable, intelligent agent session lifecycle — launch, recover, and respond t
 **Goal:** Replace polling-based menu handling with Claude Code's native Stop hook for event-driven, agent-intelligent control.
 
 **Target features:**
-- Stop hook replaces autoresponder.sh and hook-watcher.sh
+- Hook system (Stop, Notification, SessionEnd, PreCompact) replaces autoresponder.sh and hook-watcher.sh
 - Per-agent configurable system prompts via recovery registry
+- hook_settings for per-agent hook configuration (pane depth, context threshold, hook mode)
+- Hybrid hook mode: async by default, bidirectional per-agent for instruction injection
 - OpenClaw agents make intelligent menu decisions (not blind heuristics)
 - Precise agent targeting (direct session ID, not broadcast)
 
@@ -59,8 +61,8 @@ Reliable, intelligent agent session lifecycle — launch, recover, and respond t
 
 ## Constraints
 
-- **Tech stack**: Bash scripts only (no Node/Python runtime dependencies beyond embedded Python for JSON) — matches OpenClaw skill conventions
-- **Compatibility**: Must work with Claude Code hooks API (Stop hook, SessionStart hook)
+- **Tech stack**: Bash + jq only (no Node/Python runtime dependencies) — matches OpenClaw skill conventions, cross-platform compatible
+- **Compatibility**: Must work with Claude Code hooks API (Stop, Notification, SessionEnd, PreCompact, SessionStart)
 - **Recovery**: Recovery flow must remain deterministic and work after cold boot
 - **Non-breaking**: Existing managed sessions must not break during migration
 
@@ -68,9 +70,15 @@ Reliable, intelligent agent session lifecycle — launch, recover, and respond t
 
 | Decision | Rationale | Outcome |
 |----------|-----------|---------|
-| Stop hook over polling | Event-driven is more precise, lower overhead, enables intelligent decisions | -- Pending |
-| Per-agent system prompts in registry | Different agents need different personalities/constraints | -- Pending |
-| Delete autoresponder + hook-watcher | Replaced by Stop hook; keeping both creates confusion | -- Pending |
+| Stop hook over polling | Event-driven is more precise, lower overhead, enables intelligent decisions | Confirmed |
+| Multiple hook events (Stop, Notification, SessionEnd, PreCompact) | OpenClaw needs full visibility into Claude Code sessions for autonomous operation | Confirmed |
+| Per-agent system prompts in registry | Different agents need different personalities/constraints | Confirmed |
+| jq replaces Python for registry operations | Cross-platform compatibility, no Python dependency, jq already installed | Confirmed |
+| Hybrid hook mode (async + bidirectional) | Default async for speed, optional bidirectional for direct instruction injection | Confirmed |
+| hook_settings nested object with three-tier fallback | Per-agent > global > hardcoded, per-field merge for granular config | Confirmed |
+| External default-system-prompt.txt | Tracked in git, easy to edit without touching script code | Confirmed |
+| Separate scripts per hook event (SRP) | Each script does one thing, easier to maintain and debug | Confirmed |
+| Delete autoresponder + hook-watcher | Replaced by hook system; keeping both creates confusion | Confirmed |
 
 ---
-*Last updated: 2026-02-17 after milestone v1.0 initialization*
+*Last updated: 2026-02-17 after phase 1 context discussion*

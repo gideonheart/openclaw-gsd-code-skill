@@ -9,7 +9,7 @@
 
 This project replaces polling-based menu detection (autoresponder.sh, hook-watcher.sh) with event-driven agent control via Claude Code's native Stop hook. The architecture is a clean evolution: when Claude finishes responding, the Stop hook captures the TUI state and sends it directly to the specific OpenClaw agent (via `openclaw agent --session-id`), who then makes intelligent decisions using menu-driver.sh. This eliminates 0-1s polling latency, removes duplicate wake events from broadcasting to all agents, and provides context in a single round-trip.
 
-The stack requires zero new dependencies — all components (Claude Code 2.1.44, tmux 3.4, OpenClaw 2026.2.16, jq 1.7) are already installed and version-verified in production. Changes are surgical: add stop-hook.sh, enhance menu-driver.sh with a `type` action for freeform text input, add `system_prompt` field to recovery registry, and update spawn/recovery scripts to use custom prompts per agent. Migration is low-risk with careful phase ordering: additive changes first (no breakage), then hook wiring, then launcher updates, then cleanup of old polling scripts.
+The stack requires zero new dependencies — all components (Claude Code 2.1.44, tmux 3.4, OpenClaw 2026.2.16, jq 1.7) are already installed and version-verified in production. All registry operations use jq (no Python dependency for cross-platform compatibility). Changes are surgical: add 5 hook scripts (stop-hook.sh, notification-idle-hook.sh, notification-permission-hook.sh, session-end-hook.sh, pre-compact-hook.sh), enhance menu-driver.sh with a `type` action for freeform text input, add `system_prompt` field and `hook_settings` object to recovery registry, create external default-system-prompt.txt, and update spawn/recovery scripts to use custom prompts per agent. Hooks support hybrid mode: async by default (background OpenClaw wake), bidirectional per-agent (wait for OpenClaw response, inject instruction via decision:block). Migration is low-risk with careful phase ordering: additive changes first (no breakage), then hook wiring, then launcher updates, then cleanup of old polling scripts.
 
 Critical risks center on hook implementation discipline: stdin must be consumed immediately to prevent pipe blocking, `stop_hook_active` guard prevents infinite loops, background openclaw calls must redirect stdin/stdout to avoid hook corruption, and registry writes need atomic patterns to prevent JSON corruption during concurrent access. The 10 documented pitfalls map cleanly to prevention phases, with verification steps to confirm safe migration.
 
@@ -23,13 +23,13 @@ Critical risks center on hook implementation discipline: stdin must be consumed 
 - **Claude Code 2.1.44** with Stop hook: Event-driven session state capture when Claude finishes responding — native feature with stdin JSON and decision control
 - **tmux 3.4** with send-keys -l: Literal mode for freeform text injection without key name interpretation — prevents garbled commands during concurrent spawns
 - **OpenClaw 2026.2.16** with agent --session-id: Direct session messaging to specific agent instead of broadcast — precision targeting with full context in wake message
-- **Bash + jq**: Stop hook implementation, registry lookup, pane capture, context extraction — zero runtime cost, 2ms execution time for fast-path exits
-- **Recovery registry JSON**: Single source of truth mapping tmux sessions to OpenClaw agents — adds `system_prompt` field for per-agent customization
+- **Bash + jq**: All hook scripts, registry operations, pane capture, context extraction — zero runtime cost, 2ms execution time for fast-path exits. jq replaces all Python for cross-platform compatibility.
+- **Recovery registry JSON**: Single source of truth mapping tmux sessions to OpenClaw agents — adds `system_prompt` field (top-level) and `hook_settings` object (global + per-agent with three-tier fallback) for per-agent customization
 
 **What NOT to use:**
-- Node.js or Python for hook (adds latency, bash is 2ms vs 50ms)
-- Polling with sleep (CPU waste, hook eliminates need)
-- Plugin-based Stop hook (known bug where JSON output not captured — use inline settings.json hooks)
+- Node.js or Python for hooks or registry (adds dependency, bash + jq is 2ms vs 50ms, cross-platform)
+- Polling with sleep (CPU waste, hooks eliminate need)
+- Plugin-based hooks (known bug where JSON output not captured — use inline settings.json hooks)
 - Global system events (broadcast noise — use targeted --session-id)
 
 ### Expected Features
@@ -67,12 +67,17 @@ Critical risks center on hook implementation discipline: stdin must be consumed 
 Stop hook integration is a **subsequent milestone** adding to existing architecture. Current system uses polling (autoresponder.sh picks option 1 blindly every 1s, hook-watcher.sh broadcasts to all agents when menu detected). New system: Claude finishes → Stop hook fires instantly → captures pane → looks up agent in registry by tmux_session_name → sends snapshot + actions to specific agent → agent decides → calls menu-driver.sh → Claude receives input. This eliminates polling overhead, duplicate detection (SHA1 signatures no longer needed), broadcast spam, and separate snapshot requests.
 
 **Major components:**
-1. **stop-hook.sh (NEW)** — Stop hook entry point with guards (stop_hook_active, $TMUX check, registry lookup), pane capture (tmux capture-pane -S -120), context extraction (statusline parsing), structured payload (pane + actions + context warning), backgrounded OpenClaw wake (openclaw agent --session-id with stdin/stdout redirect)
-2. **menu-driver.sh (MODIFIED)** — Atomic TUI actions, adds `type <text>` for freeform input (tmux send-keys -l for literal mode, C-u to clear line first)
-3. **spawn.sh (MODIFIED)** — Remove autoresponder logic and hardcoded strict_prompt(), add --system-prompt flag, read system_prompt from registry after upsert, fall back to default if empty
-4. **recover-openclaw-agents.sh (MODIFIED)** — Extract system_prompt per agent, pass via --append-system-prompt on launch, remove set -e for graceful partial recovery, add per-agent error handling
-5. **recovery-registry.json (MODIFIED)** — Add system_prompt field (string, defaults to empty, optional per agent), Python upsert uses setdefault()
-6. **~/.claude/settings.json (MODIFIED)** — Add Stop hook calling stop-hook.sh, remove gsd-session-hook.sh from SessionStart (no more hook-watcher launch)
+1. **stop-hook.sh (NEW)** — Stop hook entry point with guards (stop_hook_active, $TMUX check, registry lookup), pane capture (configurable depth via hook_settings), context extraction (statusline parsing), structured wake message (identity + state hint + trigger type + pane + actions + context pressure), hybrid mode support (async default, bidirectional per-agent)
+2. **notification-idle-hook.sh (NEW)** — Notification hook for idle_prompt events, notifies OpenClaw when Claude waits for user input
+3. **notification-permission-hook.sh (NEW)** — Notification hook for permission_prompt events, future-proofing for fine-grained permission handling
+4. **session-end-hook.sh (NEW)** — SessionEnd hook, notifies OpenClaw immediately when session terminates
+5. **pre-compact-hook.sh (NEW)** — PreCompact hook, captures state before context compaction
+6. **config/default-system-prompt.txt (NEW)** — Default system prompt file, tracked in git, minimal GSD workflow guidance
+7. **menu-driver.sh (MODIFIED)** — Atomic TUI actions, adds `type <text>` for freeform input (tmux send-keys -l for literal mode, C-u to clear line first)
+8. **spawn.sh (MODIFIED)** — Remove autoresponder logic and hardcoded strict_prompt(), add --system-prompt flag, read system_prompt from registry via jq (no Python), fall back to default-system-prompt.txt
+9. **recover-openclaw-agents.sh (MODIFIED)** — Extract system_prompt per agent via jq (no Python), pass via --append-system-prompt on launch, remove set -e for graceful partial recovery, add per-agent error handling
+10. **recovery-registry.json (MODIFIED)** — Add system_prompt field (top-level per agent), hook_settings object (global + per-agent with three-tier fallback, strict known fields), all operations via jq
+11. **~/.claude/settings.json (MODIFIED)** — Add all hooks (Stop, Notification idle_prompt, Notification permission_prompt, SessionEnd, PreCompact), remove gsd-session-hook.sh from SessionStart
 
 **Integration points:**
 - Stop hook → Registry lookup: reads $TMUX, queries registry by tmux_session_name, extracts openclaw_session_id, exits 0 if no match
@@ -108,12 +113,15 @@ Stop hook integration is a **subsequent milestone** adding to existing architect
 Based on research, suggested phase structure prioritizes safety through additive changes first, then wiring, then updates, then cleanup. Critical path: new files must exist before hooks reference them, registry schema must exist before launchers read it, menu-driver.sh type action must exist before agents call it.
 
 ### Phase 1: Additive Changes (No Breakage)
-**Rationale:** Create all new components without disrupting existing sessions. No hook registered yet, so stop-hook.sh is inert. New registry field ignored by old scripts. New menu-driver.sh action unused until agents updated.
+**Rationale:** Create all new components without disrupting existing sessions. No hooks registered yet, so all scripts are inert. New registry fields ignored by old scripts. New menu-driver.sh action unused until agents updated.
 
 **Delivers:**
-- stop-hook.sh with full guards (stop_hook_active, stdin consumption, $TMUX check, registry lookup, fast-path exits)
+- 5 hook scripts: stop-hook.sh, notification-idle-hook.sh, notification-permission-hook.sh, session-end-hook.sh, pre-compact-hook.sh (all with shared guard patterns, hybrid mode support)
 - menu-driver.sh type action (tmux send-keys -l for literal freeform input)
-- system_prompt field added to recovery-registry.json (empty string default, backward compatible)
+- system_prompt field (top-level per agent) and hook_settings object (global + per-agent, three-tier fallback, strict known fields) added to registry
+- config/default-system-prompt.txt (tracked in git, minimal GSD workflow guidance)
+- recovery-registry.example.json with realistic multi-agent setup (Gideon, Warden, Forge)
+- Structured wake message format (identity, state hint, trigger type, pane, actions, context pressure)
 
 **Addresses features:**
 - Stop hook core (table stakes)
@@ -124,7 +132,7 @@ Based on research, suggested phase structure prioritizes safety through additive
 **Avoids pitfalls:**
 - Pitfall 1 (infinite loop): stop_hook_active guard implemented
 - Pitfall 2 (stdin blocking): stdin consumption at top of hook
-- Pitfall 7 (missing field): setdefault in Python upsert
+- Pitfall 7 (missing field): jq fallback defaults (no Python)
 - Pitfall 8 (non-managed sessions): fast-path guards before expensive logic
 - Pitfall 9 (background inherits stdin): redirect stdin/stdout in openclaw call
 

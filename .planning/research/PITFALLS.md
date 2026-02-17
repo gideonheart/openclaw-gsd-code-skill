@@ -72,7 +72,7 @@ JSON files are not atomic write targets. When Process A reads the registry, modi
 
 **How to avoid:**
 1. Use atomic write pattern: write to `${file}.tmp.$$`, then `mv` to final location
-2. Wrap registry modifications in `flock` to serialize access: `flock /tmp/registry.lock -c "python3 update_registry.py"`
+2. Wrap registry modifications in `flock` to serialize access: `flock /tmp/registry.lock jq '...' registry.json > tmp && mv tmp registry.json`
 3. Add retry logic with exponential backoff if lock acquisition fails
 4. For recovery-registry.json specifically: spawn.sh and recover script should never run concurrently (spawn is manual, recover is boot-only), but sync script may run via cron — ensure sync script uses flock
 5. Validate JSON after every write: `jq empty < registry.json || restore_from_backup`
@@ -85,7 +85,7 @@ JSON files are not atomic write targets. When Process A reads the registry, modi
 - Agents randomly disappear from registry after successful spawn
 
 **Phase to address:**
-Phase 3 (Update spawn.sh and recover script) — wrap Python upsert calls in flock, add atomic write to Python script
+Phase 3 (Update spawn.sh and recover script) — wrap jq upsert calls in flock, add atomic write pattern
 
 **Source:**
 - [JSON Corruption from Concurrent Writes](https://github.com/EdgeApp/edge-core-js/issues/258)
@@ -194,20 +194,20 @@ After adding `system_prompt` to the registry schema, old registry entries don't 
 Schema evolution without migration. Adding a new required field to the registry breaks compatibility with existing entries. Python's `entry.get("system_prompt")` returns `None` for old entries, and bash string substitution of `${system_prompt}` may produce empty strings that break command construction.
 
 **How to avoid:**
-1. Use `setdefault("system_prompt", "")` in the Python upsert function to add the field to old entries on first access
-2. In recovery script, provide a fallback default: `system_prompt="${system_prompt:-You are a GSD-driven agent...}"`
-3. Document the default system prompt in README and SKILL.md so it's consistent across spawn.sh and recovery script
-4. Test recovery with an old registry.json (without `system_prompt` field) to verify fallback works
-5. Consider a registry migration script that runs once to add missing fields to all entries
+1. Use jq with `// ""` fallback for missing system_prompt field (no Python dependency)
+2. In recovery script, provide a fallback from config/default-system-prompt.txt
+3. Per-agent system_prompt always appends to default, never replaces
+4. Test recovery with an old registry.json (without `system_prompt` or `hook_settings`) to verify fallback works
+5. Auto-populate hook_settings with defaults on new agent entries via jq
 
 **Warning signs:**
 - Recovered Claude sessions don't see the expected system prompt
 - `claude --append-system-prompt ""` in logs (empty prompt)
-- Python KeyError or jq parse error when accessing `system_prompt`
+- jq returns null/empty when accessing `system_prompt` or `hook_settings`
 - Agents behave differently after recovery vs. after spawn.sh (spawn has prompt, recovery doesn't)
 
 **Phase to address:**
-Phase 3 (Update spawn.sh and recover script) — add setdefault to Python, add fallback in bash, test with old registry
+Phase 3 (Update spawn.sh and recover script) — add jq fallback defaults, use config/default-system-prompt.txt, test with old registry
 
 ---
 
@@ -301,12 +301,12 @@ Phase 3 (Update recover-openclaw-agents.sh) — remove set -e, add retry logic t
 
 | Shortcut | Immediate Benefit | Long-term Cost | When Acceptable |
 |----------|-------------------|----------------|-----------------|
-| Skip flock on registry writes | Faster development, no lock contention | Registry corruption when multiple spawns/recoveries run concurrently | Never (corruption risk too high) |
+| Skip flock on registry writes | Faster development, no lock contention | Registry corruption when multiple spawns/recoveries run concurrently | Never (corruption risk too high). Use flock with jq |
 | Use global ~/.claude/settings.json for hooks | Single config, applies everywhere | Hook fires for all sessions, including non-managed ones | Only if fast-path guards are implemented |
 | Background openclaw without redirecting stdin/stdout | Simpler code | Hook hangs or produces garbled output | Never (breaks hook contract) |
 | Remove set -e from bash scripts | Errors don't abort script | Silent failures accumulate | Only in recovery scripts where partial success is better than total failure |
 | Use send-keys without -l flag | Familiar syntax | Garbled commands on concurrent spawns | MVP only, refactor to -l in Phase 3 |
-| Hardcode system_prompt in recovery script | No registry schema change needed | Prompts diverge between spawn and recovery | MVP only, add to registry in Phase 1 |
+| Hardcode system_prompt in recovery script | No registry schema change needed | Prompts diverge between spawn and recovery | Never — use config/default-system-prompt.txt + registry |
 
 ## Integration Gotchas
 
@@ -358,7 +358,7 @@ Phase 3 (Update recover-openclaw-agents.sh) — remove set -e, add retry logic t
 | send-keys corruption | LOW | 1. Kill garbled session 2. Spawn new session (spawn.sh handles retry) 3. Add delays to recovery script |
 | Recovery script failure | HIGH | 1. Check systemctl status 2. systemctl reset-failed 3. Fix script 4. Manually spawn critical agents |
 | Duplicate events (migration) | LOW | Accept as temporary, or: 1. Kill old watchers (pkill -f hook-watcher) 2. Remove watcher state files |
-| Missing system_prompt | MEDIUM | 1. Add setdefault to Python 2. Add fallback to bash 3. Re-run spawn.sh to update registry |
+| Missing system_prompt | MEDIUM | 1. Add jq fallback defaults 2. Use config/default-system-prompt.txt 3. Re-run spawn.sh to update registry |
 | Hook fires for non-managed | LOW | Accept as expected, or: 1. Move hook to project .claude/settings.json 2. Add fast-path guard |
 | Background process inherits stdin | MEDIUM | 1. Kill hook 2. Add redirects to background call 3. Hook resumes on next response |
 | Tmux session race | MEDIUM | 1. Retry recovery manually 2. Add retry logic to script 3. Remove set -e from recovery script |

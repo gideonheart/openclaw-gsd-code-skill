@@ -18,9 +18,13 @@ Features users expect. Missing = system feels incomplete or broken.
 | Backgrounded agent wake | Stop hook must exit immediately, not block on OpenClaw response | Low | Hook timeout is 120s; blocking risks hook failure and delayed Claude responses | openclaw agent CLI |
 | Fast-path exit for non-managed sessions | Hook exits <5ms when `$TMUX` missing or session not in registry | Low | Avoids token cost and latency for unmanaged Claude Code usage | Session registry |
 | Freeform text input (`type` action) | Agent may need to type arbitrary text (not just option numbers) | Low | Required for responding to non-menu prompts or interactive editors | menu-driver.sh |
+| Notification hooks (idle_prompt, permission_prompt) | Dedicated hooks fire when Claude waits for input or permission | Low | Full session visibility for OpenClaw autonomous operation | Claude Code hooks API |
+| SessionEnd hook | Notifies OpenClaw immediately when session terminates | Low | Faster recovery than daemon polling; agent knows instantly | Claude Code hooks API |
+| PreCompact hook | Captures state before context compaction | Low | Enables context preservation strategies | Claude Code hooks API |
 | Configurable system prompt | Per-agent system prompt from registry (not hardcoded) | Low | Different agents need different constraints (strict slash-only vs flexible) | recovery-registry.json |
+| External default-system-prompt.txt | Default prompt stored in tracked file, not hardcoded | Low | Easy to edit without touching script code | config/default-system-prompt.txt |
 | Recovery flow integration | Recover script must pass system prompt to Claude on launch | Low | New agents post-reboot must have same prompt as pre-reboot sessions | recover-openclaw-agents.sh |
-| Deterministic menu actions preserved | Existing menu-driver.sh actions (snapshot, choose, enter, esc, clear_then, submit) | None (exists) | Already built; Stop hook reuses these | menu-driver.sh |
+| Deterministic menu actions preserved | Existing menu-driver.sh actions (snapshot, choose, enter, esc, clear_then, submit) | None (exists) | Already built; hooks reuse these | menu-driver.sh |
 
 ## Differentiators
 
@@ -38,6 +42,9 @@ Features that set this system apart. Not expected, but high value.
 | Registry sync from agent sessions | Auto-refresh openclaw_session_id from agent/sessions.json | Medium (exists) | Prevents stale session id rot after agent restart | sync-recovery-registry-session-ids.sh |
 | Graceful degradation on registry errors | jq failures wrapped in `|| true`; hook never crashes Claude | Low | Robustness: broken registry → unmanaged session behavior (exit 0) | Error handling discipline |
 | Multiple system prompt modes | Registry can store different prompts: strict slash-only, GSD-preferred, or flexible | Low | Supports different agent personalities (Warden vs Gideon vs Forge) | recovery-registry.json schema |
+| Hybrid hook mode (async + bidirectional) | Default async for speed, optional bidirectional per-agent for instruction injection | Medium | Bidirectional enables direct Claude instruction via decision:block + reason | hook_settings.hook_mode |
+| Per-agent hook configuration (hook_settings) | Configurable pane depth, context threshold, autocompact, hook mode per agent | Low | Different agents may need different tuning without code changes | recovery-registry.json |
+| Three-tier config fallback | Per-agent > global > hardcoded with per-field merge | Medium | DRY: common defaults at global level, overrides only where needed | registry schema design |
 
 ## Anti-Features
 
@@ -46,12 +53,13 @@ Features to explicitly NOT build.
 | Anti-Feature | Why Avoid | What to Do Instead |
 |--------------|-----------|-------------------|
 | LLM decision in Stop hook itself | Hook timeout is 120s max; invoking LLM in hook risks timeout and blocks Claude Code | Background wake OpenClaw agent; agent calls menu-driver.sh after deciding |
-| Blocking on OpenClaw response | Waiting for agent decision before hook exits → slow Claude Code, risk timeout | Fire-and-forget: background openclaw call with `|| true` |
+| Blocking on OpenClaw response (unconditionally) | Always waiting for agent decision before hook exits → slow Claude Code, risk timeout | Default: fire-and-forget async. Optional: bidirectional per-agent via hook_settings.hook_mode when instruction injection needed |
 | Automatic approvals for updates | Autoresponder.sh explicitly blocked "update" keywords; Stop hook should preserve this | Agent receives full context and makes judgment call (defaults to "No" on updates) |
-| Hook returns `decision: "block"` | Infinite loop risk (stop_hook_active prevents, but adds complexity) | Always exit 0; agent decides whether to wake and act |
+| Hook returns `decision: "block"` unconditionally | Infinite loop risk (stop_hook_active prevents, but adds complexity) | Async mode: always exit 0. Bidirectional mode: return block only when OpenClaw provides explicit instruction, always check stop_hook_active first |
 | Polling fallback as backup | Two parallel systems (Stop hook + hook-watcher.sh) → duplicate wakes, state confusion | Commit to Stop hook; delete hook-watcher.sh and autoresponder.sh entirely |
 | Global Claude Code hooks config modification on every spawn | Editing ~/.claude/settings.json on every spawn.sh run → race conditions, corruption | Set hook once globally; skill scripts stay in workspace/skills/gsd-code-skill/scripts/ |
-| Hardcoded system prompts in spawn.sh | Each agent role needs different prompt; hardcoding requires spawn.sh edits per agent | Read system_prompt from registry; default to sensible fallback if empty |
+| Hardcoded system prompts in spawn.sh | Each agent role needs different prompt; hardcoding requires spawn.sh edits per agent | Read system_prompt from registry; default from config/default-system-prompt.txt; per-agent always appends, never replaces |
+| Python for registry operations | Python dependency limits cross-platform compatibility; jq is already installed everywhere | Use jq for all registry read/write operations |
 | Custom hook per tmux session | Multiple ~/.claude/settings.json or session-scoped hooks → maintenance nightmare | Single global hook; session filtering via registry lookup |
 | Regex-based pane parsing for actions | Hook tries to parse "1. Option A" and auto-choose → brittle, breaks on format changes | Send raw pane + available actions; agent decides and calls menu-driver.sh explicitly |
 | Synchronous registry updates in hook | Writing to recovery-registry.json during hook execution → file lock contention | Registry is read-only in hook; updated only by spawn.sh and recover script |
