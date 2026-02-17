@@ -240,6 +240,34 @@ start_tmux_server_if_needed() {
   fi
 }
 
+wait_for_claude_tui_readiness() {
+  local session_name="$1"
+  local max_attempts=40
+  local attempt=0
+
+  # Initial delay: claude binary needs several seconds just to start
+  sleep 3
+
+  while [ "$attempt" -lt "$max_attempts" ]; do
+    local pane_content
+    pane_content="$(tmux capture-pane -pt "${session_name}:0.0" -S -30 2>/dev/null || echo "")"
+
+    # Detect the ❯ input prompt — only appears when TUI is ready for input.
+    # Avoids false positives from the launch command text visible in the pane.
+    if echo "$pane_content" | grep -qF '❯'; then
+      return 0
+    fi
+
+    attempt=$((attempt + 1))
+    if [ $((attempt % 10)) -eq 0 ]; then
+      log "Waiting for Claude TUI... (${attempt}/${max_attempts})"
+    fi
+    sleep 0.5
+  done
+
+  return 1
+}
+
 log_git_preflight_info() {
   local working_directory="$1"
 
@@ -374,8 +402,12 @@ main() {
   log "Launching Claude Code in tmux"
   tmux send-keys -t "${actual_session_name}:0.0" "$full_claude_command" Enter
 
-  # Wait for TUI startup
-  sleep 1
+  # Wait for TUI startup (poll for readiness instead of fixed sleep)
+  if wait_for_claude_tui_readiness "${actual_session_name}"; then
+    log "TUI ready, sending first command"
+  else
+    log "WARN: TUI readiness not confirmed after 15s, sending first command anyway"
+  fi
 
   # Send first command
   log "First command => $first_command"

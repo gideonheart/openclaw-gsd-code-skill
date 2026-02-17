@@ -5,86 +5,34 @@
 See: .planning/PROJECT.md (updated 2026-02-17)
 
 **Core value:** Reliable, intelligent agent session lifecycle — launch, recover, and respond without human intervention
-**Current focus:** Phase 5 - Documentation
+**Current focus:** Defining requirements for v2.0 Smart Hook Delivery
 
 ## Current Position
 
-Phase: 5 of 5 (Documentation)
-Plan: 1 of 2 phase plans completed (8 total plans across all phases)
-Status: In Progress
-Last activity: 2026-02-17 - Completed quick task 4: Fix hook system to detect and respond to Claude Code events
-
-Progress: [████████░░] 77.8%
-
-## Performance Metrics
-
-**Velocity:**
-- Total plans completed: 7
-- Average duration: 2.1 minutes
-- Total execution time: 0.25 hours
-
-**By Phase:**
-
-| Phase | Plans | Total | Avg/Plan |
-|-------|-------|-------|----------|
-| 01-additive-changes | 2 | 5 min | 2.5 min |
-| 02-hook-wiring | 1 | 1 min | 1.0 min |
-| 03-launcher-updates | 2 | 4 min | 2.0 min |
-| 04-cleanup | 1 | 2 min | 2.0 min |
-| 05-documentation | 1 | 3 min | 3.0 min |
-
-**Recent Trend:**
-- Last 5 plans: 1 min, 2 min, 2 min, 2 min, 3 min
-- Trend: Consistent efficient execution
-
-*Updated after each plan completion*
-
-| Phase | Plan | Duration | Tasks | Files |
-|-------|------|----------|-------|-------|
-| 01-additive-changes | P01 | 1 min | 2 | 3 |
-| 01-additive-changes | P02 | 4 min | 2 | 3 |
-| 02-hook-wiring | P01 | 1 min | 2 | 1 |
-| 03-launcher-updates | P01 | 2 min | 1 | 1 |
-| 03-launcher-updates | P02 | 2 min | 1 | 1 |
-| 04-cleanup | P01 | 2 min | 2 | 7 |
-| 05-documentation | P01 | 3 min | 2 | 3 |
+Phase: Not started (defining requirements)
+Plan: —
+Status: Defining requirements
+Last activity: 2026-02-17 — Milestone v2.0 started
 
 ## Accumulated Context
 
 ### Decisions
 
 Decisions are logged in PROJECT.md Key Decisions table.
-Recent decisions affecting current work:
 
+v2.0 decisions:
+- Transcript-based extraction over pane scraping: transcript_path JSONL provides exact response text, no tmux noise
+- PreToolUse hook for AskUserQuestion: Notification hooks don't include question data; PreToolUse does via tool_input
+- Diff-based pane delivery: Git-style delta reduces token waste and signal-to-noise for orchestrator
+
+v1.0 decisions (carried forward):
 - Stop hook over polling: Event-driven is more precise, lower overhead, enables intelligent decisions
 - Multiple hook events: Stop, Notification (idle_prompt, permission_prompt), SessionEnd, PreCompact for full session visibility
 - Per-agent system prompts in registry: Different agents need different personalities/constraints
 - jq replaces Python: Cross-platform, no Python dependency for registry operations
 - Hybrid hook mode: Async default with optional bidirectional per-agent for instruction injection
 - hook_settings nested object: Three-tier fallback (per-agent > global > hardcoded) with per-field merge
-- Separate scripts per hook event (SRP): stop-hook.sh, notification-idle-hook.sh, notification-permission-hook.sh, session-end-hook.sh, pre-compact-hook.sh
-- External default-system-prompt.txt: Tracked in git, minimal GSD workflow guidance
-- Delete autoresponder + hook-watcher: Replaced by hook system; keeping both creates confusion
-- [Phase 01-additive-changes]: Use comment fields in JSON for schema documentation (self-documenting registry)
-- [Phase 01-additive-changes]: Default system prompt focuses only on GSD workflow (role/personality from SOUL.md)
-- [Phase 02-hook-wiring]: PreCompact with no matcher (fires on both auto and manual) for full visibility
-- [Phase 02-hook-wiring]: Stop/Notification/PreCompact timeout: 600s, SessionEnd uses default
-- [Phase 02-hook-wiring]: Registration script in scripts/ (executable utility, not static config)
-- [Phase 03-launcher-updates]: System prompt replacement model (agent overrides default entirely, not append)
-- [Phase 03-launcher-updates]: Auto-create registry entries for unknown agents with sensible defaults
-- [Phase 03-launcher-updates]: Session name conflict resolution with -2 suffix (graceful, not abort)
-- [Phase 03-02]: System prompt composition uses replacement model (agent prompt replaces default, not appends)
-- [Phase 03-02]: Recovery script uses jq with // null coalescing for all optional registry fields
-- [Phase 03-02]: Recovery retry delay set to 3 seconds for all operations
-- [Phase 04-01]: Let old hook-watcher processes die naturally (no pkill commands)
-- [Phase 04-01]: Let /tmp watcher state files disappear naturally on reboot (no manual cleanup)
-- [Phase 04-01]: Mark deleted scripts with strikethrough in PROJECT.md to maintain historical context
-- [Phase 05-documentation]: Token-efficient SKILL.md (154 lines) with Quick Start, Lifecycle narrative, grouped script inventory
-- [Phase 05-documentation]: Progressive disclosure via docs/hooks.md reference for hook deep-dives
-- [Quick task 4]: Shared /tmp/gsd-hooks.log for all hooks instead of per-hook logs (easier to follow execution timeline)
-- [Quick task 4]: Log async openclaw output to hook log instead of /dev/null (capture delivery errors)
-- [Quick task 4]: Use || true in debug_log to prevent logging failures from crashing hooks
-- [Quick task 4]: Check TMUX propagation via /proc/PID/environ in diagnose script (most likely failure point)
+- Separate scripts per hook event (SRP)
 
 ### Pending Todos
 
@@ -92,21 +40,21 @@ None yet.
 
 ### Blockers/Concerns
 
-None yet.
+- Claude Code AskUserQuestion does NOT trigger Notification hooks (known limitation, open feature request)
+- PreToolUse hook for AskUserQuestion can detect questions but cannot programmatically answer them
+- transcript_path JSONL format needs investigation (line format, message structure)
 
-### Quick Tasks Completed
+### Research Findings (v2.0)
 
-| # | Description | Date | Commit | Directory |
-|---|-------------|------|--------|-----------|
-| 1 | Fix PRD.md to match updated project goals and scope | 2026-02-17 | 75209f7 | [1-fix-prd-md-to-match-updated-project-goal](./quick/1-fix-prd-md-to-match-updated-project-goal/) |
-| 2 | Fix milestone v1.0 tech debt documentation inconsistencies | 2026-02-17 | 2993769 | [2-fix-milestone-v1-0-tech-debt-documentati](./quick/2-fix-milestone-v1-0-tech-debt-documentati/) |
-| 4 | Fix hook system to detect and respond to Claude Code events | 2026-02-17 | b1721df | [4-fix-hook-system-to-detect-and-respond-to](./quick/4-fix-hook-system-to-detect-and-respond-to/) |
+Hook stdin JSON fields:
+- Common: session_id, transcript_path, cwd, permission_mode, hook_event_name
+- Stop: stop_hook_active (boolean)
+- Notification: message, title, notification_type (permission_prompt, idle_prompt, auth_success, elicitation_dialog)
+- PreCompact: trigger (manual/auto), custom_instructions
+- SessionEnd: reason (clear, logout, prompt_input_exit, other)
+- PreToolUse/PostToolUse: tool_name, tool_input/tool_response (include actual data)
 
-## Session Continuity
-
-Last session: 2026-02-17 (execute-quick-task)
-Stopped at: Completed quick task 4 (Fix hook system to detect and respond to Claude Code events)
-Resume file: .planning/quick/4-fix-hook-system-to-detect-and-respond-to/4-SUMMARY.md
+Key insight: transcript_path provides access to full conversation JSONL, enabling precise response extraction without pane scraping.
 
 ---
-*Last updated: 2026-02-17 after completing quick task 4*
+*Last updated: 2026-02-17 after v2.0 milestone start*
