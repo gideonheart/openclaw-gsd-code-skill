@@ -71,7 +71,49 @@ Requirements for milestone v1.0: Hook-Driven Agent Control. Each maps to roadmap
 
 ## v2 Requirements
 
-Deferred to future release. Tracked but not in current roadmap.
+Requirements for milestone v2.0: Smart Hook Delivery. Replaces noisy 120-line raw pane dumps with precise, extracted content delivery.
+
+### Content Extraction
+
+- [ ] **EXTRACT-01**: Stop hook extracts last assistant response from transcript_path JSONL using type-filtered content parsing (`content[]? | select(.type == "text")`)
+- [ ] **EXTRACT-02**: Extracted response replaces raw pane content as primary data in wake messages
+- [ ] **EXTRACT-03**: When transcript extraction fails (file missing, empty, parse error), fall back to diff-based pane delivery
+
+### AskUserQuestion Forwarding
+
+- [ ] **ASK-01**: PreToolUse hook fires on AskUserQuestion tool calls only (matcher: `"AskUserQuestion"`)
+- [ ] **ASK-02**: PreToolUse hook extracts structured question data (questions, options, header, multiSelect) from tool_input
+- [ ] **ASK-03**: PreToolUse hook sends question data to OpenClaw agent asynchronously (never blocks Claude Code UI)
+
+### Pane Delivery
+
+- [ ] **PANE-01**: Stop hook sends only new/added lines from last 40 pane lines (diff against previous capture per session)
+- [ ] **PANE-02**: Per-session previous pane state stored in /tmp with flock protection for concurrent access
+- [ ] **PANE-03**: When diff is empty (no pane changes), skip or send lightweight signal instead of full content
+
+### Wake Format
+
+- [ ] **WAKE-07**: Wake messages use v2 structured format: [SESSION IDENTITY], [TRIGGER], [CLAUDE RESPONSE], [STATE HINT], [PANE DELTA], [CONTEXT PRESSURE], [AVAILABLE ACTIONS]
+- [ ] **WAKE-08**: v1 wake format code removed entirely — clean break, no backward compatibility layer
+- [ ] **WAKE-09**: AskUserQuestion forwarding uses dedicated [ASK USER QUESTION] section with structured question/options data
+
+### Shared Library
+
+- [ ] **LIB-01**: lib/hook-utils.sh contains shared extraction and diff functions (DRY — sourced by stop-hook.sh and pre-tool-use-hook.sh only)
+- [ ] **LIB-02**: Each function in lib has single responsibility — extract response, compute diff, format questions are separate functions
+
+### Registration
+
+- [ ] **REG-01**: register-hooks.sh registers PreToolUse hook with AskUserQuestion matcher in settings.json
+- [ ] **REG-02**: session-end-hook.sh cleans up /tmp pane state files on session exit
+
+### Documentation
+
+- [ ] **DOCS-03**: SKILL.md updated with v2.0 architecture (lib, pre-tool-use-hook.sh, v2 wake format)
+
+## Future Requirements
+
+Deferred beyond v2.0. Tracked but not in current roadmap.
 
 ### Observability
 
@@ -83,10 +125,13 @@ Deferred to future release. Tracked but not in current roadmap.
 - **RES-01**: Timeout-based fallback if Stop hook doesn't fire
 - **RES-02**: Rate limiting on agent wakes for high-concurrency scenarios (20+ sessions)
 
-### Advanced Features
+### Advanced Delivery
 
 - **ADV-01**: Context pressure heuristics beyond percentage threshold
 - **ADV-02**: Registry caching in /tmp for 20+ concurrent sessions
+- **ADV-03**: Per-hook dedup mode settings in hook_settings (measure actual rates first)
+- **ADV-04**: Transcript diff delivery (conversation delta instead of pane delta)
+- **ADV-05**: PostToolUse hook for AskUserQuestion (forward which answer was selected)
 
 ### Validation
 
@@ -96,63 +141,44 @@ Deferred to future release. Tracked but not in current roadmap.
 
 | Feature | Reason |
 |---------|--------|
-| LLM decision-making inside hook scripts | Hook must exit quickly; LLM inference takes 2-10s. OpenClaw agent handles decisions. Bidirectional mode injects via decision:block reason, not LLM in hook. |
+| LLM decision-making inside hook scripts | Hook must exit quickly; LLM inference takes 2-10s. OpenClaw agent handles decisions. |
 | Plugin-based hooks | Known bug in Claude Code (GitHub #10875) — JSON output not captured. Use inline settings.json. |
-| Multi-agent swarm coordination | Single agent per session is sufficient for current architecture. |
-| Polling fallback alongside hooks | Running both systems creates duplicate events and confusion. Commit to event-driven. |
-| Automatic menu answering in hooks | Defeats purpose of intelligent agent decisions. Send pane to agent, let agent decide. |
-| Python for registry manipulation | jq handles all JSON operations; no Python dependency for cross-platform compatibility. |
+| Global PreToolUse matcher (`"*"`) | Fires on every tool call — extreme overhead. Use specific `"AskUserQuestion"` matcher. |
+| Blocking PreToolUse hook | AskUserQuestion is for interactive user input; blocking adds latency to TUI. Forward async only. |
+| Backward compat with v1 wake format | Clean break — v1 code removed, not maintained alongside v2. |
+| Python or Node.js for JSONL parsing | `tail + jq` is 2ms; Python/Node adds 50ms startup + dependency. |
+| Full transcript content in wake message | Transcripts grow to hundreds of KB; last assistant message is sufficient. |
+| Unified diff format (`diff -u`) | Includes `+`/`-` markers and context lines; send only new lines with `--new-line-format`. |
 
 ## Traceability
 
 Which phases cover which requirements. Updated during roadmap creation.
 
+### v1.0 (Shipped)
+
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| HOOK-01 | Phase 1 | Pending |
-| HOOK-02 | Phase 1 | Pending |
-| HOOK-03 | Phase 1 | Pending |
-| HOOK-04 | Phase 1 | Pending |
-| HOOK-05 | Phase 1 | Pending |
-| HOOK-06 | Phase 1 | Pending |
-| HOOK-07 | Phase 1 | Pending |
-| HOOK-08 | Phase 1 | Pending |
-| HOOK-09 | Phase 1 | Pending |
-| HOOK-10 | Phase 1 | Pending |
-| HOOK-11 | Phase 1 | Pending |
-| WAKE-01 | Phase 1 | Pending |
-| WAKE-02 | Phase 1 | Pending |
-| WAKE-03 | Phase 1 | Pending |
-| WAKE-04 | Phase 1 | Pending |
-| WAKE-05 | Phase 1 | Pending |
-| WAKE-06 | Phase 1 | Pending |
-| MENU-01 | Phase 1 | Pending |
-| SPAWN-01 | Phase 3 | Pending |
-| SPAWN-02 | Phase 3 | Pending |
-| SPAWN-03 | Phase 3 | Pending |
-| SPAWN-04 | Phase 3 | Pending |
-| SPAWN-05 | Phase 3 | Pending |
-| RECOVER-01 | Phase 3 | Pending |
-| RECOVER-02 | Phase 3 | Pending |
-| CONFIG-01 | Phase 1 | Pending |
-| CONFIG-02 | Phase 1 | Pending |
-| CONFIG-03 | Phase 2 | Pending |
-| CONFIG-04 | Phase 1 | Pending |
-| CONFIG-05 | Phase 1 | Pending |
-| CONFIG-06 | Phase 1 | Pending |
-| CONFIG-07 | Phase 1 | Pending |
-| CONFIG-08 | Phase 1 | Pending |
-| CLEAN-01 | Phase 4 | Pending |
-| CLEAN-02 | Phase 4 | Pending |
-| CLEAN-03 | Phase 4 | Pending |
-| DOCS-01 | Phase 5 | Pending |
-| DOCS-02 | Phase 5 | Pending |
+| HOOK-01 through HOOK-11 | Phase 1 | Done |
+| WAKE-01 through WAKE-06 | Phase 1 | Done |
+| MENU-01 | Phase 1 | Done |
+| SPAWN-01 through SPAWN-05 | Phase 3 | Done |
+| RECOVER-01, RECOVER-02 | Phase 3 | Done |
+| CONFIG-01 through CONFIG-08 | Phase 1-2 | Done |
+| CLEAN-01 through CLEAN-03 | Phase 4 | Done |
+| DOCS-01, DOCS-02 | Phase 5 | Done |
+
+### v2.0 (Current)
+
+| Requirement | Phase | Status |
+|-------------|-------|--------|
+| | | |
 
 **Coverage:**
-- v1 requirements: 38 total
-- Mapped to phases: 38
-- Unmapped: 0
+- v1 requirements: 38 total, all done
+- v2 requirements: 16 total
+- Mapped to phases: 0 (pending roadmap)
+- Unmapped: 16
 
 ---
 *Requirements defined: 2026-02-17*
-*Last updated: 2026-02-17 after phase 1 context discussion*
+*Last updated: 2026-02-17 — v2.0 requirements added*
