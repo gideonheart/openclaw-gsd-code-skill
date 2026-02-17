@@ -1,329 +1,194 @@
 # Project Research Summary
 
-**Project:** Stop Hook Integration for GSD Code Skill
-**Domain:** Event-driven multi-agent control for Claude Code sessions
+**Project:** gsd-code-skill v2.0 "Smart Hook Delivery"
+**Domain:** Hook-driven autonomous agent control for Claude Code sessions — context optimization
 **Researched:** 2026-02-17
 **Confidence:** HIGH
 
 ## Executive Summary
 
-This project replaces polling-based menu detection (autoresponder.sh, hook-watcher.sh) with event-driven agent control via Claude Code's native Stop hook. The architecture is a clean evolution: when Claude finishes responding, the Stop hook captures the TUI state and sends it directly to the specific OpenClaw agent (via `openclaw agent --session-id`), who then makes intelligent decisions using menu-driver.sh. This eliminates 0-1s polling latency, removes duplicate wake events from broadcasting to all agents, and provides context in a single round-trip.
+v2.0 Smart Hook Delivery solves a concrete problem with the working v1.0 system: hook wake messages are too noisy. The orchestrator agent (Gideon) currently receives 120 lines of raw tmux pane content on every hook fire, including ANSI escape codes, statusline garbage, rendering artifacts, and large blocks of content identical to the previous delivery. Claude's actual response text is buried in this rendering noise. v2.0 replaces the raw pane dump with precision-extracted content: the last assistant message extracted directly from the transcript JSONL, a line-level diff of only what changed on screen since the last fire, deduplication to skip redundant wakes entirely, and a structured PreToolUse hook that forwards AskUserQuestion content as structured data before the TUI even renders it.
 
-The stack requires zero new dependencies — all components (Claude Code 2.1.44, tmux 3.4, OpenClaw 2026.2.16, jq 1.7) are already installed and version-verified in production. All registry operations use jq (no Python dependency for cross-platform compatibility). Changes are surgical: add 5 hook scripts (stop-hook.sh, notification-idle-hook.sh, notification-permission-hook.sh, session-end-hook.sh, pre-compact-hook.sh), enhance menu-driver.sh with a `type` action for freeform text input, add `system_prompt` field and `hook_settings` object to recovery registry, create external default-system-prompt.txt, and update spawn/recovery scripts to use custom prompts per agent. Hooks support hybrid mode: async by default (background OpenClaw wake), bidirectional per-agent (wait for OpenClaw response, inject instruction via decision:block). Migration is low-risk with careful phase ordering: additive changes first (no breakage), then hook wiring, then launcher updates, then cleanup of old polling scripts.
+The recommended approach is strictly additive. Four new capabilities — transcript extraction, PreToolUse forwarding, diff-based delivery, and deduplication — are implemented in a new shared library (`lib/hook-utils.sh`) sourced only by the two scripts that need it (`stop-hook.sh` which is modified, and `pre-tool-use-hook.sh` which is new). The other four hook scripts (notification-idle, notification-permission, session-end, pre-compact) remain completely unchanged. Zero new dependencies are introduced; all tools required (jq, diff, md5sum, flock, tail) are already installed on the production Ubuntu 24 host. Claude Code 2.1.45 already running in production supports all required APIs including the PreToolUse hook with AskUserQuestion matcher.
 
-Critical risks center on hook implementation discipline: stdin must be consumed immediately to prevent pipe blocking, `stop_hook_active` guard prevents infinite loops, background openclaw calls must redirect stdin/stdout to avoid hook corruption, and registry writes need atomic patterns to prevent JSON corruption during concurrent access. The 10 documented pitfalls map cleanly to prevention phases, with verification steps to confirm safe migration.
+The key risk is the wake message format change: the orchestrator has been trained on the v1.0 `[PANE CONTENT]` format and switching to `[CLAUDE RESPONSE]` + `[PANE DELTA]` without a transition period will break Gideon's parsing. The mitigation is explicit: add a `wake_message_version: 2` field to every new message, keep backward-compatible sections during the rollout transition, and update Gideon's parsing before or simultaneously with hook deployment. Three additional technical traps must be avoided in the extraction code: using positional `content[0].text` instead of type-filtered `content[]? | select(.type == "text") | .text`, reading full transcript files with `cat` instead of `tail -20`, and forgetting to background the `openclaw` call in the PreToolUse hook.
 
 ## Key Findings
 
 ### Recommended Stack
 
-**No new dependencies required.** All components are production-verified and currently running. The stack additions are native Claude Code features (Stop hook), flags on existing tools (tmux send-keys -l), and CLI capabilities already in OpenClaw (agent --session-id).
+v2.0 requires zero new dependencies. All capabilities are built from the same production stack that v1.0 runs on. See `STACK.md` for full version verification.
 
 **Core technologies:**
-- **Claude Code 2.1.44** with Stop hook: Event-driven session state capture when Claude finishes responding — native feature with stdin JSON and decision control
-- **tmux 3.4** with send-keys -l: Literal mode for freeform text injection without key name interpretation — prevents garbled commands during concurrent spawns
-- **OpenClaw 2026.2.16** with agent --session-id: Direct session messaging to specific agent instead of broadcast — precision targeting with full context in wake message
-- **Bash + jq**: All hook scripts, registry operations, pane capture, context extraction — zero runtime cost, 2ms execution time for fast-path exits. jq replaces all Python for cross-platform compatibility.
-- **Recovery registry JSON**: Single source of truth mapping tmux sessions to OpenClaw agents — adds `system_prompt` field (top-level) and `hook_settings` object (global + per-agent with three-tier fallback) for per-agent customization
+- `bash 5.x` — all hook scripts and lib functions; Ubuntu 24, production verified
+- `jq 1.7` — JSONL parsing from transcript files, JSON extraction from hook stdin, registry operations
+- `tail` (coreutils) — constant-time reads from transcript JSONL files regardless of session length; always `tail -20`, never `cat`; 2ms vs 100ms+ for large files
+- `diff` (GNU diffutils 3.12) — pane delta extraction using `--new-line-format='%L' --old-line-format='' --unchanged-line-format=''` for clean new-lines-only output without diff markup noise
+- `md5sum` (coreutils) — per-session pane content hashing for deduplication; chosen over sha256sum for speed (non-cryptographic use)
+- `flock` (util-linux) — exclusive per-session locking on `/tmp` state files to prevent race conditions when Stop and Notification hooks fire concurrently
+- `Claude Code 2.1.45` — provides `transcript_path` in all hook stdin payloads and supports `PreToolUse` with `"AskUserQuestion"` matcher; must be >= 2.0.76 (bug fix: GitHub #13439 that caused AskUserQuestion results to be stripped when any PreToolUse hook was active)
 
 **What NOT to use:**
-- Node.js or Python for hooks or registry (adds dependency, bash + jq is 2ms vs 50ms, cross-platform)
-- Polling with sleep (CPU waste, hooks eliminate need)
-- Plugin-based hooks (known bug where JSON output not captured — use inline settings.json hooks)
-- Global system events (broadcast noise — use targeted --session-id)
+- Python or Node.js for JSONL parsing — adds dependency, 50ms startup vs 2ms for `tail + jq`
+- `cat transcript | jq` — reads full file; latency grows unbounded with session age
+- `diff -u` unified format — includes `+`/`-` markers and context lines; use `--new-line-format` flags instead
+- Global PreToolUse matcher `"*"` — fires on every tool call (Bash, Read, Write, Edit, Glob); use specific `"AskUserQuestion"` matcher
+- Separate state management daemon — over-engineering; `/tmp` files with `flock` are sufficient
 
 ### Expected Features
 
-**Must have (table stakes):**
-- Stop hook fires on response complete — industry standard event-driven pattern (2026)
-- `stop_hook_active` guard — prevents infinite loops (critical safety)
-- Session registry lookup — routes pane snapshots to correct agent
-- Pane snapshot capture — last 120 lines for decision context
-- Context pressure extraction — token usage percentage enables proactive /clear decisions
-- Backgrounded agent wake — hook exits <5ms, never blocks Claude
-- Fast-path exit for non-managed sessions — 1-5ms overhead when session not in registry
-- Freeform text input (`type` action) — agent responds to non-menu prompts
-- Configurable system prompt — per-agent prompts from registry, not hardcoded
-- Recovery flow integration — recover script passes system prompt on launch
+All six milestone features are table stakes — they must ship together because the wake message v2 format depends on the extraction features being complete. See `FEATURES.md` for behavior descriptions, schemas, and edge cases.
 
-**Should have (differentiators):**
-- Agent-specific routing (not broadcast) — Stop hook wakes exact OpenClaw session, reduces noise
-- Structured decision payload — hook sends pane + available actions + context warning (actionable, not raw dump)
-- Multi-hook safety (wire vs logic separation) — hook in settings.json, logic in skill scripts (upgrading logic doesn't require editing global config)
-- Zero-token overhead for non-managed sessions — fast-path exits when session not in registry
-- Immediate hook exit (async agent wake) — prevents timeout and slowdown
-- Retry-safe action deduplication — agent can safely retry menu-driver.sh calls (idempotent)
-- Registry sync from agent sessions — auto-refresh session IDs to prevent stale rot
+**Must have (all six required for v2.0 — tightly coupled through wake format):**
+- Transcript-based response extraction — reads `transcript_path` JSONL, extracts last assistant `message.content[]` text blocks using type filtering, adds as `[CLAUDE RESPONSE]` section; eliminates ANSI noise entirely
+- PreToolUse hook for AskUserQuestion — new `pre-tool-use-hook.sh`, registered in settings.json with matcher `"AskUserQuestion"` only; receives exact `tool_input.questions[]` with question text, header, options, multiSelect; sends `[ASK USER QUESTION]` section before TUI renders; always exits 0 (notification-only)
+- Diff-based pane delivery — stores previous pane capture per session in `/tmp/gsd-pane-prev-SESSION.txt`; sends only new/changed lines as `[PANE DELTA]` instead of full 120-line dump
+- Deduplication — md5sum hash comparison against `/tmp/gsd-pane-hash-SESSION.txt`; if pane content unchanged since last fire, skip full delivery; minimum 10-line context guarantee enforced even in skip path
+- Structured wake message v2 format — compact format with `wake_message_version: 2`: `[SESSION IDENTITY]`, `[TRIGGER]`, `[CLAUDE RESPONSE]`, `[STATE HINT]`, `[PANE DELTA]`, `[CONTEXT PRESSURE]`, `[AVAILABLE ACTIONS]`; removes raw `[PANE CONTENT]`
+- Minimum context guarantee — when pane delta is fewer than 10 lines (e.g., only a statusline change), pad with `tail -10` of current pane so orchestrator always has actionable baseline
 
-**Defer (v2+):**
-- Advanced context pressure heuristics beyond percentage threshold (current ≥50% sufficient)
-- LLM-guided decision complexity scoring (simple "send everything" works)
-- Multi-agent swarm coordination (single agent per session sufficient)
-- Audit trail / decision logging in hook (agent already logs)
-- Rate limiting / backpressure on agent wakes (menus infrequent)
+**Defer to v2.x (post-validation):**
+- Per-hook dedup mode settings in hook_settings (measure actual dedup rates first)
+- AskUserQuestion async pre-notification with configurable delay window
+- Transcript diff delivery (conversation delta instead of pane delta) — higher complexity, higher value for long sessions
+- Selective hook muting (orchestrator instructs hook to be silent for N turns)
+- PostToolUse hook for AskUserQuestion (forward which answer was selected)
 
 ### Architecture Approach
 
-Stop hook integration is a **subsequent milestone** adding to existing architecture. Current system uses polling (autoresponder.sh picks option 1 blindly every 1s, hook-watcher.sh broadcasts to all agents when menu detected). New system: Claude finishes → Stop hook fires instantly → captures pane → looks up agent in registry by tmux_session_name → sends snapshot + actions to specific agent → agent decides → calls menu-driver.sh → Claude receives input. This eliminates polling overhead, duplicate detection (SHA1 signatures no longer needed), broadcast spam, and separate snapshot requests.
+v2.0 is strictly additive to the existing 5-hook architecture. New capabilities are centralized in `lib/hook-utils.sh` to avoid duplicating extraction logic across hook scripts. Only two scripts change: `stop-hook.sh` gains three new processing steps (transcript extraction at step 7b, dedup check at step 9b, diff extraction at step 9c) and an updated wake message builder (step 10); `pre-tool-use-hook.sh` is created new. All four other hook scripts are untouched. See `ARCHITECTURE.md` for exact line-level integration points and complete data flow diagrams.
 
 **Major components:**
-1. **stop-hook.sh (NEW)** — Stop hook entry point with guards (stop_hook_active, $TMUX check, registry lookup), pane capture (configurable depth via hook_settings), context extraction (statusline parsing), structured wake message (identity + state hint + trigger type + pane + actions + context pressure), hybrid mode support (async default, bidirectional per-agent)
-2. **notification-idle-hook.sh (NEW)** — Notification hook for idle_prompt events, notifies OpenClaw when Claude waits for user input
-3. **notification-permission-hook.sh (NEW)** — Notification hook for permission_prompt events, future-proofing for fine-grained permission handling
-4. **session-end-hook.sh (NEW)** — SessionEnd hook, notifies OpenClaw immediately when session terminates
-5. **pre-compact-hook.sh (NEW)** — PreCompact hook, captures state before context compaction
-6. **config/default-system-prompt.txt (NEW)** — Default system prompt file, tracked in git, minimal GSD workflow guidance
-7. **menu-driver.sh (MODIFIED)** — Atomic TUI actions, adds `type <text>` for freeform input (tmux send-keys -l for literal mode, C-u to clear line first)
-8. **spawn.sh (MODIFIED)** — Remove autoresponder logic and hardcoded strict_prompt(), add --system-prompt flag, read system_prompt from registry via jq (no Python), fall back to default-system-prompt.txt
-9. **recover-openclaw-agents.sh (MODIFIED)** — Extract system_prompt per agent via jq (no Python), pass via --append-system-prompt on launch, remove set -e for graceful partial recovery, add per-agent error handling
-10. **recovery-registry.json (MODIFIED)** — Add system_prompt field (top-level per agent), hook_settings object (global + per-agent with three-tier fallback, strict known fields), all operations via jq
-11. **~/.claude/settings.json (MODIFIED)** — Add all hooks (Stop, Notification idle_prompt, Notification permission_prompt, SessionEnd, PreCompact), remove gsd-session-hook.sh from SessionStart
+1. `lib/hook-utils.sh` (NEW) — shared library with four functions: `extract_last_assistant_response()`, `extract_pane_diff()`, `is_pane_duplicate()`, `format_ask_user_questions()`; sourced only by stop-hook.sh and pre-tool-use-hook.sh; all new v2.0 extraction logic lives here
+2. `scripts/stop-hook.sh` (MODIFIED) — Stop event entry point; gains transcript extraction, dedup check, diff extraction, and v2 wake format; all existing guards, registry lookup, state detection, and delivery logic unchanged
+3. `scripts/pre-tool-use-hook.sh` (NEW) — PreToolUse entry point; matcher-scoped to AskUserQuestion only; always exits 0 (notification-only, never blocks); openclaw delivery is mandatory async background
+4. `scripts/register-hooks.sh` (MODIFIED) — adds PreToolUse block with AskUserQuestion matcher to settings.json HOOKS_CONFIG; adds pre-tool-use-hook.sh to HOOK_SCRIPTS verification array
+5. `/tmp/gsd-pane-prev-SESSION.txt` and `/tmp/gsd-pane-hash-SESSION.txt` (NEW runtime) — per-session ephemeral state files with flock protection; `/tmp` provides natural cleanup on reboot; stale file detection (24-hour age check) at hook startup
+6. `config/recovery-registry.json` (OPTIONAL MODIFICATION) — v2 hook_settings fields (transcript_extract_chars, min_context_lines, dedup_enabled) if configurability is needed; hardcoded defaults acceptable for v2.0 MVP
 
-**Integration points:**
-- Stop hook → Registry lookup: reads $TMUX, queries registry by tmux_session_name, extracts openclaw_session_id, exits 0 if no match
-- Stop hook → OpenClaw agent: captures pane, extracts context pressure, builds message, backgrounds openclaw call with `&`, exits immediately
-- OpenClaw agent → menu-driver.sh: receives full context, makes LLM decision, calls appropriate action (snapshot, choose, type, clear_then, etc.)
-- spawn.sh → Registry system prompt: upserts agent entry, reads system_prompt back, falls back to default if empty, builds claude_cmd with --append-system-prompt
-- recover script → System prompt injection: extracts system_prompt per agent in Python parser, passes to ensure_claude_is_running_in_tmux(), appends via --append-system-prompt
+**Build order (dependency chain from ARCHITECTURE.md):**
+- Step 1: Create `lib/hook-utils.sh` — no dependencies
+- Step 2: Create `pre-tool-use-hook.sh` — depends on lib (format_ask_user_questions)
+- Step 3: Modify `stop-hook.sh` — depends on lib (three extraction functions)
+- Step 4: Modify `register-hooks.sh` — depends on pre-tool-use-hook.sh existing and executable
+- Steps 2 and 3 can proceed in parallel once Step 1 is complete; Steps 2 and 3 have no mutual dependency
 
 ### Critical Pitfalls
 
-1. **Stop hook infinite loop via `stop_hook_active` ignorance** — Hook fires after every Claude response; if hook causes another response without checking `stop_hook_active` guard, infinite loop consumes all tokens and locks session. **Avoid:** Read stdin JSON first, check stop_hook_active field, exit 0 if true, background all openclaw calls, never return decision: "block"
+The following pitfalls produce silent wrong behavior that is hard to debug in production. See `PITFALLS.md` for full symptom lists, recovery strategies, performance trap analysis, and a 12-item "looks done but isn't" verification checklist.
 
-2. **stdin pipe blocking from unconsumed input** — Hook scripts that don't consume stdin cause entire pipeline to block (pipe buffer fills, Claude waits for reader, hook waits for something else → deadlock). **Avoid:** Always consume stdin at top of script (cat > /dev/null or jq), test with large JSON payloads >64KB
+1. **Positional content indexing** — Using `content[0].text` fails silently when thinking blocks or tool_use blocks precede the text block. Always use `content[]? | select(.type == "text") | .text`. Symptom: extraction works in simple sessions, fails randomly in sessions with extended thinking enabled.
 
-3. **Registry corruption from concurrent writes** — Multiple processes (spawn.sh, recover script, sync script) write to registry.json simultaneously, causing truncated objects, interleaved writes, malformed JSON. **Avoid:** Atomic write pattern (write to .tmp.$$, then mv), wrap modifications in flock, validate JSON after every write, add retry with backoff
+2. **Full transcript file read** — Using `cat transcript | jq` causes hook latency to grow with session age (100ms–2s on multi-MB files). Always use `tail -20`. Performance degrades invisibly; only manifests in long-running production sessions.
 
-4. **Tmux send-keys corruption from concurrent spawning** — Multiple spawn.sh or recovery launches in parallel cause send-keys commands to interleave (tmux server input queue not isolated), producing garbled commands like "ccdd //ppaatthh". **Avoid:** Sequential processing with sleep 0.5 between agents, use send-keys -l (literal mode), avoid parallel spawns
+3. **Synchronous openclaw call in PreToolUse** — Not backgrounding the `openclaw agent` call blocks Claude Code's UI for 200ms–2s before showing the AskUserQuestion prompt. Always use `</dev/null >/dev/null 2>&1 &`. Every single AskUserQuestion invocation is affected.
 
-5. **Recovery script failure leaves system broken** — If recover-openclaw-agents.sh aborts partway (Python exception, missing binary, malformed registry), some agents recovered and others not, systemd may mark service as start-limit-hit. **Avoid:** Remove set -e (handle errors per-agent), wrap each recovery in try/catch pattern, always send summary to global session even on partial failure, validate dependencies early
+4. **Missing flock on pane state files** — Stop and Notification hooks can fire concurrently for the same session. Without `flock -x -w 2` on a per-session lock file, concurrent reads and writes to `/tmp/gsd-pane-prev-SESSION.txt` produce corrupt state and duplicate wakes. flock is required from day one.
 
-6. **Concurrent old and new systems create duplicate events** — During migration, both hook-watcher.sh (polling) and stop-hook.sh (new hook) active simultaneously, causing duplicate wakes within 1 second. **Avoid:** Accept brief overlap as tolerable (agents should be idempotent), add deduplication check in stop-hook (skip if old watcher state file modified <5s), kill all watchers before Phase 4 cleanup
+5. **Wake message v2 format breaks orchestrator parsing** — The format change from `[PANE CONTENT]` to `[CLAUDE RESPONSE]` + `[PANE DELTA]` is a breaking change for Gideon. Add `wake_message_version: 2` to every new message header. Keep backward-compatible sections during rollout. Update Gideon's parsing before deploying new hooks, not after. Note: hooks snapshot at session startup — existing sessions keep v1 format until restarted.
 
-7. **`system_prompt` field missing breaks recovery** — Old registry entries don't have system_prompt field; if recovery script doesn't handle gracefully, either passes empty prompt or crashes. **Avoid:** Use setdefault("system_prompt", "") in Python upsert, provide fallback default in bash, test recovery with old registry, document default prompt
-
-8. **Hook fires for non-managed sessions, burning tokens** — Stop hook is global (in ~/.claude/settings.json), fires for ALL Claude Code sessions; expensive logic before registry check burns resources on random sessions. **Avoid:** Fast-path guards at top (check $TMUX, then registry match) BEFORE any expensive operations, log non-managed invocations for debugging
-
-9. **Background `openclaw agent` inherits hook's stdin/stdout** — Backgrounding with `&` doesn't redirect file descriptors; child process competes for stdin or corrupts stdout, causing hook to hang or produce garbled JSON. **Avoid:** Redirect when backgrounding: `openclaw agent ... </dev/null >/dev/null 2>&1 &`, or use nohup, never rely on background process output
-
-10. **Tmux session detection race condition during recovery** — Script checks `tmux has-session`, then sends keys; between check and action, session could die (manual kill, OOM), causing "session not found" error. **Avoid:** Don't rely on has-session checks, directly attempt operation and handle failure, wrap tmux commands in error handling, add retry logic with backoff
+6. **Dedup skip path with zero context** — When hash matches and wake is suppressed, failing to send the 10-line minimum context leaves the orchestrator unable to assess session state after a recovery. The minimum-context guarantee is a hard requirement, not optional — enforce it even in the "no change" path.
 
 ## Implications for Roadmap
 
-Based on research, suggested phase structure prioritizes safety through additive changes first, then wiring, then updates, then cleanup. Critical path: new files must exist before hooks reference them, registry schema must exist before launchers read it, menu-driver.sh type action must exist before agents call it.
+All six v2.0 features share a single dependency chain: the shared library must be built first, then the two entry points, then registration. The features are tightly coupled through the wake message v2 format — `[CLAUDE RESPONSE]` replacing `[PANE CONTENT]` requires transcript extraction; `[PANE DELTA]` requires diff working with dedup running before it. The wake format change also creates a deployment sequencing concern: Gideon must be updated before the new hook format reaches it. This points to a clean 2-phase structure: build in Phase 1, deploy safely in Phase 2.
 
-### Phase 1: Additive Changes (No Breakage)
-**Rationale:** Create all new components without disrupting existing sessions. No hooks registered yet, so all scripts are inert. New registry fields ignored by old scripts. New menu-driver.sh action unused until agents updated.
+### Phase 1: Core Extraction and Delivery Engine
 
-**Delivers:**
-- 5 hook scripts: stop-hook.sh, notification-idle-hook.sh, notification-permission-hook.sh, session-end-hook.sh, pre-compact-hook.sh (all with shared guard patterns, hybrid mode support)
-- menu-driver.sh type action (tmux send-keys -l for literal freeform input)
-- system_prompt field (top-level per agent) and hook_settings object (global + per-agent, three-tier fallback, strict known fields) added to registry
-- config/default-system-prompt.txt (tracked in git, minimal GSD workflow guidance)
-- recovery-registry.example.json with realistic multi-agent setup (Gideon, Warden, Forge)
-- Structured wake message format (identity, state hint, trigger type, pane, actions, context pressure)
+**Rationale:** All six milestone features are tightly coupled through the wake message v2 format and share the dependency chain through `lib/hook-utils.sh`. Building the library first, then the two scripts that source it, is the only valid order. This entire phase produces working new code without touching existing hook registration — safe to develop and test without affecting live sessions.
 
-**Addresses features:**
-- Stop hook core (table stakes)
-- Session registry lookup (table stakes)
-- Freeform text input (table stakes)
-- Configurable system prompt (table stakes)
+**Delivers:** `lib/hook-utils.sh` with all four extraction functions; `pre-tool-use-hook.sh` (complete new script); `stop-hook.sh` updated with transcript extraction (step 7b), dedup check (step 9b), diff extraction (step 9c), and wake message v2 format (step 10) with `wake_message_version: 2` field.
 
-**Avoids pitfalls:**
-- Pitfall 1 (infinite loop): stop_hook_active guard implemented
-- Pitfall 2 (stdin blocking): stdin consumption at top of hook
-- Pitfall 7 (missing field): jq fallback defaults (no Python)
-- Pitfall 8 (non-managed sessions): fast-path guards before expensive logic
-- Pitfall 9 (background inherits stdin): redirect stdin/stdout in openclaw call
+**Addresses:** All six v2.0 milestone features — transcript extraction, PreToolUse AskUserQuestion forwarding, diff-based delivery, deduplication, wake message v2 format, minimum 10-line context guarantee.
 
-**Research flags:** Standard bash/tmux patterns, no additional research needed.
+**Avoids:**
+- Content[0].text indexing failure — use type-filtered `content[]? | select(.type == "text") | .text` (Pitfall 1)
+- Full-file transcript reads — enforce `tail -20` in lib function comments and code (Pitfall 2 / Pitfall 3)
+- Synchronous PreToolUse delivery — always background openclaw call (Pitfall 3)
+- Missing flock — use from day one on all `/tmp` state file read-write cycles (Pitfall 4)
+- Empty extraction results — always provide non-empty fallback strings (Pitfall 2)
+- transcript_path file not found — check file existence before reading (Pitfall 11 in PITFALLS.md)
 
-### Phase 2: Hook Wiring (Minimal Risk)
-**Rationale:** Wire Stop hook globally, remove SessionStart launcher for hook-watcher. New sessions use Stop hook, old sessions continue with hook-watcher until they end. Brief overlap acceptable (duplicate wakes are idempotent).
+**Build order within phase:**
+1. Create `lib/hook-utils.sh` (no dependencies; provides all four functions)
+2. Create `pre-tool-use-hook.sh` in parallel with step 3 (depends on lib)
+3. Modify `stop-hook.sh` in parallel with step 2 (depends on lib)
 
-**Delivers:**
-- Stop hook added to ~/.claude/settings.json
-- gsd-session-hook.sh removed from SessionStart hooks
-- New Claude Code sessions fire Stop hook instead of spawning hook-watcher
+### Phase 2: Registration, Deployment, and Backward Compatibility
 
-**Addresses features:**
-- Stop hook fires on response complete (table stakes)
-- Backgrounded agent wake (table stakes)
-- Zero-token overhead (differentiator)
-- Immediate hook exit (differentiator)
+**Rationale:** Hook scripts snapshot at session startup — existing Claude Code sessions keep running v1.0 hooks until they restart. During the transition, Gideon receives both v1.0 `[PANE CONTENT]` and v2.0 `[CLAUDE RESPONSE]` format messages simultaneously. Registration and Gideon compatibility handling must be addressed as a coordinated deployment, not as a pure code change.
 
-**Avoids pitfalls:**
-- Pitfall 6 (duplicate events): Document overlap as temporary, agents designed for idempotency
+**Delivers:** Updated `register-hooks.sh` with PreToolUse registration block (AskUserQuestion matcher, 30s timeout); `session-end-hook.sh` updated to clean up `/tmp/gsd-pane-prev-SESSION.txt` on clean exits; stale temp file detection (24-hour age check) added to hook startup; verification that Gideon's parsing handles both v1 and v2 format messages; SKILL.md documentation update with minimum version requirement (Claude Code >= 2.0.76).
 
-**Research flags:** Verify Stop hook JSON schema with official Claude Code docs (already completed via WebSearch in STACK.md).
+**Avoids:**
+- Wake v2 format breaking Gideon's parsing — update orchestrator parsing before deploying registration (Pitfall 5)
+- Stale pane delta files from dead sessions — age check at hook startup + session-end cleanup (Pitfall 7)
+- PreToolUse + AskUserQuestion bug — add `claude --version >= 2.0.76` gate in register-hooks.sh (Pitfall 4 in PITFALLS.md)
 
-### Phase 3: Launcher Updates (Registry Reader Changes)
-**Rationale:** Update spawn.sh and recover script to use system_prompt from registry. New sessions and recoveries get per-agent customization. Removes autoresponder launch logic (but files still exist until Phase 4).
-
-**Delivers:**
-- spawn.sh: Remove --autoresponder flag, remove strict_prompt(), add --system-prompt flag, read from registry with fallback
-- recover-openclaw-agents.sh: Extract system_prompt per agent, pass via --append-system-prompt, remove set -e, add per-agent error handling, sequential processing with delays
-- Python upsert updated: setdefault("system_prompt", "")
-- Atomic write pattern for registry updates with flock
-- Graceful partial recovery with global summary
-
-**Addresses features:**
-- Configurable system prompt (table stakes)
-- Recovery flow integration (table stakes)
-- Agent-specific routing (differentiator)
-- Structured decision payload (differentiator)
-- Retry-safe action deduplication (differentiator)
-
-**Avoids pitfalls:**
-- Pitfall 3 (registry corruption): flock + atomic write + validation
-- Pitfall 4 (send-keys corruption): sequential processing with delays, send-keys -l
-- Pitfall 5 (recovery failure): remove set -e, per-agent error handling, send summary on partial success
-- Pitfall 7 (missing system_prompt): setdefault + fallback default
-- Pitfall 10 (tmux race): remove has-session checks, handle failures gracefully, add retry logic
-
-**Research flags:** No additional research needed (modifying existing scripts with established patterns).
-
-### Phase 4: Cleanup (Script Deletions)
-**Rationale:** Remove obsolete polling scripts now that spawn.sh and recover script no longer launch them. Existing background processes continue until sessions end (harmless overlap). Kill lingering watchers before deletion.
-
-**Delivers:**
-- Delete autoresponder.sh
-- Delete hook-watcher.sh
-- Delete ~/.claude/hooks/gsd-session-hook.sh
-- Kill all existing hook-watcher processes: `pkill -f 'hook-watcher.sh'`
-- Remove watcher state files from /tmp
-
-**Addresses features:**
-- Multi-hook safety (differentiator): Only new hook system remains
-
-**Avoids pitfalls:**
-- Pitfall 6 (duplicate events): Kill old watchers to end overlap period
-
-**Research flags:** None (deletions, no new logic).
-
-### Phase 5: Documentation
-**Rationale:** Update skill documentation to reflect new architecture. No code impact, pure documentation.
-
-**Delivers:**
-- Update SKILL.md: New architecture, Stop hook flow, system_prompt configuration
-- Update README.md: Registry schema with system_prompt, recovery flow with Stop hook
-- Update script list: Remove autoresponder/hook-watcher, add stop-hook
-
-**Research flags:** None (documentation).
+**Deployment gate:** Gideon's wake message parsing must be updated and confirmed before `register-hooks.sh` is run. The `wake_message_version: 2` field allows Gideon to detect and handle both formats simultaneously during the session transition period.
 
 ### Phase Ordering Rationale
 
-**Why additive first:** New files don't interfere with existing autoresponder/hook-watcher workflows. Zero risk of breaking running sessions. All guards and safety patterns implemented before hook fires.
-
-**Why hook wiring second:** Stop hook registration requires stop-hook.sh to exist (dependency). Brief overlap with old system is harmless (agents designed for duplicate wakes). Old watchers die naturally when sessions end.
-
-**Why launcher updates third:** Registry schema must exist before launchers read it (dependency from Phase 1). Autoresponder logic removed from spawn.sh safely after hook wired (no longer needed). Recovery script refactoring includes critical error handling improvements.
-
-**Why cleanup fourth:** Scripts must be unused before deletion (dependencies from Phase 2-3). Killing watchers before file deletion ensures clean transition. No new sessions will launch old scripts.
-
-**Why documentation last:** Documents implementation that's already complete. No risk, no dependencies.
-
-**Critical path dependencies:**
-- Phase 2 depends on Phase 1: stop-hook.sh must exist before settings.json references it
-- Phase 3 depends on Phase 1: system_prompt field must exist before spawn/recover scripts read it
-- Phase 4 depends on Phase 2-3: scripts must be unused before deletion
+- Phase 1 before Phase 2: registration requires the scripts to exist; the format change risk requires Gideon to be updated first
+- `lib/hook-utils.sh` before both entry points: both scripts source it; no shortcuts
+- Steps 2 and 3 within Phase 1 can proceed in parallel: `pre-tool-use-hook.sh` and `stop-hook.sh` share only the lib dependency, not each other
+- Gideon orchestrator update is a Phase 2 concern, not Phase 1: the new hook scripts can be tested locally without registering them in settings.json
+- `session-end-hook.sh` cleanup belongs in Phase 2: the temp file naming pattern is established in Phase 1, cleanup implementation depends on knowing those names
 
 ### Research Flags
 
-**Phases needing deeper research during planning:**
-- None — all patterns are established (bash scripting, tmux operations, registry manipulation, systemd services)
+Phases with well-documented patterns — skip additional research:
+- **Phase 1 (lib/hook-utils.sh):** All four function implementations specified with working bash code in ARCHITECTURE.md; JSONL structure verified against live transcripts; no new patterns required
+- **Phase 1 (stop-hook.sh modifications):** Exact integration points mapped to specific line numbers in ARCHITECTURE.md (steps 7b, 9b, 9c, 10); no ambiguity about where changes go
+- **Phase 1 (pre-tool-use-hook.sh):** Complete data flow diagram and full wake message format in ARCHITECTURE.md; AskUserQuestion schema confirmed from official docs and live transcripts
+- **Phase 2 (register-hooks.sh):** Registration pattern already exists in v1.0 for Stop/Notification/SessionEnd/PreCompact hooks; PreToolUse addition follows identical pattern
 
-**Phases with standard patterns (skip research-phase):**
-- **Phase 1:** Bash scripting with jq, tmux capture-pane, JSON schema additions (well-documented)
-- **Phase 2:** Claude Code hook registration (official docs reviewed in STACK.md)
-- **Phase 3:** Bash script refactoring, Python JSON manipulation, systemd service patterns (standard operations)
-- **Phase 4:** File deletions, process cleanup (no research needed)
-- **Phase 5:** Documentation (no research needed)
-
-**Overall:** This project has exceptionally complete research. All 4 research files show HIGH confidence based on official sources, existing implementation knowledge, and real-world GitHub issues (2026). No speculative or unverified patterns.
+Phases that need coordination during execution (not research gaps):
+- **Phase 2 (Gideon compatibility):** Research documents the format change and version field, but does not inspect Gideon's actual wake message parsing code. Before Phase 2 registration, Gideon's parsing logic must be found and confirmed. This is an execution-time coordination step with the orchestrator, not a research gap for the hooks themselves.
+- **Phase 2 (session-end-hook.sh):** Current session-end-hook.sh implementation should be inspected before adding temp file cleanup to confirm no unintended side effects on existing clean-exit behavior.
 
 ## Confidence Assessment
 
 | Area | Confidence | Notes |
 |------|------------|-------|
-| Stack | HIGH | All components production-verified (Claude Code 2.1.44, tmux 3.4, OpenClaw 2026.2.16). Stop hook schema confirmed via official docs. No new dependencies required. |
-| Features | HIGH | Based on official Claude Code hooks reference (code.claude.com/docs), aiorg.dev 2026 guide, and existing implementation (menu-driver.sh, recovery registry). All table stakes verified as industry standard patterns. |
-| Architecture | HIGH | All source files read (spawn.sh 343 lines, recover script 484 lines, autoresponder 112 lines, hook-watcher 50 lines, menu-driver 64 lines). Integration points mapped to specific line numbers. Migration path verified. |
-| Pitfalls | HIGH | 10 critical pitfalls documented with real-world sources: GitHub issues from 2026, official Claude Code hooks guide, Mozilla JSON corruption analysis, systemd debugging docs, bash background process tutorials. Each pitfall mapped to prevention phase with verification steps. |
+| Stack | HIGH | Zero new dependencies; all tools version-checked on production host (`claude --version` 2.1.45, `jq --version` 1.7, `diff --version` GNU 3.10, `flock` confirmed); Claude Code 2.1.45 confirmed supporting all required APIs and exceeding 2.0.76 bug-fix threshold |
+| Features | HIGH | Six features fully specified with schemas from official docs; AskUserQuestion tool_input structure confirmed from live transcripts and official platform.claude.com docs; all edge cases enumerated (11 edge case scenarios in FEATURES.md); before/after behavior described with example wake messages |
+| Architecture | HIGH | Integration points mapped to exact line numbers in stop-hook.sh (steps 7b at line 101, 9b, 9c at line 135, 10 at line 142); all four lib function implementations provided in working bash code; build dependency chain explicit with parallelization opportunities identified |
+| Pitfalls | HIGH | Based on official Claude Code documentation, two confirmed GitHub issues with exact version fix numbers (#13439, #12031), live transcript verification, and analysis of existing v1.0 codebase; all pitfalls have specific bash prevention patterns, symptom lists, and recovery steps; 12-item verification checklist provided |
 
 **Overall confidence:** HIGH
 
 ### Gaps to Address
 
-**None identified.** Research is exceptionally complete:
+- **Gideon's wake message parsing implementation:** Research identifies the format change risk and specifies the `wake_message_version: 2` mitigation, but does not inspect Gideon's actual parsing code. Before Phase 2 deployment, locate and confirm Gideon's parsing logic. This is a coordination dependency, not a research gap for the hook system itself.
 
-- Stack: All components version-verified in production environment
-- Features: Table stakes vs differentiators clearly separated based on official docs and industry patterns
-- Architecture: Existing implementation fully audited, integration points specified to line-number precision
-- Pitfalls: 10 critical issues documented with prevention strategies, phase mapping, and recovery steps
+- **Actual dedup rate in production:** Research identifies deduplication as HIGH value but cannot quantify what percentage of Stop hook fires are truly duplicate in live sessions. Defer per-hook dedup mode settings to v2.x until real rates are measured. The core dedup feature is correct and cheap regardless of the actual rate.
 
-**Validation during implementation:**
-- Test stop-hook.sh with large JSON payloads (>64KB) to verify stdin consumption prevents blocking
-- Test concurrent spawns (3+ agents in parallel) to verify send-keys corruption mitigated
-- Test recovery with old registry.json (without system_prompt field) to verify fallback works
-- Test hook with non-managed Claude sessions to verify fast-path exit performance (<10ms)
-- Test migration overlap (Phase 2-3) to verify duplicate events are tolerable and brief
-
-**No additional research needed.** All patterns are established, all dependencies verified, all pitfalls documented with sources.
+- **Session name sanitization:** ARCHITECTURE.md notes that tmux session names with spaces or slashes would break `/tmp/gsd-pane-prev-SESSION.txt` file naming. Current production sessions (`warden-main`, `forge-main`) are safe. If future sessions use unusual names, add `SESSION_SAFE_NAME=$(echo "$SESSION_NAME" | tr ' /' '__')` sanitization. Low-severity, document in PITFALLS.md for future reference.
 
 ## Sources
 
-### Primary (HIGH confidence)
+### Primary (HIGH confidence — official documentation)
+- [Claude Code Hooks Reference](https://code.claude.com/docs/en/hooks) — complete PreToolUse stdin JSON schema, matcher patterns, transcript_path field, all hook event schemas and lifecycle
+- [Handle approvals and user input — Claude Agent SDK](https://platform.claude.com/docs/en/agent-sdk/user-input) — AskUserQuestion tool_input.questions[] structure, question/header/options/multiSelect fields, 1-4 questions and 2-4 options per call constraints, confirmed response format
+- [GitHub Issue #13439](https://github.com/anthropics/claude-code/issues/13439) — PreToolUse + AskUserQuestion bug confirmed fixed in v2.0.76; symptoms documented
+- [GitHub Issue #12031](https://github.com/anthropics/claude-code/issues/12031) — same bug, additional symptom confirmation; AskUserQuestion answers stripped when any PreToolUse hook active
 
-**Official Documentation:**
-- [Claude Code Hooks Reference](https://code.claude.com/docs/en/hooks) — Stop hook stdin/stdout JSON schema, hook configuration format, exit code behavior
-- [Claude Code Hooks Guide (aiorg.dev 2026)](https://aiorg.dev/blog/claude-code-hooks) — Stop hook patterns, stop_hook_active guard, infinite loop prevention
-- [ClaudeLog Hooks Mechanics](https://claudelog.com/mechanics/hooks/) — Hook lifecycle, decision control patterns
-- [Claude Code Hook Control Flow (stevekinney.com)](https://stevekinney.com/courses/ai-development/claude-code-hook-control-flow) — Hook execution model, JSON parsing
+### Primary (HIGH confidence — local verification)
+- Live transcript JSONL inspection on host — confirmed `type: "assistant"`, `message.content[].type`, `message.content[].text` structure; confirmed AskUserQuestion `tool_input.questions[].{question, header, options, multiSelect}` field paths from actual transcripts
+- `claude --version` output — 2.1.45 (all required hook features supported, bug-fix threshold 2.0.76 exceeded)
+- `diff --version` output — GNU diffutils 3.10 (supports `--new-line-format` flag confirmed)
+- `jq --version` output — 1.7 (supports JSONL streaming and `select()`)
+- `flock` confirmed available — util-linux package on Ubuntu 24
+- `scripts/stop-hook.sh` v1.0 source (196 lines) — exact line numbers for all integration points verified
+- `scripts/register-hooks.sh` v1.0 source (240 lines) — hook registration pattern for PreToolUse addition confirmed
 
-**Version Verification:**
-- Claude Code: 2.1.44 (confirmed via claude --version)
-- OpenClaw: 2026.2.16 (confirmed via openclaw --version)
-- tmux: 3.4 (confirmed via tmux -V)
-- jq: 1.7 (confirmed via jq --version)
-
-**Local Implementation:**
-- PRD.md — Hook architecture and implementation plan
-- scripts/spawn.sh (343 lines) — Session launcher architecture
-- scripts/recover-openclaw-agents.sh (484 lines) — Recovery flow
-- scripts/autoresponder.sh (112 lines) — Polling pattern being replaced
-- scripts/hook-watcher.sh (50 lines) — Polling pattern being replaced
-- scripts/menu-driver.sh (64 lines) — Existing atomic action interface
-- ~/.claude/settings.json — Current hook configuration
-- config/recovery-registry.example.json — Registry schema
-
-### Secondary (MEDIUM confidence)
-
-**Multi-Agent Patterns:**
-- [Agentic AI in Production (Medium 2026)](https://medium.com/@dewasheesh.rana/agentic-ai-in-production-designing-autonomous-multi-agent-systems-with-guardrails-2026-guide-a5a1c8461772) — Guardrails for autonomous agents
-- [Guardrails and Best Practices for Agentic Orchestration (Camunda 2026)](https://camunda.com/blog/2026/01/guardrails-and-best-practices-for-agentic-orchestration/) — Safety patterns
-- [AI Agent Decision-Making: A Practical Explainer (Skywork)](https://skywork.ai/blog/ai-agent/ai-agent-decision-making) — Heuristics vs LLM decisions
-
-**Event-Driven Architecture:**
-- [Why we replaced polling with event triggers (Jan 2026)](https://medium.com/@systemdesignwithsage/why-we-replaced-polling-with-event-triggers-234ecda134b2) — Polling to event-driven migration
-- [The Ultimate Guide to Event-Driven Architecture Patterns (Solace)](https://solace.com/event-driven-architecture-patterns/) — Event-driven patterns
-
-**Pitfall Sources:**
-- [Claude Code Hooks 2026: Automate Your Dev Workflow (ClaudeWorld)](https://claude-world.com/articles/hooks-development-guide/) — stdin handling, hook development
-- [GitHub Issue #10875](https://github.com/anthropics/claude-code/issues/10875) — Plugin hook JSON output bug
-- [GitHub Issue #23615](https://github.com/anthropics/claude-code/issues/23615) — send-keys corruption in agent teams
-- [Tmux Issue #2438](https://github.com/tmux/tmux/issues/2438) — Race condition loading config
-- [Tmux Issue #3360](https://github.com/tmux/tmux/issues/3360) — send-keys race condition
-- [EdgeApp JSON Corruption Issue #258](https://github.com/EdgeApp/edge-core-js/issues/258) — Concurrent write corruption
-- [lowdb JSON Corruption Issue #333](https://github.com/typicode/lowdb/issues/333) — Multi-process writes
-- [Mozilla JSONFile Analysis](https://mozilla.github.io/firefox-browser-architecture/text/0012-jsonfile.html) — JSON file-backed storage issues
-- [Red Hat: Systemd Automate Recovery](https://www.redhat.com/en/blog/systemd-automate-recovery) — Service recovery patterns
-- [systemd.io: Diagnosing Boot Problems](https://systemd.io/DEBUGGING/) — Boot troubleshooting
-- [DigitalOcean: Bash Job Control](https://www.digitalocean.com/community/tutorials/how-to-use-bash-s-job-control-to-manage-foreground-and-background-processes) — Background processes
-- [LinuxVox: Spawn Separate Process](https://linuxvox.com/blog/spawn-an-entirely-separate-process-in-linux-via-bash/) — Process spawning patterns
-
-### Tertiary (LOW confidence)
-None — all sources are either official documentation, version-verified production environment, local implementation audit, or real-world GitHub issues from 2026.
+### Secondary (MEDIUM confidence — community)
+- [claude-code-log](https://github.com/daaain/claude-code-log) — JSONL content type enumeration confirming text, tool_use, and thinking blocks in content array
+- [Analyzing Claude Code Interaction Logs with DuckDB](https://liambx.com/blog/claude-code-log-analysis-with-duckdb) — real JSONL structure showing message.role and content[] fields
+- [Claude Code Transcript JSONL Format — Simon Willison](https://simonwillison.net/2025/Dec/25/claude-code-transcripts/) — confirms JSONL format and session structure
+- GNU diff manual — `--new-line-format` / `--old-line-format` / `--unchanged-line-format` flag documentation
+- flock(1) and diff(1) Linux man pages — standard utility behavior
 
 ---
 *Research completed: 2026-02-17*

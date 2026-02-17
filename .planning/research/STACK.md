@@ -1,395 +1,234 @@
-# Stack Research: Stop Hook Integration
+# Stack Research: v2.0 Smart Hook Delivery
 
-**Domain:** Event-driven agent control for Claude Code sessions
+**Domain:** Hook-driven autonomous agent control for Claude Code sessions — context optimization
 **Researched:** 2026-02-17
-**Confidence:** HIGH
+**Confidence:** HIGH — no new dependencies, all tools production-verified
 
 ## Executive Summary
 
-This milestone adds event-driven agent control to replace polling-based menu detection. The stack remains bash-only with no new runtime dependencies. Changes are surgical: Claude Code Stop hook integration, tmux freeform text injection, and OpenClaw agent messaging. All components are already installed and version-verified.
+v2.0 Smart Hook Delivery requires **zero new dependencies**. All needed capabilities exist in the current production stack (bash 5.x, jq 1.7, tmux 3.4, Claude Code 2.1.45, OpenClaw 2026.2.16). The new features use standard Unix utilities (`diff`, `md5sum`, `tail`, `flock`) already installed on Ubuntu 24.
 
-**Key Finding:** Claude Code Stop hook provides native stdin JSON and decision control. No wrapper needed. OpenClaw agent CLI supports direct session messaging. tmux send-keys -l handles literal text injection. All pieces fit existing architecture.
+**Key finding:** The Claude Code hooks API already provides `transcript_path` in stdin JSON and supports `PreToolUse` with matchers — both confirmed in official docs and production. No API changes, no version upgrades, no new binaries required.
 
-## Core Technologies (No Changes)
+## Core Stack (Unchanged from v1.0)
 
-| Technology | Version | Current Usage | Why It Stays |
-|------------|---------|---------------|--------------|
-| Bash | 5.x (Ubuntu 24 default) | All scripts use bash with set -euo pipefail | Universal, deterministic, zero token cost |
-| tmux | 3.4 | Session management, pane capture, input injection | Core multiplexer, proven reliable |
-| Claude Code CLI | 2.1.44 | Session runtime with --append-system-prompt | Latest stable, hook support confirmed |
-| OpenClaw CLI | 2026.2.16 | Agent messaging, event wake | Current production version |
-| jq | 1.7 | JSON parsing in bash scripts | Ubiquitous JSON CLI tool |
-| ~~Python 3~~ | ~~3.x (embedded)~~ | ~~Recovery registry upsert only~~ | **REMOVED** — replaced by jq for all registry operations (cross-platform, no dependency) |
+| Technology | Version | v2.0 Usage | Status |
+|------------|---------|------------|--------|
+| Bash | 5.x (Ubuntu 24) | All hook scripts, lib functions | Production verified |
+| jq | 1.7 | JSONL parsing, JSON extraction from stdin, registry ops | Production verified |
+| tmux | 3.4 | Pane capture, session detection, TUI control | Production verified |
+| Claude Code | 2.1.45 | Hook system (Stop, PreToolUse, Notification, etc.) | Production verified |
+| OpenClaw CLI | 2026.2.16 | `agent --session-id` wake delivery | Production verified |
 
-**Rationale:** All existing. No upgrades needed. No new dependencies.
+## Stack Additions for v2.0 Features
 
-## Stack Additions for Stop Hook
+### 1. Transcript JSONL Parsing (tail + jq)
 
-### 1. Claude Code Stop Hook (Native Feature)
+**For:** Transcript-based response extraction
 
-**Version:** Claude Code 2.1.44 (confirmed hook support)
-**Purpose:** Event-driven session state capture when Claude finishes responding
-**Why:** Replaces 1-second polling loop with zero-latency event notification
+**Tools:** `tail` (coreutils) + `jq` (already installed)
 
-#### stdin JSON Schema
+**Approach:** Read last N lines of transcript JSONL, filter for assistant text blocks.
 
-Official schema from Claude Code hooks reference (code.claude.com/docs/en/hooks):
+```bash
+TRANSCRIPT_PATH=$(echo "$STDIN_JSON" | jq -r '.transcript_path // ""')
+if [ -n "$TRANSCRIPT_PATH" ] && [ -f "$TRANSCRIPT_PATH" ]; then
+  LAST_RESPONSE=$(tail -50 "$TRANSCRIPT_PATH" | \
+    jq -r 'select(.type == "assistant") | .message.content[]? | select(.type == "text") | .text' \
+    2>/dev/null | tail -1)
+fi
+```
 
+**Why tail, not cat:** Transcripts grow unbounded (thousands of lines for long sessions). `tail -50` reads only the last 50 lines, keeping hook latency constant regardless of session length.
+
+**Why `content[]? | select(.type == "text")`:** Assistant messages contain mixed content blocks (text, tool_use, thinking). Positional indexing (`content[0].text`) fails when thinking blocks are first. Type filtering is required.
+
+**JSONL entry structure (confirmed from live transcripts):**
+```json
+{
+  "type": "assistant",
+  "message": {
+    "role": "assistant",
+    "content": [
+      {"type": "text", "text": "Claude's clean response text here"}
+    ]
+  },
+  "timestamp": "2026-02-17T10:00:00.000Z"
+}
+```
+
+### 2. PreToolUse Hook Registration (Claude Code native)
+
+**For:** AskUserQuestion forwarding
+
+**Tools:** Claude Code hooks API (existing), `jq` for stdin parsing
+
+**Hook registration format in settings.json:**
+```json
+{
+  "PreToolUse": [
+    {
+      "matcher": "AskUserQuestion",
+      "hooks": [
+        {
+          "type": "command",
+          "command": "/path/to/pre-tool-use-hook.sh",
+          "timeout": 30
+        }
+      ]
+    }
+  ]
+}
+```
+
+**Key: matcher must be `"AskUserQuestion"`, not `"*"`**. A global matcher fires for EVERY tool call (Bash, Read, Write, Edit, Glob, Grep, etc.), adding latency to each one. Specific matcher fires only for AskUserQuestion.
+
+**PreToolUse stdin JSON for AskUserQuestion:**
 ```json
 {
   "session_id": "abc123",
   "transcript_path": "/path/to/transcript.jsonl",
-  "cwd": "/working/directory",
-  "permission_mode": "default",
-  "hook_event_name": "Stop",
-  "stop_hook_active": false
-}
-```
-
-**Critical fields:**
-- `session_id`: Claude Code's internal session identifier (not used; we use tmux session name)
-- `stop_hook_active`: Boolean guard to prevent infinite loops (MUST check this)
-- `hook_event_name`: Always "Stop" for this event
-
-**Integration pattern:**
-```bash
-#!/usr/bin/env bash
-HOOK_INPUT=$(cat)  # Read stdin JSON
-STOP_ACTIVE=$(echo "$HOOK_INPUT" | jq -r '.stop_hook_active // false')
-[ "$STOP_ACTIVE" = "true" ] && exit 0  # Guard: already processing a stop hook
-```
-
-#### stdout JSON Schema (Decision Control)
-
-When hook returns JSON to stdout with exit code 0:
-
-```json
-{
-  "decision": "block",
-  "reason": "Must be provided when blocking Claude from stopping"
-}
-```
-
-**Fields:**
-- `decision`: Optional. "block" prevents Claude from stopping. Omit to allow stop.
-- `reason`: Required when decision is "block". Tells Claude why to continue.
-
-**Integration pattern for this skill:**
-Hybrid mode: Default async (background message to OpenClaw → exit 0 immediately). Optional bidirectional per-agent (wait for OpenClaw response → return decision:block with reason → Claude continues with injected instruction).
-
-```bash
-# Async mode (default):
-exit 0  # No JSON output = allow Claude to stop normally
-
-# Bidirectional mode (per-agent via hook_settings.hook_mode):
-# Wait for OpenClaw response, then:
-echo '{"decision":"block","reason":"OpenClaw instruction here"}' && exit 0
-```
-
-#### Hook Configuration (settings.json)
-
-Location: `~/.claude/settings.json`
-
-```json
-{
-  "hooks": {
-    "Stop": [
+  "hook_event_name": "PreToolUse",
+  "tool_name": "AskUserQuestion",
+  "tool_input": {
+    "questions": [
       {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "bash \"/home/forge/.openclaw/workspace/skills/gsd-code-skill/scripts/stop-hook.sh\"",
-            "timeout": 600
-          }
-        ]
+        "question": "Which approach should I use?",
+        "header": "Approach",
+        "options": [
+          {"label": "OAuth (Recommended)", "description": "Use OAuth 2.0"},
+          {"label": "JWT", "description": "Lightweight tokens"}
+        ],
+        "multiSelect": false
       }
     ]
   }
 }
 ```
 
-**Fields:**
-- `type`: "command" (runs shell command)
-- `command`: Absolute path to hook script
-- `timeout`: Optional, seconds (default: 600)
+**Known bug (fixed):** PreToolUse + AskUserQuestion caused empty responses in Claude Code < 2.0.76 (GitHub issue #13439). Current version 2.1.45 is safe.
 
-**Why absolute path:** Hook runs in session cwd, not skill directory. Must be absolute.
+### 3. Diff-Based Pane Delivery (GNU diff)
 
-**No matcher:** Stop event doesn't support matchers. Always fires on every occurrence.
+**For:** Send only changed lines instead of full 120-line dump
 
-### 2. tmux send-keys -l (Literal Mode)
+**Tools:** `diff` (GNU diffutils 3.12, already installed), `/tmp` for state files
 
-**Version:** tmux 3.4 (confirmed flag support)
-**Purpose:** Inject freeform text without key name interpretation
-**Why:** Menu options and slash commands may contain characters that tmux interprets as key names
-
-#### Command Pattern
+**Approach:** Store previous pane capture per session, compare with current.
 
 ```bash
-tmux send-keys -t "$SESSION:0.0" -l -- "$TEXT"
-tmux send-keys -t "$SESSION:0.0" Enter
+# Extract only new/added lines (no diff markup)
+PANE_DELTA=$(diff \
+  --new-line-format='%L' \
+  --old-line-format='' \
+  --unchanged-line-format='' \
+  <(echo "$PREV_PANE") <(echo "$CURRENT_PANE") 2>/dev/null || echo "")
 ```
 
-**Flags:**
-- `-t "$SESSION:0.0"`: Target pane (session:window.pane)
-- `-l`: Literal mode - treat all arguments as UTF-8 characters, not key names
-- `--`: End of flags (safety for text starting with -)
-- `Enter`: Sent separately (key name, not literal)
+**Why `--new-line-format='%L'`:** Produces only the truly new lines without diff markup (`+`, `-`, `@@` headers). Clean output for the orchestrator agent to read.
 
-**Why -l:** Without -l, tmux parses text for key names like "Space", "C-a", "NPage". With -l, "Space" is sent as literal string "Space", not a space character.
+**State files:** `/tmp/gsd-pane-prev-${SESSION_NAME}.txt` (previous pane content), `/tmp/gsd-pane-hash-${SESSION_NAME}.txt` (md5 hash for quick dedup check). Files in `/tmp` auto-clean on reboot.
 
-**Use case:** `/gsd:new-project @PRD.md` contains no special keys, but -l prevents any interpretation.
+### 4. Deduplication (md5sum)
 
-**Existing usage without -l:**
-```bash
-# spawn.sh line 312 (works because slash commands have no ambiguous strings)
-tmux send-keys -t "$session_name:0.0" -l -- "$first_cmd"
-```
+**For:** Skip wake when pane content identical to previous
 
-**New usage in menu-driver.sh type action:**
-```bash
-type)
-  text="${1:-}"
-  [ -n "$text" ] || { echo "type requires <text>" >&2; exit 1; }
-  tmux send-keys -t "$SESSION:0.0" C-u       # Clear line first
-  tmux send-keys -t "$SESSION:0.0" -l -- "$text"
-  tmux send-keys -t "$SESSION:0.0" Enter
-  ;;
-```
-
-**Why C-u first:** Clears any partial input before sending text. Atomic operation.
-
-### 3. OpenClaw agent --session-id (Direct Session Messaging)
-
-**Version:** OpenClaw 2026.2.16 (confirmed flag support)
-**Purpose:** Send message directly to specific OpenClaw agent session
-**Why:** Precise agent targeting instead of broadcast via openclaw system event
-
-#### CLI Schema
+**Tools:** `md5sum` (coreutils, already installed)
 
 ```bash
-openclaw agent --session-id <uuid> --message "<text>" [--json]
+CURRENT_HASH=$(echo "$PANE_CONTENT" | md5sum | cut -d' ' -f1)
+PREV_HASH=$(cat "/tmp/gsd-pane-hash-${SESSION_NAME}.txt" 2>/dev/null || echo "")
+if [ "$CURRENT_HASH" = "$PREV_HASH" ]; then
+  debug_log "DEDUP: pane unchanged, skipping full wake"
+  # Still send minimum 10-line context (requirement)
+fi
+echo "$CURRENT_HASH" > "/tmp/gsd-pane-hash-${SESSION_NAME}.txt"
 ```
 
-**Required flags:**
-- `--session-id <uuid>`: Explicit OpenClaw session UUID (from recovery registry)
-- `--message "<text>"`: Message body for the agent
+**Why md5sum over sha256sum:** Speed. md5sum is faster for non-cryptographic hash comparison. Collision resistance irrelevant for pane content dedup.
 
-**Optional flags:**
-- `--json`: Output result as JSON (not needed for background fire-and-forget)
-- `--deliver`: Send reply back to channel (not needed, agent decides)
-- `--thinking <level>`: Override thinking level (not needed, use session default)
+### 5. File Locking (flock)
 
-**Integration pattern:**
-```bash
-# From stop-hook.sh (backgrounded, fire-and-forget)
-openclaw agent \
-  --session-id "$OPENCLAW_SESSION_ID" \
-  --message "$(cat <<EOF
-Claude Code session $TMUX_SESSION paused. Current state:
+**For:** Prevent race conditions on pane state files
 
-$PANE_CONTENT
-
-Available actions:
-- menu-driver.sh $TMUX_SESSION choose <n>
-- menu-driver.sh $TMUX_SESSION type <text>
-- menu-driver.sh $TMUX_SESSION clear_then <command>
-EOF
-)" >/dev/null 2>&1 &
-```
-
-**Why background:** Hook must exit immediately. OpenClaw call takes 1-2s. Background with &, discard output.
-
-**Message format:** Freeform text. Agent sees it as user message in conversation thread.
-
-**Session ID source:** Recovery registry JSON at `config/recovery-registry.json`:
+**Tools:** `flock` (util-linux, already installed on Ubuntu 24)
 
 ```bash
-OPENCLAW_SESSION_ID=$(jq -r \
-  --arg tmux_session "$TMUX_SESSION" \
-  '.agents[] | select(.tmux_session_name == $tmux_session) | .openclaw_session_id // empty' \
-  "$REGISTRY_FILE")
+PANE_LOCK_FILE="/tmp/gsd-pane-lock-${SESSION_NAME}"
+(
+  flock -x -w 2 200 || { debug_log "WARN: lock timeout"; exit 0; }
+  # Read-modify-write state files here
+) 200>"$PANE_LOCK_FILE"
 ```
 
-**Fallback if missing:** Exit 0 (non-managed session, no agent to notify).
+**Why flock:** Multiple hooks (Stop, Notification) can fire concurrently for the same session. Without locking, concurrent reads and writes to the state files produce corruption or duplicate wakes.
 
-### 4. Recovery Registry Schema Addition
+### 6. Shared Library Pattern (source)
 
-**File:** `config/recovery-registry.json`
-**Format:** JSON
-**Purpose:** Map tmux sessions to OpenClaw agents and their configurations
+**For:** DRY extraction functions across hook scripts
 
-#### New Field: system_prompt
+**Tools:** `source` (bash builtin)
 
-```json
-{
-  "global_status_openclaw_session_id": "uuid",
-  "global_status_openclaw_session_key": "agent:...",
-  "hook_settings": {
-    "pane_capture_lines": 120,
-    "context_pressure_threshold": 50,
-    "autocompact_pct": 50,
-    "hook_mode": "async"
-  },
-  "agents": [
-    {
-      "agent_id": "warden",
-      "enabled": true,
-      "auto_wake": true,
-      "topic_id": 1,
-      "openclaw_session_id": "11111111-2222-3333-4444-555555555555",
-      "working_directory": "/home/forge/workspace",
-      "tmux_session_name": "warden-main",
-      "claude_resume_target": "",
-      "claude_launch_command": "claude --dangerously-skip-permissions",
-      "claude_post_launch_mode": "resume_then_agent_pick",
-      "system_prompt": "Prefer /gsd:quick for small tasks, /gsd:debug for bugs. Make atomic commits.",
-      "hook_settings": {
-        "pane_capture_lines": 150,
-        "hook_mode": "bidirectional"
-      }
-    }
-  ]
-}
-```
+**New file:** `lib/hook-utils.sh` — shared functions sourced by stop-hook.sh and pre-tool-use-hook.sh.
 
-**New fields:**
-- `system_prompt` (top-level per agent): String. Custom system prompt appended to default. Empty = default only.
-- `hook_settings` (global at root): Default hook configuration for all agents
-- `hook_settings` (per agent): Override specific fields (three-tier fallback: per-agent > global > hardcoded, per-field merge)
-- `hook_settings.pane_capture_lines`: Number. Lines of pane to capture.
-- `hook_settings.context_pressure_threshold`: Number. Percentage to trigger warning.
-- `hook_settings.autocompact_pct`: Number. CLAUDE_AUTOCOMPACT_PCT_OVERRIDE value.
-- `hook_settings.hook_mode`: "async" | "bidirectional". Communication mode.
+Functions:
+- `extract_last_assistant_response()` — transcript JSONL parsing
+- `extract_pane_diff()` — diff calculation with state file management
+- `is_pane_duplicate()` — hash-based dedup check
+- `format_ask_user_questions()` — AskUserQuestion tool_input formatting
 
-**Why:** Replace hardcoded strict_prompt() in spawn.sh. Per-agent customization without code changes. Strict known fields only.
+**Only sourced by scripts that need it.** Notification-idle, notification-permission, session-end, and pre-compact hooks remain unchanged.
 
-**Default when empty:**
-Stored in `config/default-system-prompt.txt` (tracked in git). Minimal GSD workflow guidance:
-- /gsd:* commands, /clear, /resume
-- No role/personality (agents get that from SOUL.md and AGENTS.md)
-- Per-agent system_prompt always appends to this default, never replaces
-
-**Usage in spawn.sh:**
-```bash
-# Read default from file
-DEFAULT_PROMPT="$(cat config/default-system-prompt.txt)"
-
-# Read per-agent override from registry
-AGENT_PROMPT=$(jq -r \
-  --arg agent_id "$effective_agent_id" \
-  '.agents[] | select(.agent_id == $agent_id) | .system_prompt // ""' \
-  "$registry_file_path")
-
-# Combine: default + per-agent (always append, never replace)
-FULL_PROMPT="${DEFAULT_PROMPT}"
-[ -n "$AGENT_PROMPT" ] && FULL_PROMPT="${FULL_PROMPT}\n\n${AGENT_PROMPT}"
-
-claude_cmd="claude --dangerously-skip-permissions --append-system-prompt $(printf %q "$FULL_PROMPT")"
-```
-
-**jq upsert (replaces Python):**
-```bash
-# Add system_prompt with default empty string if missing
-jq --arg agent_id "$AGENT_ID" \
-  '(.agents[] | select(.agent_id == $agent_id)) += {system_prompt: (.system_prompt // "")}' \
-  "$REGISTRY_FILE" > "${REGISTRY_FILE}.tmp" && mv "${REGISTRY_FILE}.tmp" "$REGISTRY_FILE"
-```
-
-**NOTE:** Per discussion decision, ALL registry operations use jq. Python upsert is removed.
-
-## Supporting Libraries (No Changes)
-
-| Library | Version | Purpose | When Used |
-|---------|---------|---------|-----------|
-| sha1sum | coreutils | Pane content hashing for deduplication | hook-watcher.sh (being removed) |
-| grep | GNU grep | Pattern matching in captured panes | All monitoring scripts |
-| ~~Python json~~ | ~~stdlib~~ | ~~Recovery registry JSON manipulation~~ | **REMOVED** — jq handles all registry read/write operations |
-
-**Rationale:** All standard Unix tools. No installation needed.
-
-## Development Tools (No Changes)
-
-| Tool | Purpose | Notes |
-|------|---------|-------|
-| shellcheck | Bash linting | Optional, not required for runtime |
-| chmod +x | Script permissions | Required for new stop-hook.sh |
-
-## What NOT to Use
+## What NOT to Add
 
 | Avoid | Why | Use Instead |
 |-------|-----|-------------|
-| Node.js for hook | Adds dependency, startup latency | Bash (already used everywhere) |
-| Python for hook | Slower stdin read, extra process | Bash with jq (2ms vs 50ms) |
-| Polling with sleep 1 | CPU waste, 1s delay | Stop hook (0ms event latency) |
-| openclaw system event | Broadcasts to all agents | openclaw agent --session-id (precise) |
-| Claude Code Plugin hook | Bug: JSON output not captured | Inline settings.json hook (works) |
-
-**Critical:** Do NOT use plugin-based Stop hook. Known bug in Claude Code 2.1.44 where plugin hooks execute but JSON output is not captured. Inline settings.json hooks work correctly.
-
-## Stack Patterns by Variant
-
-**If managing multiple agents:**
-- Use recovery registry with unique agent_id per tmux session
-- Each agent has its own openclaw_session_id and system_prompt
-- Stop hook looks up agent by tmux_session_name
-
-**If single-agent use:**
-- Recovery registry optional (Stop hook can exit early if not found)
-- Can still use spawn.sh with --system-prompt override
-- Stop hook becomes no-op for unregistered sessions
-
-**If remote OpenClaw gateway:**
-- No change needed, openclaw agent CLI uses gateway automatically
-- Backgrounding prevents hook timeout during network latency
-
-**If local OpenClaw (no gateway):**
-- Use openclaw agent --local flag (not recommended, requires API keys in shell)
-- Better: keep gateway pattern even for local dev
+| Python for JSONL parsing | Adds dependency, slower startup | `tail + jq` (2ms vs 50ms) |
+| Node.js for transcript reading | Adds dependency, overkill | `tail + jq` |
+| `cat` for full transcript read | Latency grows with session length | `tail -50` (constant time) |
+| `diff -u` (unified format) | Includes markup noise (+, -, @@) | `--new-line-format='%L'` (clean output) |
+| `sha256sum` for dedup | Slower than needed for non-crypto use | `md5sum` (faster for hash comparison) |
+| Global PreToolUse matcher `"*"` | Fires on every tool call | Specific `"AskUserQuestion"` matcher |
+| Separate state management daemon | Over-engineering | `/tmp` files with `flock` |
 
 ## Version Compatibility
 
-| Package | Compatible With | Notes |
-|---------|-----------------|-------|
-| Claude Code 2.1.44 | tmux 3.4 | Confirmed compatible, no known issues |
-| Claude Code 2.1.44 | OpenClaw 2026.2.16 | Confirmed compatible, agent CLI stable |
-| tmux 3.4 | bash 5.x | Standard compatibility |
-| jq 1.7 | bash 5.x | Standard compatibility |
+| Component | Version | v2.0 Feature Dependency | Status |
+|-----------|---------|------------------------|--------|
+| Claude Code | >= 2.0.76 | PreToolUse + AskUserQuestion bug fix | 2.1.45 installed (safe) |
+| Claude Code | >= 2.1.3 | 10-minute hook timeout (vs old 60s) | 2.1.45 installed (safe) |
+| jq | >= 1.6 | `select()` on JSONL streaming input | 1.7 installed (safe) |
+| GNU diff | >= 3.0 | `--new-line-format` flag | 3.12 installed (safe) |
+| flock | any | File-based exclusive locking | util-linux installed (safe) |
 
-## Integration Checklist
+## Integration Checklist for v2.0
 
-- [ ] Claude Code Stop hook in `~/.claude/settings.json`
-- [ ] Stop hook script at `scripts/stop-hook.sh` (chmod +x)
-- [ ] menu-driver.sh type action added
-- [ ] spawn.sh updated to read system_prompt from registry
-- [ ] recover-openclaw-agents.sh updated to pass system_prompt to launch
-- [ ] Recovery registry schema includes system_prompt field
-- [ ] SessionStart hook removed (gsd-session-hook.sh cleanup)
-- [ ] autoresponder.sh and hook-watcher.sh deleted
+- [ ] `lib/hook-utils.sh` — new shared library (4 functions)
+- [ ] `scripts/pre-tool-use-hook.sh` — new hook script (chmod +x)
+- [ ] `scripts/stop-hook.sh` — modified (transcript extraction, diff, dedup, v2 wake format)
+- [ ] `scripts/register-hooks.sh` — modified (add PreToolUse registration)
+- [ ] `~/.claude/settings.json` — updated via register-hooks.sh (adds PreToolUse entry)
+- [ ] `/tmp/gsd-pane-*` state files created at runtime (no setup needed)
 
 ## Sources
 
-**HIGH confidence:**
-- [Claude Code Hooks Reference](https://code.claude.com/docs/en/hooks) - Official Stop hook stdin/stdout JSON schema, hook configuration format, exit code behavior
-- [Claude Code Hooks Guide](https://aiorg.dev/blog/claude-code-hooks) - Stop hook patterns, stop_hook_active guard, infinite loop prevention
-- [ClaudeLog Hooks](https://claudelog.com/mechanics/hooks/) - Hook lifecycle, decision control patterns
-- [Claude Code Hook Control Flow](https://stevekinney.com/courses/ai-development/claude-code-hook-control-flow) - Hook execution model, JSON parsing
-- OpenClaw CLI help output - agent --session-id flag schema, required/optional parameters
-- tmux man page - send-keys -l flag behavior, literal mode vs key name mode
-- spawn.sh source - Existing --append-system-prompt pattern, printf %q escaping
-- hook-watcher.sh source - Existing tmux capture-pane pattern, pane signature deduplication
-- recovery-registry.example.json - Current JSON schema, agent entry structure
+**HIGH confidence (official documentation):**
+- [Claude Code Hooks Reference](https://code.claude.com/docs/en/hooks) — PreToolUse stdin JSON schema, matcher patterns, transcript_path field, all hook event schemas
+- [Handle approvals and user input — Claude Agent SDK](https://platform.claude.com/docs/en/agent-sdk/user-input) — AskUserQuestion tool_input.questions structure
+- [GitHub Issue #13439](https://github.com/anthropics/claude-code/issues/13439) — PreToolUse + AskUserQuestion bug, confirmed fixed in v2.0.76
 
-**MEDIUM confidence:**
-- [GitHub Issue #10875](https://github.com/anthropics/claude-code/issues/10875) - Plugin hook JSON output bug (workaround: use inline hooks)
+**HIGH confidence (local verification):**
+- Live transcript JSONL inspection on host — confirmed `type`, `message.role`, `message.content[]` structure
+- `claude --version` — 2.1.45 (supports all required hook features)
+- `diff --version` — GNU diffutils 3.10 (supports `--new-line-format`)
+- `jq --version` — 1.7 (supports JSONL streaming)
+- `flock --version` — util-linux (confirmed available)
 
-**Version verification:**
-- Claude Code: 2.1.44 (confirmed via claude --version)
-- OpenClaw: 2026.2.16 (confirmed via openclaw --version)
-- tmux: 3.4 (confirmed via tmux -V)
-- jq: 1.7 (confirmed via jq --version)
+**MEDIUM confidence (community patterns):**
+- [GNU diff manual](https://www.gnu.org/software/diffutils/manual/diffutils.html) — format flags documentation
+- [claude-code-log](https://github.com/daaain/claude-code-log) — JSONL content type enumeration (text, tool_use, thinking)
 
 ---
-*Stack research for: gsd-code-skill Stop hook integration*
+*Stack research for: gsd-code-skill v2.0 Smart Hook Delivery*
 *Researched: 2026-02-17*
-*Confidence: HIGH - all components verified in production environment*
+*Confidence: HIGH — zero new dependencies, all tools production-verified*

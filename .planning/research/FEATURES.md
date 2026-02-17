@@ -1,256 +1,452 @@
-# Feature Landscape: Hook-Driven Agent Control
+# Feature Research
 
-**Domain:** Hook-driven autonomous agent control for Claude Code sessions
+**Domain:** Hook-driven autonomous agent control for Claude Code sessions — v2.0 Smart Hook Delivery
 **Researched:** 2026-02-17
-**Confidence:** HIGH
+**Confidence:** HIGH (transcript/PreToolUse from official docs; diff/dedup from standard bash patterns)
 
-## Table Stakes
+---
 
-Features users expect. Missing = system feels incomplete or broken.
+## Context: What v1.0 Built (Already Shipped)
 
-| Feature | Why Expected | Complexity | Notes | Dependencies |
-|---------|--------------|------------|-------|--------------|
-| Stop hook fires on response complete | Native Claude Code hook event pattern (2026 standard) | Low | Industry standard for hook-driven architecture; missing this would mean falling back to polling | None |
-| `stop_hook_active` guard | Prevents infinite loops when hook returns `decision: "block"` | Low | Critical safety pattern documented in all Claude Code hook guides | Stop hook |
-| Session registry lookup | Stop hook must identify which OpenClaw agent owns the session | Low | Required to route pane snapshots to correct agent | stop-hook.sh, recovery-registry.json |
-| Pane snapshot capture | Hook captures tmux pane state (last 120-180 lines) | Low | Core data for intelligent decision-making | tmux, Stop hook |
-| Context pressure extraction | Extract token usage percentage from statusline | Medium | Heuristic from hook-watcher.sh; enables proactive /clear decisions | Pane snapshot, statusline format knowledge |
-| Backgrounded agent wake | Stop hook must exit immediately, not block on OpenClaw response | Low | Hook timeout is 120s; blocking risks hook failure and delayed Claude responses | openclaw agent CLI |
-| Fast-path exit for non-managed sessions | Hook exits <5ms when `$TMUX` missing or session not in registry | Low | Avoids token cost and latency for unmanaged Claude Code usage | Session registry |
-| Freeform text input (`type` action) | Agent may need to type arbitrary text (not just option numbers) | Low | Required for responding to non-menu prompts or interactive editors | menu-driver.sh |
-| Notification hooks (idle_prompt, permission_prompt) | Dedicated hooks fire when Claude waits for input or permission | Low | Full session visibility for OpenClaw autonomous operation | Claude Code hooks API |
-| SessionEnd hook | Notifies OpenClaw immediately when session terminates | Low | Faster recovery than daemon polling; agent knows instantly | Claude Code hooks API |
-| PreCompact hook | Captures state before context compaction | Low | Enables context preservation strategies | Claude Code hooks API |
-| Configurable system prompt | Per-agent system prompt from registry (not hardcoded) | Low | Different agents need different constraints (strict slash-only vs flexible) | recovery-registry.json |
-| External default-system-prompt.txt | Default prompt stored in tracked file, not hardcoded | Low | Easy to edit without touching script code | config/default-system-prompt.txt |
-| Recovery flow integration | Recover script must pass system prompt to Claude on launch | Low | New agents post-reboot must have same prompt as pre-reboot sessions | recover-openclaw-agents.sh |
-| Deterministic menu actions preserved | Existing menu-driver.sh actions (snapshot, choose, enter, esc, clear_then, submit) | None (exists) | Already built; hooks reuse these | menu-driver.sh |
+This is a subsequent milestone research file. v1.0 shipped the complete hook system:
+- Stop hook fires on response complete, captures 120-line pane dump, sends structured wake message
+- Notification hooks for idle_prompt and permission_prompt events
+- SessionEnd and PreCompact hooks
+- Three-tier hook_settings (per-agent > global > hardcoded)
+- Hybrid hook mode (async background / bidirectional with decision injection)
+- menu-driver.sh with type action, snapshot, choose, enter, esc, clear_then, submit
+- Per-agent system prompts via recovery registry
 
-## Differentiators
+**v2.0 problem statement:** The wake messages are noisy and redundant. 120 lines of raw tmux pane content contains ANSI escape codes, rendering artifacts, statusline noise, and large blocks of content identical to the previous hook fire. Claude's actual response text is buried in this rendering noise. AskUserQuestion menus fire via pattern-matching imprecision — the exact question text and option labels are not forwarded structurally.
 
-Features that set this system apart. Not expected, but high value.
+---
 
-| Feature | Value Proposition | Complexity | Notes | Dependencies |
-|---------|-------------------|------------|-------|--------------|
-| Agent-specific routing (not broadcast) | Stop hook wakes exact OpenClaw session (not all agents via system event) | Low | Precision vs hook-watcher.sh broadcast; reduces noise and wrong-agent confusion | Session registry with agent_id |
-| Structured decision payload | Hook sends: pane snapshot + available actions + context pressure warning | Medium | Agent receives actionable decision prompt, not raw pane dump | Stop hook logic |
-| Multi-hook safety (wire vs logic separation) | Hook in ~/.claude/settings.json, logic in skill scripts | Low | Upgrading hook logic doesn't require editing global settings.json again | Script path stability |
-| Zero-token overhead for non-managed sessions | Hook fast-path exits when session not in registry | Low | Users can still use Claude Code normally without paying OpenClaw cost | Registry lookup guard |
-| Immediate hook exit (async agent wake) | Hook never blocks; agent wakes in background | Low | Prevents hook timeout and Claude Code slowdown | Backgrounded openclaw call |
-| Retry-safe action deduplication | Agent can safely retry menu-driver.sh calls (idempotent state) | Medium | If agent wakes twice on same menu, second call is harmless | menu-driver.sh state awareness |
-| Context pressure proactive warning | Hook flags when token usage ≥50% (agent can suggest /clear or "Next area") | Medium | Prevents context overflow; agent can plan compaction before forced | Statusline parsing heuristic |
-| Registry sync from agent sessions | Auto-refresh openclaw_session_id from agent/sessions.json | Medium (exists) | Prevents stale session id rot after agent restart | sync-recovery-registry-session-ids.sh |
-| Graceful degradation on registry errors | jq failures wrapped in `|| true`; hook never crashes Claude | Low | Robustness: broken registry → unmanaged session behavior (exit 0) | Error handling discipline |
-| Multiple system prompt modes | Registry can store different prompts: strict slash-only, GSD-preferred, or flexible | Low | Supports different agent personalities (Warden vs Gideon vs Forge) | recovery-registry.json schema |
-| Hybrid hook mode (async + bidirectional) | Default async for speed, optional bidirectional per-agent for instruction injection | Medium | Bidirectional enables direct Claude instruction via decision:block + reason | hook_settings.hook_mode |
-| Per-agent hook configuration (hook_settings) | Configurable pane depth, context threshold, autocompact, hook mode per agent | Low | Different agents may need different tuning without code changes | recovery-registry.json |
-| Three-tier config fallback | Per-agent > global > hardcoded with per-field merge | Medium | DRY: common defaults at global level, overrides only where needed | registry schema design |
+## Feature Landscape
 
-## Anti-Features
+### Table Stakes (Users Expect These)
 
-Features to explicitly NOT build.
+Features that must exist for v2.0 to be considered functional. Missing any of these means the milestone fails its stated goal.
 
-| Anti-Feature | Why Avoid | What to Do Instead |
-|--------------|-----------|-------------------|
-| LLM decision in Stop hook itself | Hook timeout is 120s max; invoking LLM in hook risks timeout and blocks Claude Code | Background wake OpenClaw agent; agent calls menu-driver.sh after deciding |
-| Blocking on OpenClaw response (unconditionally) | Always waiting for agent decision before hook exits → slow Claude Code, risk timeout | Default: fire-and-forget async. Optional: bidirectional per-agent via hook_settings.hook_mode when instruction injection needed |
-| Automatic approvals for updates | Autoresponder.sh explicitly blocked "update" keywords; Stop hook should preserve this | Agent receives full context and makes judgment call (defaults to "No" on updates) |
-| Hook returns `decision: "block"` unconditionally | Infinite loop risk (stop_hook_active prevents, but adds complexity) | Async mode: always exit 0. Bidirectional mode: return block only when OpenClaw provides explicit instruction, always check stop_hook_active first |
-| Polling fallback as backup | Two parallel systems (Stop hook + hook-watcher.sh) → duplicate wakes, state confusion | Commit to Stop hook; delete hook-watcher.sh and autoresponder.sh entirely |
-| Global Claude Code hooks config modification on every spawn | Editing ~/.claude/settings.json on every spawn.sh run → race conditions, corruption | Set hook once globally; skill scripts stay in workspace/skills/gsd-code-skill/scripts/ |
-| Hardcoded system prompts in spawn.sh | Each agent role needs different prompt; hardcoding requires spawn.sh edits per agent | Read system_prompt from registry; default from config/default-system-prompt.txt; per-agent always appends, never replaces |
-| Python for registry operations | Python dependency limits cross-platform compatibility; jq is already installed everywhere | Use jq for all registry read/write operations |
-| Custom hook per tmux session | Multiple ~/.claude/settings.json or session-scoped hooks → maintenance nightmare | Single global hook; session filtering via registry lookup |
-| Regex-based pane parsing for actions | Hook tries to parse "1. Option A" and auto-choose → brittle, breaks on format changes | Send raw pane + available actions; agent decides and calls menu-driver.sh explicitly |
-| Synchronous registry updates in hook | Writing to recovery-registry.json during hook execution → file lock contention | Registry is read-only in hook; updated only by spawn.sh and recover script |
+| Feature | Why Expected | Complexity | Dependencies on v1.0 |
+|---------|--------------|------------|----------------------|
+| Transcript-based response extraction | Hook stdin already provides `transcript_path` JSONL — reading it is the obvious, correct way to get Claude's exact response text (no ANSI codes, no tmux artifacts) | LOW | stop-hook.sh (has transcript_path in stdin), existing guard and registry lookup logic |
+| AskUserQuestion forwarding via PreToolUse | PreToolUse hook fires before `AskUserQuestion` executes, stdin contains structured `tool_input` with `questions` array, `options`, `header`, `multiSelect` — this is the only reliable way to get exact question text and option labels without tmux scraping | MEDIUM | Existing notification-permission-hook.sh as structural reference; settings.json hook registration pattern |
+| Deduplication: skip wake when pane content is identical | Same pane content across consecutive hook fires means agent receives no new information — sending it wastes tokens and creates noise | LOW | stop-hook.sh (add state file per session in /tmp) |
+| Minimum context guarantee (always include at least 10 lines) | Orchestrator agent must have enough baseline context to act, even when diff is empty or small | LOW | stop-hook.sh pane capture logic |
+| Structured wake message v2 format | v1.0 format embeds raw 120-line pane in `[PANE CONTENT]` — v2.0 must replace this with extracted response text + optional compact delta | MEDIUM | Existing wake message builder in all 5 hook scripts |
+
+### Differentiators (Competitive Advantage)
+
+Features that make the system meaningfully better than the current v1.0 behavior. Not required for correctness, but high value for token efficiency and orchestrator signal quality.
+
+| Feature | Value Proposition | Complexity | Dependencies on v1.0 |
+|---------|-------------------|------------|----------------------|
+| Diff-based pane delivery (send only changed lines) | When pane content changes between hook fires, send a compact line-level delta (new lines only, or `diff --unified` output) instead of full 120-line dump — dramatically reduces per-wake message size during long active sessions | MEDIUM | stop-hook.sh pane capture; /tmp state file per session for previous-capture storage |
+| AskUserQuestion structured forwarding (questions + options as JSON-like section) | Orchestrator receives `[ASK USER QUESTION]` section with structured data: question text, option labels, option descriptions, header — no tmux pattern-matching required, exact phrasing preserved | MEDIUM | pre-tool-use-hook.sh (NEW); existing hook registration pattern |
+| Last assistant message extraction from transcript | From transcript JSONL, find the most recent `message.role == "assistant"` entry and extract `message.content[].text` — gives clean response text without tmux rendering noise, ANSI codes, statusline garbage | LOW | transcript_path available in all hook stdin payloads since v1.0 |
+| Per-session previous-pane state storage in /tmp | Store `pane_capture_hash` and `pane_capture_raw` per session in `/tmp/gsd-hook-state-${SESSION_NAME}.json` — enables both deduplication (hash comparison) and diff delivery (raw comparison) in a single read | LOW | stop-hook.sh state file pattern |
+| Compact pane delta section `[PANE DELTA]` | When pane changed but transcript extraction succeeded, include only the new/changed lines (not full dump) as a smaller `[PANE DELTA]` section — orchestrator gets both clean response + what changed on screen | MEDIUM | Diff-based delivery feature |
+
+### Anti-Features (Commonly Requested, Often Problematic)
+
+| Feature | Why Requested | Why Problematic | Alternative |
+|---------|---------------|-----------------|-------------|
+| Parse tmux pane content for AskUserQuestion question text | Seems simpler than adding a new hook — just grep "?" patterns in pane | Brittle: question text can span multiple lines, wrap, contain special chars; ANSI codes corrupt grep output; menu borders interfere; breaks on any UI change | Use PreToolUse hook — fires before tool executes, stdin contains exact `tool_input.questions` from Claude's tool call, zero ambiguity |
+| Send full transcript content in wake message | Complete conversation history seems useful for agent context | Transcripts grow to hundreds of KB; single JSONL line for last assistant message is sufficient; orchestrator has its own conversation memory | Extract only last assistant `message.content[].text` block — precise and bounded in size |
+| Global PreToolUse hook (no matcher) that fires for all tools | Seems easy to configure — one hook handles everything | Global PreToolUse fires before every single Bash, Read, Write, Edit, Glob, Grep, WebFetch, WebSearch, Task call — extreme overhead for every tool use; known bug (fixed in 2.0.76) caused AskUserQuestion to return empty responses when PreToolUse global hook was active | Use matcher `"AskUserQuestion"` — fires only when Claude calls that specific tool, zero overhead for all other tool uses |
+| diff output with full context lines (unified diff format) | Familiar format from git, easy to read | Unified diff with surrounding context lines still sends most of the unchanged content; for the orchestrator, added lines are sufficient | Send only the added/new lines using `comm` or `grep` against stored previous capture, or `diff --new-line-format` with no context |
+| Re-implement previous-pane storage in registry JSON | Registry already exists — seems natural to store state there | Registry is read-only in hooks (atomic writes via flock + mv only in spawn/recover); hooks run concurrently and frequently; adding write operations to every hook fire risks corruption | Use per-session files in /tmp — ephemeral, no locking required, natural cleanup on reboot |
+| Blocking PreToolUse hook that intercepts AskUserQuestion and waits for orchestrator decision | Bidirectional mode already works for Stop hook — seems consistent | AskUserQuestion is specifically designed for interactive user input; blocking it while waiting for OpenClaw adds latency to the user-facing TUI; the hook should forward the question, not intercept the answer | Forward question data in async mode — orchestrator receives the question before it appears in TUI, can prepare context, but user interaction proceeds normally via Claude Code's native UI |
+
+---
 
 ## Feature Dependencies
 
 ```
-Stop hook
-  ├─> stop_hook_active guard
-  ├─> $TMUX fast-path check
-  ├─> Session registry lookup (recovery-registry.json)
-  │     └─> Fast-path exit if not found
-  ├─> Pane snapshot (tmux capture-pane -S -120)
-  ├─> Context pressure extraction (statusline heuristic)
-  ├─> Structured decision payload
-  └─> Backgrounded OpenClaw agent wake
-        └─> openclaw agent --session-id <uuid> --message "..."
+Transcript-based response extraction
+    └──requires──> transcript_path in hook stdin (v1.0, available in all hooks)
+    └──requires──> last assistant message JSONL parsing (tail + jq)
+    └──enhances──> Structured wake message v2 format ([RESPONSE] section replaces [PANE CONTENT])
 
-OpenClaw agent receives snapshot
-  ├─> Intelligent decision (LLM-based)
-  └─> Calls menu-driver.sh <session> <action> [args]
-        ├─> snapshot (read-only, returns pane)
-        ├─> choose <n> (select numbered option)
-        ├─> type <text> (NEW: freeform input)
-        ├─> enter / esc / submit (keyboard actions)
-        └─> clear_then <cmd> (reset context, run command)
+Deduplication (skip identical pane content)
+    └──requires──> Per-session previous-pane state storage in /tmp
+    └──provides──> hash(pane_content) == hash(previous_pane) → skip wake or send lightweight signal
 
-Recovery flow
-  ├─> sync-recovery-registry-session-ids.sh (refresh session ids)
-  ├─> recover-openclaw-agents.sh reads registry
-  ├─> Extract system_prompt per agent
-  ├─> Launch Claude with --append-system-prompt
-  └─> Send initial wake to openclaw_session_id
+Diff-based pane delivery
+    └──requires──> Per-session previous-pane state storage in /tmp (same state file as deduplication)
+    └──enhances──> Structured wake message v2 format ([PANE DELTA] instead of [PANE CONTENT])
+    └──conflicts──> Full 120-line pane dump (replaced, not combined)
+
+AskUserQuestion forwarding via PreToolUse
+    └──requires──> pre-tool-use-hook.sh (NEW script)
+    └──requires──> PreToolUse hook registered in ~/.claude/settings.json with matcher "AskUserQuestion"
+    └──uses──> tool_input.questions[] from PreToolUse stdin (NOT tmux pane scraping)
+    └──provides──> [ASK USER QUESTION] section in wake message with structured question + options
+
+Structured wake message v2 format
+    └──requires──> Transcript-based response extraction (to replace [PANE CONTENT] with [RESPONSE])
+    └──requires──> Diff-based pane delivery (to add [PANE DELTA] section)
+    └──requires──> Minimum context guarantee (10-line baseline when diff is small)
+    └──modifies──> stop-hook.sh wake message builder (existing, v1.0)
+    └──modifies──> notification-idle-hook.sh wake message builder (existing, v1.0)
+
+Minimum context guarantee
+    └──requires──> Diff-based pane delivery (guard: if delta < 10 lines, include 10 lines from bottom)
+    └──modifies──> Pane delta calculation logic in stop-hook.sh
 ```
 
-## MVP Recommendation
+---
 
-**Phase 1: Additive (no breakage)**
-1. Create stop-hook.sh with all guards and fast-paths
-2. Add `type <text>` action to menu-driver.sh
-3. Add system_prompt field to recovery-registry.json (empty string default)
+## MVP Definition
 
-**Phase 2: Wire up hook**
-4. Add Stop hook to ~/.claude/settings.json (one-time global edit)
-5. Remove gsd-session-hook.sh from SessionStart hooks
+### Launch With (v2.0 — all six stated milestone features)
 
-**Phase 3: Update launchers**
-6. Modify spawn.sh: remove autoresponder logic, add system_prompt support
-7. Modify recover-openclaw-agents.sh: pass system_prompt on Claude launch
+These are the six explicitly named v2.0 features. All must ship together since the wake message v2 format depends on the others.
 
-**Phase 4: Remove old scripts**
-8. Delete autoresponder.sh
-9. Delete hook-watcher.sh
-10. Delete ~/.claude/hooks/gsd-session-hook.sh
+- [ ] **Transcript-based extraction** — Read `transcript_path` JSONL from hook stdin, extract last `message.role == "assistant"` entry, pull `message.content[].text`, add as `[RESPONSE]` section in wake message. Replaces tmux scraping as the source of Claude's last response text.
+- [ ] **PreToolUse hook for AskUserQuestion** — New `pre-tool-use-hook.sh` script. Registered in settings.json with matcher `"AskUserQuestion"`. Receives `tool_input.questions[]` (each with `question`, `header`, `options[].label`, `options[].description`, `multiSelect`). Sends structured wake with `[ASK USER QUESTION]` section to orchestrator. Async mode only (no bidirectional — forwarding only, not intercepting).
+- [ ] **Diff-based pane delivery** — Store previous pane capture per session in `/tmp/gsd-hook-state-${SESSION_NAME}`. On each hook fire, compare with current capture. Send only new/changed lines as `[PANE DELTA]` section instead of full `[PANE CONTENT]` dump.
+- [ ] **Structured wake message v2** — Compact format: `[SESSION IDENTITY]`, `[TRIGGER]`, `[STATE HINT]`, `[RESPONSE]` (from transcript), `[PANE DELTA]` (changed lines only), `[CONTEXT PRESSURE]`, `[AVAILABLE ACTIONS]`. Removes raw 120-line `[PANE CONTENT]` dump.
+- [ ] **Deduplication** — Hash pane content (md5sum or sha1sum). If hash matches previous, skip wake entirely OR send lightweight `[NO CHANGE]` signal. Configurable via hook_settings (`dedup_mode: "skip" | "lightweight"`).
+- [ ] **Minimum context guarantee** — When pane delta is fewer than 10 lines (e.g., only a statusline change), pad to always include at least 10 lines from pane bottom so orchestrator has baseline context.
 
-**Phase 5: Documentation**
-11. Update SKILL.md and README.md
+### Add After Validation (v2.x)
 
-**Defer:**
-- Advanced heuristics for context pressure (beyond percentage threshold) — current ≥50% heuristic sufficient for MVP
-- LLM-guided decision complexity scoring — simple "send everything to agent" is enough for now
-- Multi-agent swarm coordination — single agent per session is sufficient
-- Audit trail / decision logging in hook — OpenClaw agent already logs decisions
-- Rate limiting / backpressure on agent wakes — unlikely to spam (menus are infrequent)
+Features to add once v2.0 core delivery is working and token reduction is measurable.
 
-## Complexity Assessment
+- [ ] **Per-hook dedup mode settings** — Add `dedup_mode` to hook_settings with per-hook override (same three-tier fallback as existing hook_settings). Trigger after measuring actual dedup rates.
+- [ ] **AskUserQuestion async pre-notification** — When PreToolUse hook fires for AskUserQuestion, orchestrator receives the question 50-200ms before Claude Code renders the TUI menu. Add a brief delay in the hook before exiting to give orchestrator time to prepare context (e.g., look up session state). Only useful if orchestrator response latency is measurable and matters.
 
-| Feature Category | Complexity | Reasoning |
-|------------------|------------|-----------|
-| Stop hook core | Low | Bash script, stdin JSON parsing, exit guards |
-| Session registry lookup | Low | jq query on static JSON file |
-| Pane snapshot capture | Low | Single tmux command |
-| Context pressure extraction | Medium | Regex parsing statusline; heuristic may need tuning |
-| Backgrounded agent wake | Low | Bash background process with `|| true` |
-| Freeform text input | Low | tmux send-keys with `-l` flag (literal mode) |
-| System prompt plumbing | Low | Pass variable through spawn.sh → Claude CLI |
-| Registry schema migration | Low | Add one field; existing entries get empty string default |
-| Fast-path guards | Low | Early exits with zero cost |
-| Error handling | Medium | Wrap every external call in `|| true` to prevent hook crash |
+### Future Consideration (v3+)
 
-**Overall MVP Complexity:** Low to Medium
+- [ ] **Transcript diff (conversation delta)** — Instead of pane delta, send only the new conversation turns since last wake (diff of transcript JSONL). Requires tracking last-read transcript position per session. Higher complexity, potentially higher value for long sessions.
+- [ ] **Selective hook muting** — Allow orchestrator to instruct hook to be silent for N turns ("I'm handling this, don't wake me again until next Stop"). Requires two-way state channel between hook and orchestrator.
+- [ ] **PostToolUse hook for AskUserQuestion** — After AskUserQuestion tool executes, forward what answer was selected back to orchestrator as confirmation. Enables orchestrator to build a record of user preferences without polling.
 
-Most work is plumbing (hook → registry → agent → menu-driver). No complex algorithms, no networking, no concurrency issues. Biggest risk is edge cases in tmux pane parsing or registry corruption (mitigated by read-only access in hook).
+---
 
-## Architecture Implications for Roadmap
+## Feature Prioritization Matrix
 
-**Why this phase ordering:**
+| Feature | Orchestrator Value | Implementation Cost | Priority |
+|---------|-------------------|---------------------|----------|
+| Transcript-based response extraction | HIGH — eliminates ANSI noise from response text | LOW — tail JSONL + jq, 5 lines of bash | P1 |
+| Deduplication (hash comparison + skip) | HIGH — eliminates duplicate wakes entirely | LOW — md5sum comparison + /tmp state file | P1 |
+| Structured wake message v2 format | HIGH — orchestrator reads cleaner signal | MEDIUM — modify wake builder in 2 hook scripts (stop, notification-idle) | P1 |
+| Diff-based pane delivery | MEDIUM — reduces delta size during active work | MEDIUM — diff calculation + /tmp state file (shares with dedup) | P2 |
+| Minimum context guarantee | LOW — safety net for edge cases | LOW — guard in delta calculation | P2 |
+| AskUserQuestion forwarding via PreToolUse | HIGH — exact question/options without pattern matching | MEDIUM — new pre-tool-use-hook.sh + settings.json registration | P1 |
 
-1. **Additive first** — new files don't break existing autoresponder/hook-watcher workflows
-2. **Wire hook** — Stop hook runs in parallel with old system briefly (harmless overlap)
-3. **Update launchers** — spawn.sh and recover script now use new system
-4. **Remove old** — clean up deprecated polling scripts
-5. **Document** — update docs to reflect new architecture
+**Priority key:**
+- P1: Must have for v2.0 launch (all stated milestone features)
+- P2: Should have for completeness, add in same milestone
+- P3: Nice to have, defer
 
-**Critical path dependencies:**
-- stop-hook.sh must exist before ~/.claude/settings.json references it
-- system_prompt field must exist in registry before recover script reads it
-- menu-driver.sh `type` action must exist before agent tries to call it
+---
 
-**Phase-specific research flags:**
-- Phase 1: No additional research needed (bash + tmux patterns well-understood)
-- Phase 2: Verify Stop hook JSON schema with official Claude Code docs (done via WebSearch)
-- Phase 3: No research needed (modifying existing scripts)
-- Phase 4: No research needed (deletions)
-- Phase 5: No research needed (documentation)
+## Behavior Descriptions (Orchestrator Perspective)
+
+### Before v2.0 (current v1.0 behavior)
+
+Orchestrator receives a wake message like:
+
+```
+[SESSION IDENTITY]
+agent_id: warden
+tmux_session_name: warden-main
+timestamp: 2026-02-17T10:00:00Z
+
+[TRIGGER]
+type: response_complete
+
+[STATE HINT]
+state: menu
+
+[PANE CONTENT]
+[full 120 lines of raw tmux pane content including ANSI codes, statusline,
+ previous responses, menu borders, rendering artifacts, and identical content
+ from the previous hook fire — 3000-8000 characters]
+
+[CONTEXT PRESSURE]
+72% [WARNING]
+
+[AVAILABLE ACTIONS]
+menu-driver.sh warden-main choose <n>
+...
+```
+
+Orchestrator must: parse ANSI codes mentally, find Claude's actual response buried in the pane dump, identify what changed since last wake, distinguish menu options from surrounding noise, and handle repeated sends of identical content.
+
+### After v2.0
+
+Orchestrator receives:
+
+```
+[SESSION IDENTITY]
+agent_id: warden
+tmux_session_name: warden-main
+timestamp: 2026-02-17T10:00:00Z
+
+[TRIGGER]
+type: response_complete
+
+[STATE HINT]
+state: menu
+
+[RESPONSE]
+I've analyzed the codebase and found 3 issues to address. Which approach would
+you like me to take?
+
+[PANE DELTA]
+  > 1. Fix all issues in a single commit
+  > 2. Fix each issue separately with individual commits
+  > 3. Show me the issues first before deciding
+
+[CONTEXT PRESSURE]
+72% [WARNING]
+
+[AVAILABLE ACTIONS]
+menu-driver.sh warden-main choose <n>
+...
+```
+
+Orchestrator gets: exact response text (no ANSI codes), only the changed lines (not 120-line dump), clean signal-to-noise ratio. If pane was identical to previous fire, wake is skipped entirely.
+
+### AskUserQuestion wake (new in v2.0)
+
+When Claude calls `AskUserQuestion`, orchestrator receives a separate wake before the TUI menu renders:
+
+```
+[SESSION IDENTITY]
+agent_id: warden
+tmux_session_name: warden-main
+timestamp: 2026-02-17T10:00:01Z
+
+[TRIGGER]
+type: ask_user_question
+
+[STATE HINT]
+state: menu
+
+[ASK USER QUESTION]
+questions:
+  - header: "Approach"
+    question: "Which approach should I use for the authentication fix?"
+    multiSelect: false
+    options:
+      1. OAuth (Recommended) — Use OAuth 2.0 with PKCE for third-party integrations
+      2. JWT — Lightweight stateless tokens, good for internal services
+      3. Session-based — Traditional server-side sessions, simplest to implement
+
+[AVAILABLE ACTIONS]
+menu-driver.sh warden-main choose <n>
+menu-driver.sh warden-main type <text>
+...
+```
+
+No pattern matching, no ANSI parsing. The question text and option labels are taken directly from `tool_input.questions` in the PreToolUse hook stdin.
+
+---
+
+## AskUserQuestion Tool Input Schema (CONFIRMED — official docs)
+
+From [platform.claude.com/docs/en/agent-sdk/user-input](https://platform.claude.com/docs/en/agent-sdk/user-input):
+
+```json
+{
+  "questions": [
+    {
+      "question": "Which approach should I use?",
+      "header": "Approach",
+      "options": [
+        { "label": "OAuth (Recommended)", "description": "Use OAuth 2.0 with PKCE" },
+        { "label": "JWT", "description": "Lightweight stateless tokens" }
+      ],
+      "multiSelect": false
+    }
+  ]
+}
+```
+
+PreToolUse hook stdin for AskUserQuestion:
+
+```json
+{
+  "session_id": "abc123",
+  "transcript_path": "/home/forge/.claude/projects/.../transcript.jsonl",
+  "cwd": "/path/to/project",
+  "permission_mode": "bypassPermissions",
+  "hook_event_name": "PreToolUse",
+  "tool_name": "AskUserQuestion",
+  "tool_use_id": "toolu_01ABC...",
+  "tool_input": {
+    "questions": [
+      {
+        "question": "Which approach should I use?",
+        "header": "Approach",
+        "options": [
+          { "label": "OAuth (Recommended)", "description": "Use OAuth 2.0 with PKCE" },
+          { "label": "JWT", "description": "Lightweight stateless tokens" }
+        ],
+        "multiSelect": false
+      }
+    ]
+  }
+}
+```
+
+Constraints (confirmed):
+- 1–4 questions per AskUserQuestion call
+- 2–4 options per question
+- `multiSelect: true` allows multiple selections, joined with `", "` in answer
+- `header` field is max 12 characters (short label for TUI display)
+- AskUserQuestion is NOT available in subagents spawned via Task tool
+- Bug fixed in Claude Code v2.0.76: PreToolUse hook with global matcher caused AskUserQuestion to return empty responses (stdin/stdout conflict) — fixed, safe to use with matcher `"AskUserQuestion"`
+
+---
+
+## Transcript JSONL: Last Assistant Message (CONFIRMED — official docs)
+
+From hook stdin: `transcript_path` points to a JSONL file at `~/.claude/projects/<project-hash>/<session-id>.jsonl`.
+
+Each line is a JSON object. Assistant message structure:
+
+```json
+{
+  "parentUuid": "...",
+  "isSidechain": false,
+  "userType": "external",
+  "sessionId": "...",
+  "type": "assistant",
+  "message": {
+    "id": "msg_...",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-4-6",
+    "content": [
+      {
+        "type": "text",
+        "text": "Claude's actual response text here, clean, no ANSI codes"
+      }
+    ]
+  },
+  "uuid": "...",
+  "timestamp": "2026-02-17T10:00:00.000Z"
+}
+```
+
+Extraction pattern (bash + jq):
+
+```bash
+TRANSCRIPT_PATH=$(echo "$STDIN_JSON" | jq -r '.transcript_path // ""')
+LAST_RESPONSE=""
+if [ -n "$TRANSCRIPT_PATH" ] && [ -f "$TRANSCRIPT_PATH" ]; then
+  LAST_RESPONSE=$(tail -50 "$TRANSCRIPT_PATH" | \
+    jq -r 'select(.message.role == "assistant") | .message.content[] | select(.type == "text") | .text' 2>/dev/null | \
+    tail -1 || echo "")
+fi
+```
+
+Notes:
+- `tail -50` scans last 50 lines (avoids reading entire large transcript)
+- `select(.message.role == "assistant")` filters out user messages, tool calls, tool results
+- `select(.type == "text")` filters out tool_use blocks inside assistant messages
+- Transcript may have multiple assistant messages (multi-turn); `tail -1` gets the most recent text block
+- If transcript_path is empty or file missing, fall back to pane content (graceful degradation)
+
+---
+
+## Diff-Based Pane Delivery Implementation Notes
+
+State file location: `/tmp/gsd-hook-state-${SESSION_NAME}`
+
+State file contents (plain text, two lines):
+```
+<hash>
+<previous_pane_content_base64>
+```
+
+Or as two separate files:
+```
+/tmp/gsd-hook-state-${SESSION_NAME}.hash
+/tmp/gsd-hook-state-${SESSION_NAME}.prev
+```
+
+Two separate files preferred (simpler to read/write independently).
+
+Deduplication check (bash):
+```bash
+STATE_HASH_FILE="/tmp/gsd-hook-state-${SESSION_NAME}.hash"
+CURRENT_HASH=$(echo "$PANE_CONTENT" | md5sum | cut -d' ' -f1)
+PREV_HASH=$(cat "$STATE_HASH_FILE" 2>/dev/null || echo "")
+
+if [ "$CURRENT_HASH" = "$PREV_HASH" ]; then
+  debug_log "DEDUP: pane content identical to previous, skipping wake"
+  exit 0
+fi
+echo "$CURRENT_HASH" > "$STATE_HASH_FILE"
+```
+
+Diff calculation (bash):
+```bash
+STATE_PREV_FILE="/tmp/gsd-hook-state-${SESSION_NAME}.prev"
+PREV_PANE=$(cat "$STATE_PREV_FILE" 2>/dev/null || echo "")
+echo "$PANE_CONTENT" > "$STATE_PREV_FILE"
+
+if [ -n "$PREV_PANE" ]; then
+  PANE_DELTA=$(diff <(echo "$PREV_PANE") <(echo "$PANE_CONTENT") | grep '^>' | sed 's/^> //' || echo "")
+else
+  PANE_DELTA=$(echo "$PANE_CONTENT" | tail -10)
+fi
+
+# Minimum context guarantee
+DELTA_LINES=$(echo "$PANE_DELTA" | wc -l)
+if [ "$DELTA_LINES" -lt 10 ]; then
+  PANE_DELTA=$(echo "$PANE_CONTENT" | tail -10)
+fi
+```
+
+State file cleanup: files in /tmp clean up on reboot. No explicit cleanup needed. Old files from dead sessions are harmless (small, ignored on next session start with different content).
+
+---
 
 ## Edge Cases
 
-| Edge Case | Severity | Mitigation |
-|-----------|----------|------------|
-| Non-managed Claude session triggers hook | Low | Fast-path exit at `$TMUX` check or registry lookup (5ms overhead) |
-| Infinite loop from `decision: "block"` | Critical | `stop_hook_active` guard; never return blocking decision |
-| Registry file unreadable/corrupt | Medium | jq wrapped in `|| true`; hook exits 0 (unmanaged session behavior) |
-| OpenClaw agent call fails | Low | Backgrounded with `|| true`; hook never blocks |
-| Stale hook-watcher processes during transition | Low | Old processes die when tmux session ends; brief overlap harmless |
-| Empty system_prompt in registry | Low | Fall back to sensible default prompt |
-| Context pressure regex fails | Low | Variable defaults to empty; agent doesn't receive warning (acceptable) |
-| Multiple menus appear rapidly | Medium | Agent may receive multiple wakes; menu-driver.sh state tracking prevents duplicate actions |
-| Agent session ID rotates | Medium | sync-recovery-registry-session-ids.sh auto-syncs from agent/sessions.json |
-| Hook timeout (>120s) | Critical | Never invoke LLM in hook; always background openclaw call |
+| Scenario | Severity | Behavior |
+|----------|----------|----------|
+| transcript_path file does not exist yet | LOW | Fall back to pane delta only — no `[RESPONSE]` section, keep `[PANE DELTA]` |
+| transcript_path has no assistant messages yet (session just started) | LOW | LAST_RESPONSE empty — omit `[RESPONSE]` section from wake |
+| Pane content is empty (session just started) | LOW | PANE_DELTA is empty — apply minimum context guarantee, send last 10 lines |
+| State file unreadable (/tmp full or permission error) | LOW | Treat as first fire — send full 10-line minimum, continue without dedup |
+| AskUserQuestion called inside subagent (Task tool) | MEDIUM | PreToolUse fires for the subagent session — hook checks registry by tmux session name; if subagent is in different tmux session, no match found, hook exits 0 (non-managed session behavior). AskUserQuestion inside subagents is a known limitation per official docs. |
+| PreToolUse global matcher bug (old Claude Code version) | HIGH | Verify Claude Code >= 2.0.76 before registering PreToolUse hook. Current version 2.1.44 is safe. Bug: empty AskUserQuestion responses when global PreToolUse hook active. Fix: use matcher `"AskUserQuestion"` not global matcher. |
+| Multiple questions in single AskUserQuestion call (1-4 allowed) | LOW | Forward all questions in `[ASK USER QUESTION]` section, numbered sequentially |
+| Wake skipped by dedup, but session state actually changed externally | LOW | Next genuine change triggers new wake with delta from the skipped-state base. Orchestrator may miss one update but will not miss all future updates. |
+| Diff produces very large output (complete screen refresh) | LOW | Fall back to last 10 lines when delta is larger than original pane — minimum context guarantee handles this |
 
-## Decision Complexity: Heuristics vs LLM
-
-**Where heuristics win:**
-- `stop_hook_active` guard (deterministic, instant)
-- Fast-path exits (registry lookup failure → exit 0)
-- Context pressure threshold (≥50% → warn agent)
-- Menu detection (grep "Enter to select" in autoresponder.sh was sufficient)
-
-**Where LLM wins:**
-- Which menu option to choose (context-dependent: phase planning, bug fixing, approvals)
-- When to run /clear vs "Next area" (depends on task state)
-- Whether to approve updates (requires understanding what's being updated)
-- Freeform text input (agent composes natural language responses)
-
-**Hybrid approach (this system):**
-- Heuristics in Stop hook: guards, fast-paths, context extraction
-- LLM in OpenClaw agent: decision-making, action selection, freeform composition
-- Deterministic actions in menu-driver.sh: keyboard automation, pane capture
-
-**Why this split:**
-- Stop hook must exit quickly (<5s ideal, <120s hard limit)
-- LLM inference takes 2-10s+ depending on model and context
-- Backgrounding agent wake decouples hook latency from decision latency
-- menu-driver.sh provides idempotent, retryable interface for agent
-
-## Observability
-
-**What gets logged:**
-- Stop hook: session_id, registry lookup result, pane snapshot length, context pressure
-- OpenClaw agent: received snapshot, chosen action, menu-driver.sh call
-- menu-driver.sh: action type, tmux command sent
-
-**What doesn't get logged (by design):**
-- Hook never writes to disk (too slow; exit time critical)
-- Pane content not logged by hook (sent to agent, agent logs if needed)
-
-**Debugging workflow:**
-1. Check ~/.claude/settings.json: Stop hook configured?
-2. Check recovery-registry.json: session in registry? agent_id correct?
-3. Check OpenClaw agent logs: received snapshot? decision made?
-4. Check tmux session: menu-driver.sh action applied?
+---
 
 ## Sources
 
-**HIGH confidence (official sources):**
-- [Hooks reference - Claude Code Docs](https://code.claude.com/docs/en/hooks)
-- [Claude Code Hooks: Complete Guide with 20+ Ready-to-Use Examples (2026)](https://aiorg.dev/blog/claude-code-hooks)
-- [Event-Driven Claude Code and OpenCode Workflows with Hooks](https://www.subaud.io/event-driven-claude-code-and-opencode-workflows-with-hooks/)
-- [Claude Code Hooks: Complete Guide to All 12 Lifecycle Events](https://claudefa.st/blog/tools/hooks/hooks-guide)
+**HIGH confidence (official documentation):**
+- [Claude Code Hooks Reference — code.claude.com/docs/en/hooks](https://code.claude.com/docs/en/hooks) — PreToolUse input schema, tool_input fields, AskUserQuestion matcher, hookSpecificOutput format
+- [Handle approvals and user input — platform.claude.com/docs/en/agent-sdk/user-input](https://platform.claude.com/docs/en/agent-sdk/user-input) — AskUserQuestion tool_input.questions[] structure, `question`, `header`, `options`, `multiSelect` fields, response format with `answers`, 1-4 questions/2-4 options constraints
+- [GitHub Issue #13439 — PreToolUse bug with AskUserQuestion](https://github.com/anthropics/claude-code/issues/13439) — Confirmed fixed in v2.0.76; current 2.1.44 is safe; use matcher "AskUserQuestion" not global matcher
 
-**MEDIUM confidence (multi-agent patterns and guardrails):**
-- [Agentic AI in Production: Designing Autonomous Multi-Agent Systems with Guardrails (2026 Guide)](https://medium.com/@dewasheesh.rana/agentic-ai-in-production-designing-autonomous-multi-agent-systems-with-guardrails-2026-guide-a5a1c8461772)
-- [Guardrails and Best Practices for Agentic Orchestration](https://camunda.com/blog/2026/01/guardrails-and-best-practices-for-agentic-orchestration/)
-- [AI Guardrails Will Stop Being Optional in 2026](https://statetechmagazine.com/article/2026/01/ai-guardrails-will-stop-being-optional-2026)
-- [From guardrails to governance: A CEO's guide for securing agentic systems](https://www.technologyreview.com/2026/02/04/1131014/from-guardrails-to-governance-a-ceos-guide-for-securing-agentic-systems)
+**HIGH confidence (transcript format from community implementations):**
+- [Analyzing Claude Code Interaction Logs with DuckDB — liambx.com](https://liambx.com/blog/claude-code-log-analysis-with-duckdb) — Real JSONL structure showing `message.role`, `message.content[]`, `type: "text"`, `text` fields
+- [Claude Code conversation history — kentgigger.com](https://kentgigger.com/posts/claude-code-conversation-history) — Confirmed JSONL format with `parentUuid`, `sessionId`, `message.role`, `message.content`
 
-**MEDIUM confidence (tmux and agent decision-making):**
-- [TmuxAI: AI-Powered, Non-Intrusive Terminal Assistant](https://tmuxai.dev/)
-- [Tmux MCP Shell Tool](https://lobehub.com/mcp/ketema-tmux-mcp-shell-tool)
-- [tmux Workflow for AI Coding Agents](https://www.agent-of-empires.com/guides/tmux-ai-coding-workflow/)
-- [AI Agent Decision-Making: A Practical Explainer](https://skywork.ai/blog/ai-agent/ai-agent-decision-making)
-
-**MEDIUM confidence (event-driven architecture):**
-- [The Ultimate Guide to Event-Driven Architecture Patterns](https://solace.com/event-driven-architecture-patterns/)
-- [Event Driven Architecture Done Right: How to Scale Systems with Quality in 2025](https://www.growin.com/blog/event-driven-architecture-scale-systems-2025/)
+**MEDIUM confidence (diff patterns — standard bash utilities):**
+- Standard `diff` command: `diff <(echo "$OLD") <(echo "$NEW") | grep '^>' | sed 's/^> //'` — extracts only added lines; widely used for text delta extraction
+- `md5sum` for hash comparison: standard Linux utility, available on all Ubuntu 24 systems
 
 **LOCAL (existing implementation):**
-- PRD.md (hook architecture and implementation plan)
-- scripts/menu-driver.sh (existing deterministic actions)
-- scripts/autoresponder.sh (heuristics for menu detection and option selection)
-- scripts/hook-watcher.sh (polling pattern and context pressure extraction)
-- README.md (recovery registry schema and operational patterns)
-- SKILL.md (skill metadata and script documentation)
+- scripts/stop-hook.sh (v1.0) — guard patterns, registry lookup, pane capture, wake message builder
+- scripts/notification-idle-hook.sh (v1.0) — duplicate of stop-hook patterns for reference
+- PRD.md — v1.0 architecture and Structured Wake Message Format section
+- config/recovery-registry.json — hook_settings schema for dedup_mode addition
+
+---
+
+*Feature research for: gsd-code-skill v2.0 Smart Hook Delivery*
+*Researched: 2026-02-17*
