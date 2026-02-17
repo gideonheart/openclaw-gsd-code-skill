@@ -12,6 +12,7 @@ Actions:
   esc                              Press Esc once
   clear_then <slash-command>       Run /clear then (after short delay) run slash command
   choose <n>                       Type option number n + Enter
+  type <text>                      Type literal freeform text + Enter
   submit                           Move to Submit row and press Enter (tab then enter)
 
 Notes:
@@ -53,6 +54,13 @@ case "$ACTION" in
     [[ "$n" =~ ^[0-9]+$ ]] || { echo "choose requires numeric option" >&2; exit 1; }
     tmux send-keys -t "$SESSION:0.0" C-u
     tmux send-keys -t "$SESSION:0.0" "$n" Enter
+    ;;
+  type)
+    text="$*"
+    [ -n "$text" ] || { echo "type requires text argument" >&2; usage; exit 1; }
+    tmux send-keys -t "$SESSION:0.0" C-u
+    tmux send-keys -t "$SESSION:0.0" -l -- "$text"
+    tmux send-keys -t "$SESSION:0.0" Enter
     ;;
   submit)
     tmux send-keys -t "$SESSION:0.0" Tab Enter
