@@ -1,26 +1,47 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Debug logging - all hook invocations log to a shared file for diagnostics
+GSD_HOOK_LOG="${GSD_HOOK_LOG:-/tmp/gsd-hooks.log}"
+HOOK_SCRIPT_NAME="$(basename "${BASH_SOURCE[0]}")"
+
+debug_log() {
+  printf '[%s] [%s] %s\n' "$(date -u +'%Y-%m-%dT%H:%M:%SZ')" "$HOOK_SCRIPT_NAME" "$*" >> "$GSD_HOOK_LOG" 2>/dev/null || true
+}
+
+debug_log "FIRED — PID=$$ TMUX=${TMUX:-<unset>}"
+
 # PreCompact hook: Capture pane state before Claude Code compacts context window.
 # Sends full wake message with pane content, context pressure, and available actions.
 # Supports hybrid mode (async or bidirectional).
 
 # 1. Consume stdin immediately to prevent pipe blocking
 STDIN_JSON=$(cat)
+debug_log "stdin: ${#STDIN_JSON} bytes, hook_event_name=$(echo "$STDIN_JSON" | jq -r '.hook_event_name // "unknown"' 2>/dev/null)"
 
 # 2. Guard: Exit if not in tmux environment
-[ -z "${TMUX:-}" ] && exit 0
+if [ -z "${TMUX:-}" ]; then
+  debug_log "EXIT: TMUX env var is unset (not in tmux session)"
+  exit 0
+fi
 
 # 3. Extract tmux session name
 SESSION_NAME=$(tmux display-message -p '#S' 2>/dev/null || echo "")
-[ -z "$SESSION_NAME" ] && exit 0
+if [ -z "$SESSION_NAME" ]; then
+  debug_log "EXIT: could not extract tmux session name"
+  exit 0
+fi
+debug_log "tmux_session=$SESSION_NAME"
 
 # 4. Registry lookup
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REGISTRY_PATH="${SCRIPT_DIR}/../config/recovery-registry.json"
 
 # Exit if registry doesn't exist
-[ ! -f "$REGISTRY_PATH" ] && exit 0
+if [ ! -f "$REGISTRY_PATH" ]; then
+  debug_log "EXIT: registry not found at $REGISTRY_PATH"
+  exit 0
+fi
 
 # Query agent data matching session name
 AGENT_DATA=$(jq --arg session "$SESSION_NAME" \
@@ -28,11 +49,20 @@ AGENT_DATA=$(jq --arg session "$SESSION_NAME" \
   "$REGISTRY_PATH" 2>/dev/null || echo "")
 
 # Exit if no matching agent (non-managed session)
-[ -z "$AGENT_DATA" ] && exit 0
+if [ -z "$AGENT_DATA" ] || [ "$AGENT_DATA" = "null" ]; then
+  debug_log "EXIT: no agent matched tmux_session_name=$SESSION_NAME in registry"
+  exit 0
+fi
 
 # Extract required fields
 AGENT_ID=$(echo "$AGENT_DATA" | jq -r '.agent_id')
 OPENCLAW_SESSION_ID=$(echo "$AGENT_DATA" | jq -r '.openclaw_session_id')
+debug_log "agent_id=$AGENT_ID openclaw_session_id=$OPENCLAW_SESSION_ID"
+
+if [ -z "$AGENT_ID" ] || [ -z "$OPENCLAW_SESSION_ID" ]; then
+  debug_log "EXIT: agent_id or openclaw_session_id is empty"
+  exit 0
+fi
 
 # 5. Extract hook_settings with three-tier fallback
 GLOBAL_SETTINGS=$(jq -r '.hook_settings // {}' "$REGISTRY_PATH")
@@ -74,6 +104,8 @@ else
   STATE="active"
 fi
 
+debug_log "state=$STATE"
+
 # 9. Build structured wake message (HOOK-10)
 TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 
@@ -104,13 +136,18 @@ menu-driver.sh ${SESSION_NAME} submit
 menu-driver.sh ${SESSION_NAME} snapshot"
 
 # 10. Hybrid mode delivery
+debug_log "DELIVERING: mode=$HOOK_MODE session_id=$OPENCLAW_SESSION_ID"
+
 if [ "$HOOK_MODE" = "bidirectional" ]; then
   # Wait for OpenClaw response, return decision:block if provided
-  RESPONSE=$(openclaw agent --session-id "$OPENCLAW_SESSION_ID" --message "$WAKE_MESSAGE" --json 2>/dev/null || echo "")
+  debug_log "DELIVERING: bidirectional, waiting for response..."
+  RESPONSE=$(openclaw agent --session-id "$OPENCLAW_SESSION_ID" --message "$WAKE_MESSAGE" --json 2>&1 || echo "")
+  debug_log "RESPONSE: ${RESPONSE:0:200}"
   # Parse response for decision injection (future enhancement)
   exit 0
 else
   # Async: background call, exit immediately
-  openclaw agent --session-id "$OPENCLAW_SESSION_ID" --message "$WAKE_MESSAGE" >/dev/null 2>&1 &
+  openclaw agent --session-id "$OPENCLAW_SESSION_ID" --message "$WAKE_MESSAGE" >> "$GSD_HOOK_LOG" 2>&1 &
+  debug_log "DELIVERED (async, bg PID=$!)"
   exit 0
 fi

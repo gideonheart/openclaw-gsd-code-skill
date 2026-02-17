@@ -1,6 +1,16 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Debug logging - all hook invocations log to a shared file for diagnostics
+GSD_HOOK_LOG="${GSD_HOOK_LOG:-/tmp/gsd-hooks.log}"
+HOOK_SCRIPT_NAME="$(basename "${BASH_SOURCE[0]}")"
+
+debug_log() {
+  printf '[%s] [%s] %s\n' "$(date -u +'%Y-%m-%dT%H:%M:%SZ')" "$HOOK_SCRIPT_NAME" "$*" >> "$GSD_HOOK_LOG" 2>/dev/null || true
+}
+
+debug_log "FIRED — PID=$$ TMUX=${TMUX:-<unset>}"
+
 # notification-permission-hook.sh - Claude Code Notification hook for permission_prompt events
 # Fires on permission dialogs. Captures state, sends wake message to OpenClaw agent.
 # Future-proofing: currently --dangerously-skip-permissions is used, but this enables intelligent permission handling later.
@@ -9,6 +19,7 @@ set -euo pipefail
 # 1. CONSUME STDIN IMMEDIATELY (prevent pipe blocking)
 # ============================================================================
 STDIN_JSON=$(cat)
+debug_log "stdin: ${#STDIN_JSON} bytes, hook_event_name=$(echo "$STDIN_JSON" | jq -r '.hook_event_name // "unknown"' 2>/dev/null)"
 
 # NOTE: No stop_hook_active check - permission_prompt notifications don't cause infinite loops
 # They fire once per permission dialog, and only a user action or hook response resolves them
@@ -17,6 +28,7 @@ STDIN_JSON=$(cat)
 # 2. GUARD: $TMUX environment check (non-tmux sessions exit fast)
 # ============================================================================
 if [ -z "${TMUX:-}" ]; then
+  debug_log "EXIT: TMUX env var is unset (not in tmux session)"
   exit 0
 fi
 
@@ -25,8 +37,10 @@ fi
 # ============================================================================
 SESSION_NAME=$(tmux display-message -p '#S' 2>/dev/null || echo "")
 if [ -z "$SESSION_NAME" ]; then
+  debug_log "EXIT: could not extract tmux session name"
   exit 0
 fi
+debug_log "tmux_session=$SESSION_NAME"
 
 # ============================================================================
 # 4. REGISTRY LOOKUP (jq, no Python)
@@ -35,6 +49,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REGISTRY_PATH="${SCRIPT_DIR}/../config/recovery-registry.json"
 
 if [ ! -f "$REGISTRY_PATH" ]; then
+  debug_log "EXIT: registry not found at $REGISTRY_PATH"
   exit 0
 fi
 
@@ -45,13 +60,16 @@ AGENT_DATA=$(jq -r \
   "$REGISTRY_PATH" 2>/dev/null || echo "")
 
 if [ -z "$AGENT_DATA" ] || [ "$AGENT_DATA" = "null" ]; then
+  debug_log "EXIT: no agent matched tmux_session_name=$SESSION_NAME in registry"
   exit 0  # Non-managed session, fast exit
 fi
 
 AGENT_ID=$(echo "$AGENT_DATA" | jq -r '.agent_id' 2>/dev/null || echo "")
 OPENCLAW_SESSION_ID=$(echo "$AGENT_DATA" | jq -r '.openclaw_session_id' 2>/dev/null || echo "")
+debug_log "agent_id=$AGENT_ID openclaw_session_id=$OPENCLAW_SESSION_ID"
 
 if [ -z "$AGENT_ID" ] || [ -z "$OPENCLAW_SESSION_ID" ]; then
+  debug_log "EXIT: agent_id or openclaw_session_id is empty"
   exit 0
 fi
 
@@ -91,6 +109,8 @@ elif echo "$PANE_CONTENT" | grep -Eiq 'What can I help|waiting for' 2>/dev/null;
 elif echo "$PANE_CONTENT" | grep -Ei 'error|failed|exception' 2>/dev/null | grep -v 'error handling' >/dev/null 2>&1; then
   STATE="error"
 fi
+
+debug_log "state=$STATE"
 
 # ============================================================================
 # 8. EXTRACT CONTEXT PRESSURE
@@ -143,9 +163,13 @@ menu-driver.sh ${SESSION_NAME} snapshot"
 # ============================================================================
 # 10. HYBRID MODE DELIVERY
 # ============================================================================
+debug_log "DELIVERING: mode=$HOOK_MODE session_id=$OPENCLAW_SESSION_ID"
+
 if [ "$HOOK_MODE" = "bidirectional" ]; then
   # Synchronous mode: wait for OpenClaw response
-  RESPONSE=$(openclaw agent --session-id "$OPENCLAW_SESSION_ID" --message "$WAKE_MESSAGE" --json 2>/dev/null || echo "")
+  debug_log "DELIVERING: bidirectional, waiting for response..."
+  RESPONSE=$(openclaw agent --session-id "$OPENCLAW_SESSION_ID" --message "$WAKE_MESSAGE" --json 2>&1 || echo "")
+  debug_log "RESPONSE: ${RESPONSE:0:200}"
 
   # Parse response for decision injection
   if [ -n "$RESPONSE" ]; then
@@ -160,6 +184,7 @@ if [ "$HOOK_MODE" = "bidirectional" ]; then
   exit 0
 else
   # Async mode (default): background call, exit immediately
-  openclaw agent --session-id "$OPENCLAW_SESSION_ID" --message "$WAKE_MESSAGE" >/dev/null 2>&1 &
+  openclaw agent --session-id "$OPENCLAW_SESSION_ID" --message "$WAKE_MESSAGE" >> "$GSD_HOOK_LOG" 2>&1 &
+  debug_log "DELIVERED (async, bg PID=$!)"
   exit 0
 fi
