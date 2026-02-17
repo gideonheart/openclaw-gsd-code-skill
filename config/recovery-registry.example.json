@@ -20,7 +20,7 @@
       "claude_resume_target": "",
       "claude_launch_command": "claude --dangerously-skip-permissions",
       "claude_post_launch_mode": "resume_then_agent_pick",
-      "_comment_system_prompt": "Per-agent system_prompt always appends to config/default-system-prompt.txt content, never replaces it. Empty string means use only the default system prompt.",
+      "_comment_system_prompt": "Per-agent system_prompt replaces config/default-system-prompt.txt content entirely when set. Empty string means use only the default system prompt (fallback).",
       "system_prompt": "You are Gideon, the orchestrator agent. You delegate development tasks to Warden and infrastructure tasks to Forge. You communicate with Rolands via Telegram.",
       "hook_settings": {}
     },
