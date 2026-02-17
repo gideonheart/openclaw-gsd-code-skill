@@ -30,8 +30,8 @@ Reliable, intelligent agent session lifecycle — launch, recover, and respond t
 - recover-openclaw-agents.sh — Deterministic multi-agent recovery after reboot/OOM
 - menu-driver.sh — Atomic TUI actions (snapshot, choose, enter, esc, clear_then, submit)
 - sync-recovery-registry-session-ids.sh — Refresh OpenClaw session IDs from agent directories
-- autoresponder.sh — Local heuristic-based menu responder (to be replaced)
-- hook-watcher.sh — Polling-based menu detection with OpenClaw wake (to be replaced)
+- ~~autoresponder.sh~~ — Removed in Phase 4 (replaced by event-driven hooks)
+- ~~hook-watcher.sh~~ — Removed in Phase 4 (replaced by event-driven hooks)
 - systemd timer — Auto-recovery on boot (45s delay)
 
 ### Active

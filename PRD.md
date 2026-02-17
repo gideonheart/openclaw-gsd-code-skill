@@ -233,15 +233,15 @@ Complete settings.json:
 }
 ```
 
-13. DELETE: scripts/autoresponder.sh
+13. DELETE: scripts/autoresponder.sh (COMPLETED — deleted in Phase 4)
 
 Replaced by hook system + OpenClaw agent decision-making. Polling-based menu responder (1s loop, picks option 1 blindly) is obsolete. Stop hook provides intelligent, context-aware agent control.
 
-14. DELETE: scripts/hook-watcher.sh
+14. DELETE: scripts/hook-watcher.sh (COMPLETED — deleted in Phase 4)
 
 Replaced by hook system. Polling-based menu detector (1s loop, broadcasts system events to all agents) is obsolete. Stop hook provides targeted wakes with full context.
 
-15. DELETE: ~/.claude/hooks/gsd-session-hook.sh
+15. DELETE: ~/.claude/hooks/gsd-session-hook.sh (COMPLETED — deleted in Phase 4)
 
 Only purpose was launching hook-watcher.sh. No longer needed with hook system.
 
@@ -445,7 +445,7 @@ Verification: New sessions launched with system_prompt from registry, jq queries
 
 Phase 4: Cleanup
 Goal: Remove obsolete polling scripts
-Scope: Delete scripts/autoresponder.sh, scripts/hook-watcher.sh, ~/.claude/hooks/gsd-session-hook.sh, kill existing hook-watcher processes via pkill, remove watcher state files from /tmp
+Scope: Delete scripts/autoresponder.sh, scripts/hook-watcher.sh, ~/.claude/hooks/gsd-session-hook.sh, let old processes die naturally when sessions end or on reboot (per user decision — no pkill), let /tmp files disappear naturally on reboot (per user decision — no manual cleanup)
 Impact: Zero code impact (scripts no longer launched), cleanup only
 Verification: Deleted scripts no longer exist, no background hook-watcher processes, /tmp clean
 

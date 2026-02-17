@@ -23,7 +23,7 @@ This is designed to be used from OpenClaw as a “coding skill” launcher.
 
 ## Scripts
 
-### `scripts/spawn.sh <session-name> <workdir> [--prd <path>] [--autoresponder]`
+### `scripts/spawn.sh <session-name> <workdir> [--prd <path>]`
 
 Examples:
 
@@ -39,8 +39,7 @@ Output:
 - prints a short summary including the chosen first command
 - tmux session is running in background; attach with:
   - `tmux attach -t <session-name>`
-- optional: `--autoresponder` starts local deterministic responder loop (`scripts/autoresponder.sh`) for fully local auto-navigation (no heartbeat/cron token burn)
-- default mode keeps the agent-in-the-loop; use `scripts/menu-driver.sh` as deterministic TUI helper called by the agent after hook wake events
+- Hook-driven event system handles agent control; use `scripts/menu-driver.sh` as deterministic TUI helper for agent-driven menu navigation
 
 ### `scripts/menu-driver.sh <session> <action> [args]`
 

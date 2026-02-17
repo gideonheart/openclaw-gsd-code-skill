@@ -91,8 +91,8 @@ Plans:
   1. autoresponder.sh deleted from scripts directory
   2. hook-watcher.sh deleted from scripts directory
   3. ~/.claude/hooks/gsd-session-hook.sh deleted
-  4. All existing hook-watcher processes killed via pkill
-  5. Watcher state files removed from /tmp
+  4. Old hook-watcher processes left to die naturally when sessions end or on reboot (per user decision — no pkill)
+  5. Watcher state files in /tmp left to disappear naturally on reboot (per user decision — no manual cleanup)
 **Plans**: 1 plan
 
 Plans:
