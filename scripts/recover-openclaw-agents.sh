@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-set -euo pipefail
+set -uo pipefail
 
 script_directory="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 skill_directory="$(cd "${script_directory}/.." && pwd)"
@@ -8,22 +8,23 @@ default_registry_path="${skill_directory}/config/recovery-registry.json"
 function print_usage() {
   cat <<'USAGE'
 Usage:
-  recover-openclaw-agents.sh [--registry <path>] [--dry-run] [--skip-session-id-sync]
+  recover-openclaw-agents.sh [--registry <path>] [--skip-session-id-sync]
 
 Purpose:
   Deterministically recover OpenClaw + Claude Code working agents after reboot/OOM.
 
 Behavior:
-  1) Reads agent recovery registry.
+  1) Reads agent recovery registry (jq-only, no Python dependency).
   2) Filters agents where enabled=true and auto_wake=true.
   3) Ensures tmux session exists in correct working directory.
   4) Launches Claude Code if missing in that tmux pane.
-  5) Sends deterministic wake instruction to exact OpenClaw session id.
-  6) Sends one global status summary to configured global status session.
+  5) Passes per-agent system_prompt via --append-system-prompt (fallback to default).
+  6) Sends deterministic wake instruction to exact OpenClaw session id.
+  7) Sends Telegram notification only on failures (silent on full success).
 
 Requirements:
   - tmux
-  - python3
+  - jq
   - openclaw CLI
 USAGE
 }
@@ -60,105 +61,95 @@ JSON
   log_info "created missing empty registry: ${registry_path}"
 }
 
-function parse_registry_to_json_lines() {
+function validate_registry_or_recreate() {
   local registry_path="$1"
-  python3 - "$registry_path" <<'PYTHON'
-import json
-import pathlib
-import sys
+  local global_status_openclaw_session_id="$2"
 
-registry_path = pathlib.Path(sys.argv[1])
-if not registry_path.exists():
-    raise SystemExit(f"registry file not found: {registry_path}")
+  if ! jq empty "${registry_path}" 2>/dev/null; then
+    local corrupt_backup="${registry_path}.corrupt-$(date +%s)"
+    mv "${registry_path}" "${corrupt_backup}"
+    log_info "corrupt registry backed up to: ${corrupt_backup}"
 
-registry = json.loads(registry_path.read_text())
-if not isinstance(registry, dict):
-    raise SystemExit("registry root must be an object")
+    ensure_registry_file_exists "${registry_path}"
+    log_info "created fresh registry skeleton"
 
-global_status_openclaw_session_id = registry.get("global_status_openclaw_session_id", "")
-agents = registry.get("agents")
-if not isinstance(agents, list):
-    raise SystemExit("registry.agents must be an array")
+    if [[ -n "${global_status_openclaw_session_id}" ]]; then
+      local notification_message="Registry file was corrupt and has been backed up to ${corrupt_backup}. Created fresh skeleton. Review backup if recovery state is needed."
+      openclaw agent --session-id "${global_status_openclaw_session_id}" --message "${notification_message}" >/dev/null 2>&1 &
+      log_info "sent Telegram notification about corrupt registry"
+    fi
 
-print(json.dumps({
-    "type": "global",
-    "global_status_openclaw_session_id": global_status_openclaw_session_id,
-}))
+    return 1
+  fi
 
-for index, agent in enumerate(agents):
-    if not isinstance(agent, dict):
-        raise SystemExit(f"agents[{index}] must be an object")
+  return 0
+}
 
-    enabled = bool(agent.get("enabled", False))
-    auto_wake = bool(agent.get("auto_wake", False))
-
-    if enabled and auto_wake and not agent.get("topic_id"):
-        raise SystemExit(
-            f"agents[{index}] has auto_wake=true; topic_id is required"
-        )
-
-    print(json.dumps({
-        "type": "agent",
-        "agent_index": index,
-        "agent": agent,
-    }))
-PYTHON
+function start_tmux_server_if_needed() {
+  if ! tmux list-sessions >/dev/null 2>&1; then
+    log_info "tmux server not running; starting it"
+    tmux start-server || true
+  fi
 }
 
 function ensure_tmux_session_exists() {
   local tmux_session_name="$1"
   local working_directory="$2"
-  local dry_run_enabled="$3"
 
   if tmux has-session -t "${tmux_session_name}" 2>/dev/null; then
     log_info "tmux session exists: ${tmux_session_name}"
-    echo "exists"
     return 0
   fi
 
-  if [[ "${dry_run_enabled}" == "1" ]]; then
-    log_info "DRY RUN: would create tmux session ${tmux_session_name} in ${working_directory}"
-    echo "created"
-    return 0
+  local final_session_name="${tmux_session_name}"
+  local counter=2
+
+  while tmux has-session -t "${final_session_name}" 2>/dev/null; do
+    final_session_name="${tmux_session_name}-${counter}"
+    counter=$((counter + 1))
+  done
+
+  if [[ "${final_session_name}" != "${tmux_session_name}" ]]; then
+    log_info "session name conflict; using: ${final_session_name}"
   fi
 
-  log_info "creating tmux session ${tmux_session_name} in ${working_directory}"
-  tmux new-session -d -s "${tmux_session_name}" -c "${working_directory}"
-  echo "created"
+  log_info "creating tmux session ${final_session_name} in ${working_directory}"
+  tmux new-session -d -s "${final_session_name}" -c "${working_directory}" || return 1
+
+  return 0
 }
 
 function ensure_claude_is_running_in_tmux() {
   local tmux_session_name="$1"
   local claude_launch_command="$2"
-  local dry_run_enabled="$3"
+  local system_prompt="$3"
 
   if ! tmux has-session -t "${tmux_session_name}" 2>/dev/null; then
-    if [[ "${dry_run_enabled}" == "1" ]]; then
-      log_info "DRY RUN: tmux session ${tmux_session_name} not present yet; skipping Claude process check"
-      return 0
-    fi
-    fail_with_error "tmux session missing before Claude launch check: ${tmux_session_name}"
+    log_info "tmux session missing before Claude launch check: ${tmux_session_name}"
+    return 1
   fi
 
   local pane_snapshot
-  pane_snapshot="$(tmux capture-pane -pt "${tmux_session_name}:0.0" -S -80 || true)"
+  pane_snapshot="$(tmux capture-pane -pt "${tmux_session_name}:0.0" -S -80 2>/dev/null || true)"
 
   if grep -Eiq 'Resume Session|Type to Search|/gsd:|What can I help|Claude Code' <<<"${pane_snapshot}"; then
     log_info "Claude-like TUI already detected in ${tmux_session_name}; skipping launch"
     return 0
   fi
 
-  if [[ "${dry_run_enabled}" == "1" ]]; then
-    log_info "DRY RUN: would launch Claude in ${tmux_session_name} with: ${claude_launch_command}"
-    return 0
+  local launch_command_with_prompt="${claude_launch_command}"
+  if [[ -n "${system_prompt}" ]]; then
+    local escaped_prompt
+    escaped_prompt=$(printf %q "${system_prompt}")
+    launch_command_with_prompt="${claude_launch_command} --append-system-prompt ${escaped_prompt}"
   fi
 
   log_info "launching Claude in ${tmux_session_name}"
-  tmux send-keys -t "${tmux_session_name}:0.0" "${claude_launch_command}" Enter
+  tmux send-keys -t "${tmux_session_name}:0.0" "${launch_command_with_prompt}" Enter || return 1
   sleep 2
 
   local pane_after_launch
-  pane_after_launch="$(tmux capture-pane -pt "${tmux_session_name}:0.0" -S -120 || true)"
+  pane_after_launch="$(tmux capture-pane -pt "${tmux_session_name}:0.0" -S -120 2>/dev/null || true)"
   if grep -Eiq 'Resume Session|Type to Search|/gsd:|What can I help|Claude Code' <<<"${pane_after_launch}"; then
     log_info "Claude launch confirmed in ${tmux_session_name}"
     return 0
@@ -172,18 +163,12 @@ function ensure_claude_is_running_in_tmux() {
 function send_deterministic_claude_post_launch_command() {
   local tmux_session_name="$1"
   local claude_post_launch_mode="$2"
-  local dry_run_enabled="$3"
 
   local post_launch_command="/resume"
   local expected_pattern='Resume Session|Type to Search|Enter to select'
   if [[ "${claude_post_launch_mode}" == "gsd_resume_work" ]]; then
     post_launch_command="/gsd:resume-work"
     expected_pattern='/gsd:|What can I help|Try "'
-  fi
-
-  if [[ "${dry_run_enabled}" == "1" ]]; then
-    log_info "DRY RUN: would send deterministic post-launch command in ${tmux_session_name}: ${post_launch_command}"
-    return 0
   fi
 
   local attempt="1"
@@ -197,7 +182,7 @@ function send_deterministic_claude_post_launch_command() {
     local waited="0"
     while [[ "${waited}" -lt "10" ]]; do
       local pane_snapshot
-      pane_snapshot="$(tmux capture-pane -pt "${tmux_session_name}:0.0" -S -120 || true)"
+      pane_snapshot="$(tmux capture-pane -pt "${tmux_session_name}:0.0" -S -120 2>/dev/null || true)"
       if grep -Eiq "${expected_pattern}" <<<"${pane_snapshot}"; then
         return 0
       fi
@@ -215,14 +200,8 @@ function send_deterministic_claude_post_launch_command() {
 function wait_for_agent_resume_and_apply_fallback_if_stuck() {
   local tmux_session_name="$1"
   local claude_post_launch_mode="$2"
-  local dry_run_enabled="$3"
 
   if [[ "${claude_post_launch_mode}" != "resume_then_agent_pick" ]]; then
-    return 0
-  fi
-
-  if [[ "${dry_run_enabled}" == "1" ]]; then
-    log_info "DRY RUN: would wait for resume selection progress and apply fallback if stuck in ${tmux_session_name}"
     return 0
   fi
 
@@ -231,7 +210,7 @@ function wait_for_agent_resume_and_apply_fallback_if_stuck() {
 
   while [[ "${seconds_waited}" -lt "${max_wait_seconds}" ]]; do
     local pane_snapshot
-    pane_snapshot="$(tmux capture-pane -pt "${tmux_session_name}:0.0" -S -120 || true)"
+    pane_snapshot="$(tmux capture-pane -pt "${tmux_session_name}:0.0" -S -120 2>/dev/null || true)"
 
     if ! grep -Eiq 'Resume Session|Type to Search|Enter to select' <<<"${pane_snapshot}"; then
       log_info "resume menu cleared in ${tmux_session_name}; continuing"
@@ -255,7 +234,6 @@ function send_recovery_instruction_to_openclaw_session() {
   local topic_id="$3"
   local tmux_session_name="$4"
   local claude_resume_target="$5"
-  local dry_run_enabled="$6"
 
   local menu_driver_script_path="${skill_directory}/scripts/menu-driver.sh"
 
@@ -272,43 +250,16 @@ function send_recovery_instruction_to_openclaw_session() {
   deterministic_instruction+="Step 4: if resume cannot be completed, execute fallback '/gsd:resume-work'.\n"
   deterministic_instruction+="Step 5: send one concise status update in topic ${topic_id}: restored session + next action."
 
-  if [[ "${dry_run_enabled}" == "1" ]]; then
-    log_info "DRY RUN: would wake OpenClaw session ${openclaw_session_id} for agent ${agent_id}"
-    return 0
-  fi
-
   openclaw agent \
     --session-id "${openclaw_session_id}" \
-    --message "${deterministic_instruction}" >/dev/null
+    --message "${deterministic_instruction}" >/dev/null 2>&1 || return 1
 
   log_info "wake instruction sent to OpenClaw session ${openclaw_session_id} (${agent_id})"
-}
-
-function send_global_summary() {
-  local global_status_openclaw_session_id="$1"
-  local summary_message="$2"
-  local dry_run_enabled="$3"
-
-  if [[ -z "${global_status_openclaw_session_id}" ]]; then
-    log_info "global_status_openclaw_session_id not configured; skipping global summary"
-    return 0
-  fi
-
-  if [[ "${dry_run_enabled}" == "1" ]]; then
-    log_info "DRY RUN: would send global summary to ${global_status_openclaw_session_id}"
-    return 0
-  fi
-
-  openclaw agent \
-    --session-id "${global_status_openclaw_session_id}" \
-    --message "${summary_message}" >/dev/null
-
-  log_info "global summary sent to ${global_status_openclaw_session_id}"
+  return 0
 }
 
 function main() {
   local registry_path="${default_registry_path}"
-  local dry_run_enabled="0"
   local skip_session_id_sync="0"
 
   while [[ $# -gt 0 ]]; do
@@ -316,10 +267,6 @@ function main() {
       --registry)
         registry_path="${2:-}"
         shift 2
-        ;;
-      --dry-run)
-        dry_run_enabled="1"
-        shift
         ;;
       --skip-session-id-sync)
         skip_session_id_sync="1"
@@ -335,47 +282,50 @@ function main() {
     esac
   done
 
+  require_binary jq
   require_binary tmux
-  require_binary python3
   require_binary openclaw
 
   log_info "using recovery registry: ${registry_path}"
   ensure_registry_file_exists "${registry_path}"
 
+  local global_status_openclaw_session_id=""
+  global_status_openclaw_session_id="$(jq -r '.global_status_openclaw_session_id // ""' "${registry_path}" 2>/dev/null || echo "")"
+
+  validate_registry_or_recreate "${registry_path}" "${global_status_openclaw_session_id}"
+
+  start_tmux_server_if_needed
+
   if [[ "${skip_session_id_sync}" != "1" ]]; then
     local sync_script_path="${skill_directory}/scripts/sync-recovery-registry-session-ids.sh"
     if [[ -x "${sync_script_path}" ]]; then
-      if [[ "${dry_run_enabled}" == "1" ]]; then
-        "${sync_script_path}" --registry "${registry_path}" --dry-run || true
-      else
-        "${sync_script_path}" --registry "${registry_path}" || true
-      fi
+      "${sync_script_path}" --registry "${registry_path}" || true
     else
       log_info "session id sync script not executable: ${sync_script_path}"
     fi
   fi
 
-  local global_status_openclaw_session_id=""
+  global_status_openclaw_session_id="$(jq -r '.global_status_openclaw_session_id // ""' "${registry_path}" 2>/dev/null || echo "")"
+
+  local default_system_prompt_file="${skill_directory}/config/default-system-prompt.txt"
+  local default_system_prompt=""
+  if [[ -f "${default_system_prompt_file}" ]]; then
+    default_system_prompt="$(cat "${default_system_prompt_file}")"
+  fi
+
   local restored_agent_count="0"
   local skipped_agent_count="0"
   local failed_agent_count="0"
   local restored_agent_names=()
+  local failed_agents=()
 
-  while IFS= read -r registry_line; do
-    local line_type
-    line_type="$(python3 -c 'import json,sys; print(json.loads(sys.argv[1])["type"])' "${registry_line}")"
-
-    if [[ "${line_type}" == "global" ]]; then
-      global_status_openclaw_session_id="$(python3 -c 'import json,sys; print(json.loads(sys.argv[1]).get("global_status_openclaw_session_id", ""))' "${registry_line}")"
-      continue
-    fi
-
+  while IFS= read -r agent_entry; do
     local enabled
     local auto_wake
-    enabled="$(python3 -c 'import json,sys; print("1" if json.loads(sys.argv[1])["agent"].get("enabled", False) else "0")' "${registry_line}")"
-    auto_wake="$(python3 -c 'import json,sys; print("1" if json.loads(sys.argv[1])["agent"].get("auto_wake", False) else "0")' "${registry_line}")"
+    enabled="$(echo "${agent_entry}" | jq -r '.enabled // false')"
+    auto_wake="$(echo "${agent_entry}" | jq -r '.auto_wake // false')"
 
-    if [[ "${enabled}" != "1" || "${auto_wake}" != "1" ]]; then
+    if [[ "${enabled}" != "true" || "${auto_wake}" != "true" ]]; then
       skipped_agent_count="$((skipped_agent_count + 1))"
       continue
     fi
@@ -388,52 +338,78 @@ function main() {
     local claude_resume_target
     local claude_launch_command
     local claude_post_launch_mode
+    local agent_system_prompt
 
-    agent_id="$(python3 -c 'import json,sys; print(json.loads(sys.argv[1])["agent"].get("agent_id", ""))' "${registry_line}")"
-    openclaw_session_id="$(python3 -c 'import json,sys; print(json.loads(sys.argv[1])["agent"].get("openclaw_session_id", ""))' "${registry_line}")"
-    working_directory="$(python3 -c 'import json,sys; print(json.loads(sys.argv[1])["agent"].get("working_directory", ""))' "${registry_line}")"
-    tmux_session_name="$(python3 -c 'import json,sys; print(json.loads(sys.argv[1])["agent"].get("tmux_session_name", ""))' "${registry_line}")"
-    topic_id="$(python3 -c 'import json,sys; print(json.loads(sys.argv[1])["agent"].get("topic_id", ""))' "${registry_line}")"
-    claude_resume_target="$(python3 -c 'import json,sys; print(json.loads(sys.argv[1])["agent"].get("claude_resume_target", ""))' "${registry_line}")"
-    claude_launch_command="$(python3 -c 'import json,sys; print(json.loads(sys.argv[1])["agent"].get("claude_launch_command", "claude --dangerously-skip-permissions"))' "${registry_line}")"
-    claude_post_launch_mode="$(python3 -c 'import json,sys; print(json.loads(sys.argv[1])["agent"].get("claude_post_launch_mode", "resume_then_agent_pick"))' "${registry_line}")"
+    agent_id="$(echo "${agent_entry}" | jq -r '.agent_id // ""')"
+    openclaw_session_id="$(echo "${agent_entry}" | jq -r '.openclaw_session_id // ""')"
+    working_directory="$(echo "${agent_entry}" | jq -r '.working_directory // ""')"
+    tmux_session_name="$(echo "${agent_entry}" | jq -r '.tmux_session_name // ""')"
+    topic_id="$(echo "${agent_entry}" | jq -r '.topic_id // ""')"
+    claude_resume_target="$(echo "${agent_entry}" | jq -r '.claude_resume_target // ""')"
+    claude_launch_command="$(echo "${agent_entry}" | jq -r '.claude_launch_command // "claude --dangerously-skip-permissions"')"
+    claude_post_launch_mode="$(echo "${agent_entry}" | jq -r '.claude_post_launch_mode // "resume_then_agent_pick"')"
+    agent_system_prompt="$(echo "${agent_entry}" | jq -r '.system_prompt // ""')"
 
     if [[ -z "${agent_id}" || -z "${openclaw_session_id}" || -z "${working_directory}" || -z "${tmux_session_name}" ]]; then
       log_info "agent entry missing required fields; skipping"
       failed_agent_count="$((failed_agent_count + 1))"
+      failed_agents+=("${agent_id:-unknown}: missing required fields (agent_id, openclaw_session_id, working_directory, or tmux_session_name)")
       continue
     fi
 
     if [[ "${claude_post_launch_mode}" != "resume_then_agent_pick" && "${claude_post_launch_mode}" != "gsd_resume_work" ]]; then
       log_info "invalid claude_post_launch_mode for ${agent_id}: ${claude_post_launch_mode}"
       failed_agent_count="$((failed_agent_count + 1))"
+      failed_agents+=("${agent_id}: invalid claude_post_launch_mode (${claude_post_launch_mode})")
       continue
     fi
 
     if [[ ! -d "${working_directory}" ]]; then
       log_info "working directory missing for ${agent_id}: ${working_directory}"
       failed_agent_count="$((failed_agent_count + 1))"
+      failed_agents+=("${agent_id}: working directory missing (${working_directory})")
       continue
     fi
 
-    local recovery_failed_for_agent="0"
-
-    if ! ensure_tmux_session_exists "${tmux_session_name}" "${working_directory}" "${dry_run_enabled}" >/dev/null; then
-      recovery_failed_for_agent="1"
-      log_info "failed to ensure tmux session for ${agent_id}"
+    local final_system_prompt="${default_system_prompt}"
+    if [[ -n "${agent_system_prompt}" ]]; then
+      final_system_prompt="${agent_system_prompt}"
     fi
 
-    if [[ "${recovery_failed_for_agent}" == "0" ]]; then
-      if ! ensure_claude_is_running_in_tmux "${tmux_session_name}" "${claude_launch_command}" "${dry_run_enabled}"; then
+    local recovery_failed_for_agent="0"
+    local failure_reason=""
+
+    if ! ensure_tmux_session_exists "${tmux_session_name}" "${working_directory}"; then
+      log_info "failed to ensure tmux session for ${agent_id}; retrying after 3s"
+      sleep 3
+      if ! ensure_tmux_session_exists "${tmux_session_name}" "${working_directory}"; then
         recovery_failed_for_agent="1"
-        log_info "failed to launch or detect Claude in ${tmux_session_name} for ${agent_id}"
+        failure_reason="tmux session creation failed (retry exhausted)"
+        log_info "failed to ensure tmux session for ${agent_id} after retry"
       fi
     fi
 
     if [[ "${recovery_failed_for_agent}" == "0" ]]; then
-      if ! send_deterministic_claude_post_launch_command "${tmux_session_name}" "${claude_post_launch_mode}" "${dry_run_enabled}"; then
-        recovery_failed_for_agent="1"
-        log_info "failed to send deterministic post-launch command for ${agent_id}"
+      if ! ensure_claude_is_running_in_tmux "${tmux_session_name}" "${claude_launch_command}" "${final_system_prompt}"; then
+        log_info "failed to launch or detect Claude in ${tmux_session_name} for ${agent_id}; retrying after 3s"
+        sleep 3
+        if ! ensure_claude_is_running_in_tmux "${tmux_session_name}" "${claude_launch_command}" "${final_system_prompt}"; then
+          recovery_failed_for_agent="1"
+          failure_reason="Claude launch not confirmed after retry"
+          log_info "failed to launch or detect Claude in ${tmux_session_name} for ${agent_id} after retry"
+        fi
+      fi
+    fi
+
+    if [[ "${recovery_failed_for_agent}" == "0" ]]; then
+      if ! send_deterministic_claude_post_launch_command "${tmux_session_name}" "${claude_post_launch_mode}"; then
+        log_info "failed to send deterministic post-launch command for ${agent_id}; retrying after 3s"
+        sleep 3
+        if ! send_deterministic_claude_post_launch_command "${tmux_session_name}" "${claude_post_launch_mode}"; then
+          recovery_failed_for_agent="1"
+          failure_reason="post-launch command failed (retry exhausted)"
+          log_info "failed to send deterministic post-launch command for ${agent_id} after retry"
+        fi
       fi
     fi
 
@@ -443,20 +419,29 @@ function main() {
         "${agent_id}" \
         "${topic_id}" \
         "${tmux_session_name}" \
-        "${claude_resume_target}" \
-        "${dry_run_enabled}"; then
-        recovery_failed_for_agent="1"
-        log_info "failed to send recovery instruction to OpenClaw session for ${agent_id}"
+        "${claude_resume_target}"; then
+        log_info "failed to send recovery instruction to OpenClaw session for ${agent_id}; retrying after 3s"
+        sleep 3
+        if ! send_recovery_instruction_to_openclaw_session \
+          "${openclaw_session_id}" \
+          "${agent_id}" \
+          "${topic_id}" \
+          "${tmux_session_name}" \
+          "${claude_resume_target}"; then
+          recovery_failed_for_agent="1"
+          failure_reason="OpenClaw wake instruction failed (retry exhausted)"
+          log_info "failed to send recovery instruction to OpenClaw session for ${agent_id} after retry"
+        fi
       fi
     fi
 
     if [[ "${recovery_failed_for_agent}" == "0" ]]; then
       if ! wait_for_agent_resume_and_apply_fallback_if_stuck \
         "${tmux_session_name}" \
-        "${claude_post_launch_mode}" \
-        "${dry_run_enabled}"; then
-        recovery_failed_for_agent="1"
+        "${claude_post_launch_mode}"; then
         log_info "failed while waiting for resume progress for ${agent_id}"
+        recovery_failed_for_agent="1"
+        failure_reason="resume progress wait failed"
       fi
     fi
 
@@ -465,9 +450,10 @@ function main() {
       restored_agent_names+=("${agent_id}")
     else
       failed_agent_count="$((failed_agent_count + 1))"
-      log_info "failed to recover ${agent_id}"
+      failed_agents+=("${agent_id}: ${failure_reason}")
+      log_info "failed to recover ${agent_id}: ${failure_reason}"
     fi
-  done < <(parse_registry_to_json_lines "${registry_path}")
+  done < <(jq -c '.agents[]' "${registry_path}" 2>/dev/null || echo "")
 
   local restored_agents_joined="none"
   if [[ ${#restored_agent_names[@]} -gt 0 ]]; then
@@ -478,7 +464,19 @@ function main() {
   summary_message="Deterministic recovery summary: restored=${restored_agent_count}, skipped=${skipped_agent_count}, failed=${failed_agent_count}. Restored agents: ${restored_agents_joined}."
 
   log_info "${summary_message}"
-  send_global_summary "${global_status_openclaw_session_id}" "${summary_message}" "${dry_run_enabled}"
+
+  if [[ "${failed_agent_count}" -gt 0 ]]; then
+    local failure_details
+    failure_details="Recovery failures:\n"
+    for failure in "${failed_agents[@]}"; do
+      failure_details+="- ${failure}\n"
+    done
+
+    if [[ -n "${global_status_openclaw_session_id}" ]]; then
+      openclaw agent --session-id "${global_status_openclaw_session_id}" --message "${failure_details}" >/dev/null 2>&1 &
+      log_info "sent Telegram notification about recovery failures"
+    fi
+  fi
 }
 
 main "$@"
