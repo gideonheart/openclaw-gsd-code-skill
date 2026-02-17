@@ -13,25 +13,27 @@ die() {
 usage() {
   cat <<'USAGE'
 Usage:
-  spawn.sh <session-name> <workdir> [--prd <path>] [--autoresponder] [--agent-id <id>] [--topic-id <n>] [--auto-wake <true|false>]
+  spawn.sh <agent-name> <workdir> [first-command] [--system-prompt <text-or-file>]
 
 Arguments:
-  session-name   tmux session name (use warden-/gideon- prefix if you want Warden dashboard discovery)
-  workdir        directory to start Claude Code in
+  agent-name     Agent identifier (primary key for registry lookup; also tmux session prefix)
+  workdir        Working directory for Claude Code session
+  first-command  Optional shell command to run (default: auto-detect from workdir state)
 
 Options:
-  --prd <path>                 PRD file path relative to workdir OR absolute (default: PRD.md if exists)
-  --autoresponder              Enable local GSD menu responder helper loop (off by default)
-  --agent-id <id>              Agent id for recovery registry upsert (default: derived from session-name prefix before first '-')
-  --topic-id <n>               Topic id to store in recovery registry (default: 1)
-  --auto-wake <true|false>     Auto wake value for recovery registry entry (default: true)
+  --system-prompt <value>   Override system prompt (auto-detects file path vs inline text)
 
-Behavior (first command selection):
-  - If repo is non-empty and CLAUDE.md missing -> /init
-  - Else if .planning/ exists -> /gsd:resume-work
-  - Else if PRD exists -> /gsd:new-project @<PRD>
-  - Else -> /gsd:help
+Examples:
+  spawn.sh gideon /home/forge/.openclaw/workspace
+  spawn.sh warden /home/forge/project "/gsd:resume-work"
+  spawn.sh test-agent /tmp/test "claude --dangerously-skip-permissions" --system-prompt "Custom prompt"
+  spawn.sh gideon /workspace --system-prompt /path/to/prompt.txt
 
+Behavior:
+  - Unknown agents are auto-created in registry with sensible defaults
+  - System prompt composition: CLI override > registry agent prompt > default file
+  - First command auto-detection: /init, /gsd:resume-work, /gsd:new-project @PRD, or /gsd:help
+  - Tmux session name conflicts resolved with -2 suffix
 USAGE
 }
 
@@ -39,30 +41,19 @@ require_bin() {
   command -v "$1" >/dev/null 2>&1 || die "Missing required binary: $1"
 }
 
-derive_agent_id_from_session_name() {
-  local session_name="$1"
-  local derived_agent_id="${session_name%%-*}"
-  if [ -z "$derived_agent_id" ] || [ "$derived_agent_id" = "$session_name" ]; then
-    echo "$session_name"
-  else
-    echo "$derived_agent_id"
-  fi
+resolve_skill_root_directory() {
+  cd "$(dirname "$0")/.." && pwd
 }
 
-upsert_recovery_registry_entry() {
-  local agent_id="$1"
-  local topic_id="$2"
-  local auto_wake_value="$3"
-  local working_directory="$4"
-  local tmux_session_name="$5"
+ensure_registry_exists() {
+  local registry_file_path="$1"
+  local registry_directory
+  registry_directory="$(dirname "$registry_file_path")"
 
-  local skill_root_directory
-  skill_root_directory="$(cd "$(dirname "$0")/.." && pwd)"
-  local registry_file_path="${skill_root_directory}/config/recovery-registry.json"
+  mkdir -p "$registry_directory"
 
-  mkdir -p "${skill_root_directory}/config"
-  if [ ! -f "${registry_file_path}" ]; then
-    cat > "${registry_file_path}" <<'JSON'
+  if [ ! -f "$registry_file_path" ]; then
+    cat > "$registry_file_path" <<'JSON'
 {
   "global_status_openclaw_session_id": "",
   "global_status_openclaw_session_key": "",
@@ -71,98 +62,123 @@ upsert_recovery_registry_entry() {
 JSON
     log "Created recovery registry: ${registry_file_path}"
   fi
+}
 
-  python3 - "${registry_file_path}" "${agent_id}" "${topic_id}" "${auto_wake_value}" "${working_directory}" "${tmux_session_name}" <<'PYTHON'
-import json
-import pathlib
-import re
-import sys
+validate_registry_json() {
+  local registry_file_path="$1"
 
-registry_file_path = pathlib.Path(sys.argv[1])
-agent_id = sys.argv[2]
-topic_id = int(sys.argv[3])
-auto_wake_value = sys.argv[4].lower() == "true"
-working_directory = sys.argv[5]
-tmux_session_name = sys.argv[6]
+  if ! jq empty "$registry_file_path" >/dev/null 2>&1; then
+    local corrupt_backup="${registry_file_path}.corrupt-$(date +%s)"
+    mv "$registry_file_path" "$corrupt_backup"
+    log "WARN: Corrupt registry backed up to ${corrupt_backup}"
 
-registry = json.loads(registry_file_path.read_text())
-if not isinstance(registry, dict):
-    registry = {}
+    cat > "$registry_file_path" <<'JSON'
+{
+  "global_status_openclaw_session_id": "",
+  "global_status_openclaw_session_key": "",
+  "agents": []
+}
+JSON
+    log "Created fresh registry: ${registry_file_path}"
+  fi
+}
 
-registry.setdefault("global_status_openclaw_session_id", "")
-registry.setdefault("global_status_openclaw_session_key", "")
-registry.setdefault("agents", [])
+read_agent_entry_from_registry() {
+  local registry_file_path="$1"
+  local agent_name="$2"
 
-if not isinstance(registry["agents"], list):
-    registry["agents"] = []
+  jq -c --arg agent_id "$agent_name" \
+    '.agents[] | select(.agent_id == $agent_id)' \
+    "$registry_file_path" 2>/dev/null || echo ""
+}
 
-sessions_index_path = pathlib.Path(f"/home/forge/.openclaw/agents/{agent_id}/sessions/sessions.json")
-selected_session_id = ""
-selected_key = ""
-selected_updated_at = -1
-if sessions_index_path.exists():
-    try:
-        sessions_index = json.loads(sessions_index_path.read_text())
-        if isinstance(sessions_index, dict):
-            pattern = re.compile(rf"^agent:{re.escape(agent_id)}:openai:")
-            for session_key, session_record in sessions_index.items():
-                if not pattern.match(session_key):
-                    continue
-                if not isinstance(session_record, dict):
-                    continue
-                session_id = session_record.get("sessionId")
-                updated_at = session_record.get("updatedAt")
-                if not session_id or not isinstance(updated_at, (int, float)):
-                    continue
-                if int(updated_at) > selected_updated_at:
-                    selected_updated_at = int(updated_at)
-                    selected_session_id = str(session_id)
-                    selected_key = session_key
-    except Exception:
-        pass
+upsert_agent_entry_in_registry() {
+  local registry_file_path="$1"
+  local agent_name="$2"
+  local working_directory="$3"
+  local tmux_session_name="$4"
 
-matching_entry = None
-for entry in registry["agents"]:
-    if isinstance(entry, dict) and entry.get("agent_id") == agent_id:
-        matching_entry = entry
-        break
+  local tmp_file="${registry_file_path}.tmp"
 
-if matching_entry is None:
-    matching_entry = {"agent_id": agent_id}
-    registry["agents"].append(matching_entry)
+  jq --arg agent_id "$agent_name" \
+     --arg workdir "$working_directory" \
+     --arg session_name "$tmux_session_name" \
+     '
+  if (.agents | map(.agent_id) | index($agent_id)) then
+    .agents |= map(
+      if .agent_id == $agent_id then
+        . + {
+          "working_directory": $workdir,
+          "tmux_session_name": $session_name
+        }
+      else . end
+    )
+  else
+    .agents += [{
+      "agent_id": $agent_id,
+      "enabled": true,
+      "auto_wake": true,
+      "topic_id": 1,
+      "openclaw_session_id": "",
+      "working_directory": $workdir,
+      "tmux_session_name": $session_name,
+      "claude_resume_target": "",
+      "claude_launch_command": "claude --dangerously-skip-permissions",
+      "claude_post_launch_mode": "resume_then_agent_pick",
+      "system_prompt": "",
+      "hook_settings": {}
+    }]
+  end
+' "$registry_file_path" > "$tmp_file"
 
-matching_entry["enabled"] = True
-matching_entry["auto_wake"] = auto_wake_value
-matching_entry["topic_id"] = topic_id
-matching_entry["working_directory"] = working_directory
-matching_entry["tmux_session_name"] = tmux_session_name
-matching_entry.setdefault("claude_resume_target", "")
-matching_entry.setdefault("claude_launch_command", "claude --dangerously-skip-permissions")
-matching_entry.setdefault("claude_post_launch_mode", "resume_then_agent_pick")
-if selected_session_id:
-    matching_entry["openclaw_session_id"] = selected_session_id
-else:
-    matching_entry.setdefault("openclaw_session_id", "")
+  mv "$tmp_file" "$registry_file_path"
+}
 
-registry_file_path.write_text(json.dumps(registry, indent=2) + "\n")
+compose_system_prompt() {
+  local registry_file_path="$1"
+  local agent_name="$2"
+  local cli_override_prompt="$3"
+  local default_prompt_file_path="$4"
 
-print(f"RECOVERY_REGISTRY_UPSERT agent={agent_id} openclaw_session_id={matching_entry.get('openclaw_session_id','')} source={selected_key or '<none>'}")
-PYTHON
+  # Priority 1: CLI override (if provided)
+  if [ -n "$cli_override_prompt" ]; then
+    echo "$cli_override_prompt"
+    return 0
+  fi
+
+  # Priority 2: Agent-specific prompt from registry
+  local agent_prompt
+  agent_prompt=$(jq -r --arg agent_id "$agent_name" \
+    '.agents[] | select(.agent_id == $agent_id) | .system_prompt // ""' \
+    "$registry_file_path" 2>/dev/null || echo "")
+
+  if [ -n "$agent_prompt" ]; then
+    echo "$agent_prompt"
+    return 0
+  fi
+
+  # Priority 3: Default prompt file
+  if [ -f "$default_prompt_file_path" ]; then
+    cat "$default_prompt_file_path"
+    return 0
+  fi
+
+  # Fallback: empty string (no system prompt)
+  echo ""
 }
 
 is_non_empty_project() {
-  # "Non-empty" heuristic:
-  # - any git commit exists OR
-  # - there is at least one non-dot file/dir in the top-level
-  local wd="$1"
-  if [ -d "$wd/.git" ] && git -C "$wd" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
-    if git -C "$wd" rev-parse --verify HEAD >/dev/null 2>&1; then
+  local working_directory="$1"
+
+  # Check if git repo with commits
+  if [ -d "$working_directory/.git" ] && git -C "$working_directory" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+    if git -C "$working_directory" rev-parse --verify HEAD >/dev/null 2>&1; then
       return 0
     fi
   fi
 
-  # Fallback: any visible entry
-  if find "$wd" -mindepth 1 -maxdepth 1 -not -name '.*' -print -quit | grep -q .; then
+  # Check for any visible files/directories
+  if find "$working_directory" -mindepth 1 -maxdepth 1 -not -name '.*' -print -quit | grep -q .; then
     return 0
   fi
 
@@ -170,44 +186,64 @@ is_non_empty_project() {
 }
 
 choose_first_cmd() {
-  local wd="$1"
-  local prd="$2"
+  local working_directory="$1"
 
-  local claude_md="$wd/CLAUDE.md"
-  local planning_dir="$wd/.planning"
+  local claude_md="${working_directory}/CLAUDE.md"
+  local planning_directory="${working_directory}/.planning"
+  local prd_file="${working_directory}/PRD.md"
 
-  if is_non_empty_project "$wd" && [ ! -f "$claude_md" ]; then
+  # Non-empty project without CLAUDE.md -> /init
+  if is_non_empty_project "$working_directory" && [ ! -f "$claude_md" ]; then
     echo "/init"
     return 0
   fi
 
-  if [ -d "$planning_dir" ]; then
+  # Has .planning directory -> /gsd:resume-work
+  if [ -d "$planning_directory" ]; then
     echo "/gsd:resume-work"
     return 0
   fi
 
-  if [ -n "$prd" ]; then
-    # keep @ relative if possible
-    local prd_display="$prd"
-    if [[ "$prd" = "$wd"/* ]]; then
-      prd_display="${prd#"$wd"/}"
-    fi
-    echo "/gsd:new-project @${prd_display}"
+  # Has PRD.md -> /gsd:new-project @PRD.md
+  if [ -f "$prd_file" ]; then
+    echo "/gsd:new-project @PRD.md"
     return 0
   fi
 
+  # Default: /gsd:help
   echo "/gsd:help"
 }
 
-strict_prompt() {
-  cat <<'PROMPT'
-STRICT OUTPUT MODE:
-You MUST output ONLY a single slash-command per message.
-Use /gsd:* commands from https://github.com/gsd-build/get-shit-done exclusively for all work.
-You MAY output non-gsd slash commands only when required to operate the session (allowed: /init, /clear, /resume, /resume-work, /pause-work).
-ABSOLUTELY NO other text, explanations, bash commands, or code blocks.
-If uncertain, output /gsd:help.
-PROMPT
+resolve_tmux_session_name() {
+  local base_session_name="$1"
+  local session_name="$base_session_name"
+  local counter=2
+
+  while tmux has-session -t "$session_name" 2>/dev/null; do
+    session_name="${base_session_name}-${counter}"
+    counter=$((counter + 1))
+  done
+
+  echo "$session_name"
+}
+
+start_tmux_server_if_needed() {
+  if ! tmux info >/dev/null 2>&1; then
+    log "Starting tmux server"
+    tmux start-server
+  fi
+}
+
+log_git_preflight_info() {
+  local working_directory="$1"
+
+  if [ -d "$working_directory/.git" ] && git -C "$working_directory" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+    log "git: $(git -C "$working_directory" branch --show-current 2>/dev/null || echo '<detached>')"
+    log "git recent:"
+    git -C "$working_directory" --no-pager log -n 5 --oneline --decorate 2>/dev/null | sed 's/^/  /' || true
+  else
+    log "git: (not a git repo)"
+  fi
 }
 
 main() {
@@ -216,128 +252,134 @@ main() {
     exit 0
   fi
 
-  local session_name="${1:-}"
+  # Positional arguments
+  local agent_name="${1:-}"
   local workdir="${2:-}"
-  shift 2 || true
+  local explicit_first_command="${3:-}"
+  shift 3 2>/dev/null || shift $# 2>/dev/null || true
 
-  [ -n "$session_name" ] || { usage; die "Missing <session-name>"; }
+  # Validate required arguments
+  [ -n "$agent_name" ] || { usage; die "Missing <agent-name>"; }
   [ -n "$workdir" ] || { usage; die "Missing <workdir>"; }
   [ -d "$workdir" ] || die "workdir does not exist: $workdir"
 
-  require_bin tmux
-  require_bin git
-  require_bin claude
-
-  local prd_path=""
-  local enable_autoresponder="0"
-  local configured_agent_id=""
-  local configured_topic_id="1"
-  local configured_auto_wake="true"
+  # Parse optional flags
+  local cli_override_prompt=""
   while [ $# -gt 0 ]; do
     case "$1" in
-      --prd)
-        prd_path="${2:-}"; shift 2 || true
-        ;;
-      --autoresponder)
-        enable_autoresponder="1"; shift
-        ;;
-      --agent-id)
-        configured_agent_id="${2:-}"; shift 2 || true
-        ;;
-      --topic-id)
-        configured_topic_id="${2:-}"; shift 2 || true
-        ;;
-      --auto-wake)
-        configured_auto_wake="${2:-}"; shift 2 || true
+      --system-prompt)
+        local prompt_value="${2:-}"
+        [ -n "$prompt_value" ] || die "--system-prompt requires a value"
+
+        # Auto-detect: file path vs inline text
+        if [ -f "$prompt_value" ]; then
+          cli_override_prompt="$(cat "$prompt_value")"
+        else
+          cli_override_prompt="$prompt_value"
+        fi
+        shift 2
         ;;
       *)
         usage
-        die "Unknown arg: $1"
+        die "Unknown argument: $1"
         ;;
     esac
   done
 
-  [[ "$configured_topic_id" =~ ^[0-9]+$ ]] || die "--topic-id must be numeric"
-  [[ "$configured_auto_wake" =~ ^(true|false)$ ]] || die "--auto-wake must be true or false"
+  # Startup checks
+  require_bin jq
+  require_bin tmux
+  require_bin git
+  require_bin claude
 
-  # Resolve PRD
-  if [ -z "$prd_path" ]; then
-    if [ -f "$workdir/PRD.md" ]; then
-      prd_path="$workdir/PRD.md"
+  # Resolve paths
+  local skill_root_directory
+  skill_root_directory="$(resolve_skill_root_directory)"
+  local registry_file_path="${skill_root_directory}/config/recovery-registry.json"
+  local default_prompt_file_path="${skill_root_directory}/config/default-system-prompt.txt"
+
+  # Ensure registry exists and is valid JSON
+  ensure_registry_exists "$registry_file_path"
+  validate_registry_json "$registry_file_path"
+
+  # Read agent entry (if exists)
+  local agent_entry
+  agent_entry="$(read_agent_entry_from_registry "$registry_file_path" "$agent_name")"
+
+  # Determine working directory (use registry value if agent exists and CLI arg not provided)
+  local effective_workdir="$workdir"
+  if [ -n "$agent_entry" ]; then
+    local registry_workdir
+    registry_workdir="$(echo "$agent_entry" | jq -r '.working_directory // ""')"
+    if [ -n "$registry_workdir" ] && [ "$workdir" = "$registry_workdir" ]; then
+      effective_workdir="$registry_workdir"
     fi
-  else
-    if [[ "$prd_path" != /* ]]; then
-      prd_path="$workdir/$prd_path"
-    fi
-    [ -f "$prd_path" ] || die "PRD file not found: $prd_path"
   fi
 
-  local first_cmd
-  first_cmd="$(choose_first_cmd "$workdir" "$prd_path")"
-
-  # Preflight info (deterministic)
-  if [ -d "$workdir/.git" ] && git -C "$workdir" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
-    log "git: $(git -C "$workdir" branch --show-current 2>/dev/null || true)"
-    log "git recent:"
-    git -C "$workdir" --no-pager log -n 5 --oneline --decorate 2>/dev/null | sed 's/^/  /' || true
-  else
-    log "git: (not a git repo)"
+  # Determine tmux session name
+  local base_session_name="${agent_name}-main"
+  if [ -n "$agent_entry" ]; then
+    base_session_name="$(echo "$agent_entry" | jq -r '.tmux_session_name // ""')"
+    [ -n "$base_session_name" ] || base_session_name="${agent_name}-main"
   fi
 
-  # Start tmux session
-  if tmux has-session -t "$session_name" 2>/dev/null; then
-    die "tmux session already exists: $session_name"
+  local actual_session_name
+  actual_session_name="$(resolve_tmux_session_name "$base_session_name")"
+
+  if [ "$actual_session_name" != "$base_session_name" ]; then
+    log "Session name conflict resolved: ${base_session_name} -> ${actual_session_name}"
   fi
 
-  log "Starting tmux session: $session_name (cwd=$workdir)"
-  tmux new-session -d -s "$session_name" -c "$workdir"
+  # Compose system prompt (CLI override > agent prompt > default file)
+  local final_system_prompt
+  final_system_prompt="$(compose_system_prompt "$registry_file_path" "$agent_name" "$cli_override_prompt" "$default_prompt_file_path")"
 
-  # Build claude command with strict prompt.
-  # Use printf %q to safely escape the prompt for shell.
-  local sp
-  sp="$(strict_prompt)"
+  # Determine first command
+  local first_command="$explicit_first_command"
+  if [ -z "$first_command" ]; then
+    first_command="$(choose_first_cmd "$effective_workdir")"
+  fi
 
-  # We pass the prompt as a single argument by shell-quoting it.
-  # shellcheck disable=SC2086
-  local claude_cmd
-  claude_cmd="claude --dangerously-skip-permissions --append-system-prompt $(printf %q "$sp")"
+  # Log preflight info
+  log_git_preflight_info "$effective_workdir"
 
+  # Start tmux server if needed
+  start_tmux_server_if_needed
+
+  # Create tmux session
+  log "Starting tmux session: ${actual_session_name} (cwd=${effective_workdir})"
+  tmux new-session -d -s "$actual_session_name" -c "$effective_workdir"
+
+  # Read Claude launch command from registry (or use default)
+  local claude_launch_command="claude --dangerously-skip-permissions"
+  if [ -n "$agent_entry" ]; then
+    local registry_launch_cmd
+    registry_launch_cmd="$(echo "$agent_entry" | jq -r '.claude_launch_command // ""')"
+    [ -n "$registry_launch_cmd" ] && claude_launch_command="$registry_launch_cmd"
+  fi
+
+  # Build Claude command with system prompt
+  local full_claude_command="$claude_launch_command"
+  if [ -n "$final_system_prompt" ]; then
+    full_claude_command="${claude_launch_command} --append-system-prompt $(printf %q "$final_system_prompt")"
+  fi
+
+  # Launch Claude Code in tmux
   log "Launching Claude Code in tmux"
-  tmux send-keys -t "$session_name:0.0" "$claude_cmd" Enter
+  tmux send-keys -t "${actual_session_name}:0.0" "$full_claude_command" Enter
 
-  # Give the TUI a moment to come up
+  # Wait for TUI startup
   sleep 1
 
-  log "First command => $first_cmd"
-  tmux send-keys -t "$session_name:0.0" -l -- "$first_cmd"
-  tmux send-keys -t "$session_name:0.0" Enter
+  # Send first command
+  log "First command => $first_command"
+  tmux send-keys -t "${actual_session_name}:0.0" -l -- "$first_command"
+  tmux send-keys -t "${actual_session_name}:0.0" Enter
 
-  if [ "$enable_autoresponder" = "1" ]; then
-    local responder="$PWD/skills/gsd-code-skill/scripts/autoresponder.sh"
-    if [ ! -x "$responder" ]; then
-      responder="$(cd "$(dirname "$0")" && pwd)/autoresponder.sh"
-    fi
-    if [ -x "$responder" ]; then
-      log "Starting local autoresponder hook for session: $session_name"
-      nohup "$responder" "$session_name" >/tmp/gsd-autoresponder-${session_name}.log 2>&1 &
-    else
-      log "WARN: autoresponder script not found/executable: $responder"
-    fi
-  fi
+  # Update registry with actual session name
+  upsert_agent_entry_in_registry "$registry_file_path" "$agent_name" "$effective_workdir" "$actual_session_name"
 
-  local effective_agent_id="$configured_agent_id"
-  if [ -z "$effective_agent_id" ]; then
-    effective_agent_id="$(derive_agent_id_from_session_name "$session_name")"
-  fi
-
-  upsert_recovery_registry_entry \
-    "$effective_agent_id" \
-    "$configured_topic_id" \
-    "$configured_auto_wake" \
-    "$workdir" \
-    "$session_name"
-
-  log "Attach: tmux attach -t $session_name"
+  log "Attach: tmux attach -t $actual_session_name"
 }
 
 main "$@"
