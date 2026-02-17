@@ -93,10 +93,10 @@ Plans:
   3. ~/.claude/hooks/gsd-session-hook.sh deleted
   4. All existing hook-watcher processes killed via pkill
   5. Watcher state files removed from /tmp
-**Plans**: TBD
+**Plans**: 1 plan
 
 Plans:
-- [ ] 04-01: TBD
+- [ ] 04-01-PLAN.md -- Delete obsolete polling scripts and fix dangling references in active documentation
 
 ### Phase 5: Documentation
 **Goal**: Update skill documentation to reflect new hook architecture, all hook scripts, hybrid mode, hook_settings, and system_prompt configuration
