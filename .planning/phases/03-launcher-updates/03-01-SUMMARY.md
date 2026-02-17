@@ -16,10 +16,7 @@ dependency_graph:
   requires:
     - Phase 01 (recovery-registry.json schema with system_prompt field)
     - Phase 01 (default-system-prompt.txt)
-  provides:
-    - Registry-driven spawn.sh with jq-only operations
-    - Agent-name as primary key with auto-create behavior
-    - System prompt composition (CLI > registry > default)
+  provides: [SPAWN-01, SPAWN-02, SPAWN-03, SPAWN-04, SPAWN-05]
   affects:
     - All scripts that launch Claude Code sessions
     - recover-openclaw-agents.sh (will need similar jq conversion in Phase 03 Plan 02)

@@ -8,10 +8,7 @@ one_liner: "Comprehensive admin README with pre-flight checklist, annotated regi
 dependency_graph:
   requires:
     - DOCS-02
-  provides:
-    - Admin setup documentation
-    - Registry schema reference
-    - Operational verification procedures
+  provides: [DOCS-02]
   affects:
     - README.md
 

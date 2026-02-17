@@ -7,11 +7,7 @@ dependency_graph:
   requires:
     - RECOVER-01
     - RECOVER-02
-  provides:
-    - jq-only registry operations in recovery script
-    - per-agent system prompt support via --append-system-prompt
-    - failure-only Telegram notifications
-    - retry-with-delay error handling
+  provides: [RECOVER-01, RECOVER-02]
   affects:
     - scripts/recover-openclaw-agents.sh
 tech_stack:

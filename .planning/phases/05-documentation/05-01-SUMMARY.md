@@ -5,7 +5,7 @@ subsystem: documentation
 tags: [agent-docs, progressive-disclosure, hook-specs, script-inventory]
 dependency_graph:
   requires: [DOCS-01]
-  provides: [DOCS-02]
+  provides: [DOCS-01]
   affects: []
 tech_stack:
   added: []

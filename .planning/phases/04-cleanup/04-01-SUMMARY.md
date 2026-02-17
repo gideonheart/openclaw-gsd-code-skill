@@ -5,7 +5,7 @@ subsystem: cleanup
 tags: [cleanup, documentation, deletion]
 dependency_graph:
   requires: []
-  provides: [clean-codebase, no-obsolete-scripts, no-stale-references]
+  provides: [CLEAN-01, CLEAN-02, CLEAN-03]
   affects: [scripts, documentation]
 tech_stack:
   added: []
