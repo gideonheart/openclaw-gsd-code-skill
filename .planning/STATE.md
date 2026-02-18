@@ -12,7 +12,7 @@ See: .planning/PROJECT.md (updated 2026-02-18)
 Phase: 11 of 11 (Operational Hardening) -- COMPLETE
 Plan: 2/2 — complete
 Status: v3.0 Structured Hook Observability milestone COMPLETE. All phases 8-11 shipped.
-Last activity: 2026-02-18 — Completed quick task 7: Create install.sh single entry point installer
+Last activity: 2026-02-18 — Completed quick task 8: Remove logrotate dependency and update all docs
 
 Progress: [██████████] 100% (v3.0 Phases 8-11)
 
@@ -96,6 +96,7 @@ None.
 | 5 | Move GSD hook logs from /tmp to skill-local logs/ with per-session files | 2026-02-18 | c9b74c3 | [5-move-gsd-hook-logs-from-tmp-to-skill-loc](./quick/5-move-gsd-hook-logs-from-tmp-to-skill-loc/) |
 | 6 | Update SKILL.md, README.md, docs/hooks.md for Phase 10-11 additions | 2026-02-18 | 9cb9b76 | [6-update-docs-skill-md-readme-md-docs-hook](./quick/6-update-docs-skill-md-readme-md-docs-hook/) |
 | 7 | Create install.sh single entry point installer | 2026-02-18 | 27cbed1 | [7-create-install-sh-single-entry-point-to-](./quick/7-create-install-sh-single-entry-point-to-/) |
+| 8 | Remove logrotate dependency and update all docs | 2026-02-18 | a280418 | [8-remove-logrotate-dependency-and-update-a](./quick/8-remove-logrotate-dependency-and-update-a/) |
 
 ### Quick Task Decisions
 
@@ -105,8 +106,10 @@ Quick-6 (2026-02-18): Fixed stale /tmp reference in docs/hooks.md pane diff fall
 
 Quick-7 (2026-02-18): Logrotate failure non-critical (warns and continues). Diagnostics optional via agent-name argument.
 
+Quick-8 (2026-02-18): Removed logrotate entirely — user-space skill should not require sudo/root system config. install.sh reduced to 5 steps: pre-flight, logs dir, hooks, diagnostics, banner.
+
 ## Session Continuity
 
 Last session: 2026-02-18
-Stopped at: Completed Quick Task 7 (Create install.sh single entry point installer)
+Stopped at: Completed Quick Task 8 (Remove logrotate dependency and update all docs)
 Resume file: None
