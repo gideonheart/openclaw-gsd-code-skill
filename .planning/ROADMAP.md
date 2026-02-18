@@ -177,9 +177,9 @@ Plans:
 **Plans**: 3 plans
 
 Plans:
-- [ ] 09-01-PLAN.md -- Migrate simple hooks: notification-idle, notification-permission, session-end
-- [ ] 09-02-PLAN.md -- Migrate medium hooks: pre-tool-use (ASK-04), pre-compact (bidirectional)
-- [ ] 09-03-PLAN.md -- Migrate stop-hook.sh (bidirectional, dynamic content_source)
+- [x] 09-01-PLAN.md -- Migrate simple hooks: notification-idle, notification-permission, session-end
+- [x] 09-02-PLAN.md -- Migrate medium hooks: pre-tool-use (ASK-04), pre-compact (bidirectional)
+- [x] 09-03-PLAN.md -- Migrate stop-hook.sh (bidirectional, dynamic content_source)
 
 ### Phase 10: AskUserQuestion Lifecycle Completion
 **Goal**: Full question-to-answer audit trail — see what OpenClaw received, what it decided, and how it controlled the TUI
@@ -251,6 +251,6 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 6. Core Extraction and Delivery Engine | v2.0 | 3/3 | Complete | 2026-02-18 |
 | 7. Registration, Deployment, and Documentation | v2.0 | 2/2 | Complete | 2026-02-18 |
 | 8. JSONL Logging Foundation | v3.0 | 2/2 | Complete | 2026-02-18 |
-| 9. Hook Script Migration | v3.0 | 0/? | Pending | — |
+| 9. Hook Script Migration | v3.0 | 3/3 | Complete | 2026-02-18 |
 | 10. AskUserQuestion Lifecycle Completion | v3.0 | 0/? | Pending | — |
 | 11. Operational Hardening | v3.0 | 0/? | Pending | — |

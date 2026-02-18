@@ -9,17 +9,17 @@ See: .planning/PROJECT.md (updated 2026-02-18)
 
 ## Current Position
 
-Phase: 9 of 11 (Hook Script Migration)
+Phase: 10 of 11 (AskUserQuestion Lifecycle Completion)
 Plan: 0/? — not yet planned
-Status: Phase 8 complete. Ready for `/gsd:plan-phase 9`
-Last activity: 2026-02-18 — Phase 8 JSONL Logging Foundation shipped (2/2 plans)
+Status: Phase 9 complete. Ready for `/gsd:plan-phase 10`
+Last activity: 2026-02-18 — Phase 9 Hook Script Migration shipped (3/3 plans)
 
-Progress: [██░░░░░░░░] 25% (v3.0 Phases 8-11)
+Progress: [█████░░░░░] 50% (v3.0 Phases 8-11)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 16 (v1.0 phases 1-5 + v2.0 phases 6-7 + v3.0 phase 8)
+- Total plans completed: 19 (v1.0 phases 1-5 + v2.0 phases 6-7 + v3.0 phases 8-9)
 - Average duration: —
 - Total execution time: —
 
@@ -31,6 +31,7 @@ Progress: [██░░░░░░░░] 25% (v3.0 Phases 8-11)
 | 6 (v2.0) | 3 | ~9 min | ~3 min |
 | 7 (v2.0) | 2 | ~7 min | ~3.5 min |
 | 8 (v3.0) | 2 | ~6 min | ~3 min |
+| 9 (v3.0) | 3 | ~8 min | ~2.7 min |
 
 *Updated after each plan completion*
 
@@ -58,6 +59,13 @@ Phase 8 decisions (confirmed and shipped):
 - deliver_async_with_logging() backgrounds subshell with </dev/null — hook exits immediately
 - lib/hook-utils.sh now has 6 functions: 4 original + write_hook_event_record + deliver_async_with_logging
 
+Phase 9 decisions (confirmed and shipped):
+- Option A for ASK-04: dedicated extra_fields_json parameter (13th) for write_hook_event_record, not wake_message reuse
+- All 6 hooks source lib/hook-utils.sh at top of script before any guard exit
+- HOOK_ENTRY_MS placed after STDIN_JSON=$(cat) — measures processing time, not startup
+- Bidirectional branches use write_hook_event_record() directly with outcome=sync_delivered
+- Plain-text debug_log preserved in parallel — JSONL is additive, not replacing
+
 ### Pending Todos
 
 None.
@@ -80,5 +88,5 @@ Quick-5 (2026-02-18): Two-phase logging — hooks.log shared until SESSION_NAME 
 ## Session Continuity
 
 Last session: 2026-02-18
-Stopped at: Phase 8 complete, ready to plan Phase 9 (Hook Script Migration)
+Stopped at: Phase 9 complete, ready to plan Phase 10 (AskUserQuestion Lifecycle Completion)
 Resume file: None
