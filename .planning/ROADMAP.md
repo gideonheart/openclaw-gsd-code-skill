@@ -262,7 +262,10 @@ Plans:
   3. extract_hook_settings() in lib/hook-utils.sh accepts registry_path and agent_data_json, sets PANE_CAPTURE_LINES, CONTEXT_PRESSURE_THRESHOLD, and HOOK_MODE in caller scope with three-tier fallback (per-agent > global > hardcoded defaults)
   4. detect_session_state() in lib/hook-utils.sh returns consistent state names across all hook event types using case-insensitive extended regex patterns
   5. Sourcing lib/hook-preamble.sh from a test caller makes all lib/hook-utils.sh functions callable without any additional source statement
-**Plans**: TBD
+**Plans**: 1 plan
+
+Plans:
+- [ ] 12-01-PLAN.md -- Create hook-preamble.sh, add extract_hook_settings() and detect_session_state() to hook-utils.sh, verify integration
 
 ### Phase 13: Coordinated Hook Migration
 **Goal**: All 7 hook scripts are thinned and consistent — one source statement replaces the 27-line preamble block, four hooks call extract_hook_settings() instead of duplicating the 12-line settings block, three hooks use [CONTENT] label, all hooks use printf '%s' for jq piping, and session-end jq guards are in place
@@ -304,6 +307,6 @@ Phase 14 depends on Phase 12 (not Phase 13) — can run in parallel with Phase 1
 | 9. Hook Script Migration | v3.0 | 3/3 | Complete | 2026-02-18 |
 | 10. AskUserQuestion Lifecycle Completion | v3.0 | 1/1 | Complete | 2026-02-18 |
 | 11. Operational Hardening | v3.0 | 2/2 | Complete | 2026-02-18 |
-| 12. Shared Library Foundation | v3.1 | 0/TBD | Not started | - |
+| 12. Shared Library Foundation | v3.1 | 0/1 | Planned | - |
 | 13. Coordinated Hook Migration | v3.1 | 0/TBD | Not started | - |
 | 14. Diagnostic Fixes | v3.1 | 0/TBD | Not started | - |
