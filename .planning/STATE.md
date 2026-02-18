@@ -5,21 +5,21 @@
 See: .planning/PROJECT.md (updated 2026-02-18)
 
 **Core value:** Reliable, intelligent agent session lifecycle — launch, recover, and respond without human intervention
-**Current focus:** Phase 7 — Registration, Deployment, and Documentation (v2.0)
+**Current focus:** v2.0 milestone complete
 
 ## Current Position
 
 Phase: 7 of 7 (Registration, Deployment, and Documentation)
-Plan: 0 of TBD in current phase
-Status: Ready to plan
-Last activity: 2026-02-18 — Phase 6 complete, transitioning to Phase 7
+Plan: 2 of 2 in current phase
+Status: Complete
+Last activity: 2026-02-18 — Phase 7 complete, v2.0 milestone shipped
 
-Progress: [████████░░] ~80% (v1.0 complete, v2.0 phase 6 complete, phase 7 pending)
+Progress: [██████████] 100% (v1.0 complete, v2.0 complete)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 12 (v1.0 phases 1-5 + v2.0 phase 6)
+- Total plans completed: 14 (v1.0 phases 1-5 + v2.0 phases 6-7)
 - Average duration: —
 - Total execution time: —
 
@@ -29,6 +29,7 @@ Progress: [████████░░] ~80% (v1.0 complete, v2.0 phase 6 com
 |-------|-------|-------|----------|
 | 1-5 (v1.0) | 9 | — | — |
 | 6 (v2.0) | 3 | ~9 min | ~3 min |
+| 7 (v2.0) | 2 | ~7 min | ~3.5 min |
 
 *Updated after each plan completion*
 
@@ -46,17 +47,21 @@ Phase 6 decisions (confirmed and shipped):
 - lib/hook-utils.sh is the DRY anchor — three functions, sourced by stop-hook.sh and pre-tool-use-hook.sh only.
 - fd-based flock with command group for atomic pane diff read-write cycle.
 
+Phase 7 decisions (confirmed and shipped):
+- PreToolUse timeout set to 10s (hook backgrounds work and exits immediately)
+- register-hooks.sh registers 6 hook events including PreToolUse with AskUserQuestion matcher
+
 ### Pending Todos
 
 None.
 
 ### Blockers/Concerns
 
-- Phase 7 deployment gate: Gideon's wake message parsing must be confirmed before register-hooks.sh is run — format change from [PANE CONTENT] to [CONTENT] breaks existing parsing
+- Gideon's wake message parsing must be updated to handle v2 [CONTENT] format (was [PANE CONTENT])
 - Session name sanitization: if future sessions use spaces or slashes in names, /tmp file naming breaks — low severity, document when encountered
 
 ## Session Continuity
 
 Last session: 2026-02-18
-Stopped at: Phase 7 context gathered (auto-mode). Advancing to plan-phase.
-Resume file: .planning/phases/07-registration-deployment-and-documentation/07-CONTEXT.md
+Stopped at: v2.0 milestone complete. All phases executed and verified.
+Resume file: None

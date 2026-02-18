@@ -3,7 +3,7 @@
 ## Milestones
 
 - ✅ **v1.0 Hook-Driven Agent Control** - Phases 1-5 (shipped 2026-02-17)
-- 🚧 **v2.0 Smart Hook Delivery** - Phases 6-7 (in progress)
+- ✅ **v2.0 Smart Hook Delivery** - Phases 6-7 (shipped 2026-02-18)
 
 ## Phases
 
@@ -104,7 +104,7 @@ Plans:
 
 </details>
 
-### 🚧 v2.0 Smart Hook Delivery (In Progress)
+### ✅ v2.0 Smart Hook Delivery (Complete — 2026-02-18)
 
 **Milestone Goal:** Replace noisy 120-line raw pane dumps with clean content: transcript extraction (primary), pane diff fallback, and structured AskUserQuestion forwarding via PreToolUse.
 
@@ -136,8 +136,8 @@ Plans:
 **Plans**: 2 plans
 
 Plans:
-- [ ] 07-01-PLAN.md -- Registration and cleanup: PreToolUse hook in register-hooks.sh, /tmp state file cleanup in session-end-hook.sh
-- [ ] 07-02-PLAN.md -- Documentation: Update SKILL.md and docs/hooks.md with v2.0 architecture
+- [x] 07-01-PLAN.md -- Registration and cleanup: PreToolUse hook in register-hooks.sh, /tmp state file cleanup in session-end-hook.sh
+- [x] 07-02-PLAN.md -- Documentation: Update SKILL.md and docs/hooks.md with v2.0 architecture
 
 ## Phase Details
 
@@ -169,8 +169,8 @@ Plans:
 **Plans**: 2 plans
 
 Plans:
-- [ ] 07-01-PLAN.md -- Registration and cleanup: PreToolUse hook in register-hooks.sh, /tmp state file cleanup in session-end-hook.sh
-- [ ] 07-02-PLAN.md -- Documentation: Update SKILL.md and docs/hooks.md with v2.0 architecture
+- [x] 07-01-PLAN.md -- Registration and cleanup: PreToolUse hook in register-hooks.sh, /tmp state file cleanup in session-end-hook.sh
+- [x] 07-02-PLAN.md -- Documentation: Update SKILL.md and docs/hooks.md with v2.0 architecture
 
 ## Progress
 
@@ -185,4 +185,4 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7
 | 4. Cleanup | v1.0 | 1/1 | Complete | 2026-02-17 |
 | 5. Documentation | v1.0 | 2/2 | Complete | 2026-02-17 |
 | 6. Core Extraction and Delivery Engine | v2.0 | 3/3 | Complete | 2026-02-18 |
-| 7. Registration, Deployment, and Documentation | v2.0 | 0/TBD | Not started | - |
+| 7. Registration, Deployment, and Documentation | v2.0 | 2/2 | Complete | 2026-02-18 |

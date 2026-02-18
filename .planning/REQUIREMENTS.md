@@ -98,12 +98,12 @@ Requirements for milestone v2.0: Smart Hook Delivery. Replaces noisy 120-line ra
 
 ### Registration
 
-- [ ] **REG-01**: register-hooks.sh registers PreToolUse hook with AskUserQuestion matcher in settings.json
-- [ ] **REG-02**: session-end-hook.sh cleans up /tmp pane state files on session exit
+- [x] **REG-01**: register-hooks.sh registers PreToolUse hook with AskUserQuestion matcher in settings.json
+- [x] **REG-02**: session-end-hook.sh cleans up /tmp pane state files on session exit
 
 ### Documentation
 
-- [ ] **DOCS-03**: SKILL.md updated with v2.0 architecture (lib, pre-tool-use-hook.sh, v2 wake format)
+- [x] **DOCS-03**: SKILL.md updated with v2.0 architecture (lib, pre-tool-use-hook.sh, v2 wake format)
 
 ## Future Requirements
 
@@ -161,31 +161,31 @@ Which phases cover which requirements. Updated during roadmap creation.
 | CLEAN-01 through CLEAN-03 | Phase 4 | Done |
 | DOCS-01, DOCS-02 | Phase 5 | Done |
 
-### v2.0 (Current)
+### v2.0 (Shipped)
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| LIB-01 | Phase 6 | Complete |
-| LIB-02 | Phase 6 | Complete |
-| EXTRACT-01 | Phase 6 | Complete |
-| EXTRACT-02 | Phase 6 | Complete |
-| EXTRACT-03 | Phase 6 | Complete |
-| ASK-01 | Phase 6 | Complete |
-| ASK-02 | Phase 6 | Complete |
-| ASK-03 | Phase 6 | Complete |
-| WAKE-07 | Phase 6 | Complete |
-| WAKE-08 | Phase 6 | Complete |
-| WAKE-09 | Phase 6 | Complete |
-| REG-01 | Phase 7 | Pending |
-| REG-02 | Phase 7 | Pending |
-| DOCS-03 | Phase 7 | Pending |
+| LIB-01 | Phase 6 | Done |
+| LIB-02 | Phase 6 | Done |
+| EXTRACT-01 | Phase 6 | Done |
+| EXTRACT-02 | Phase 6 | Done |
+| EXTRACT-03 | Phase 6 | Done |
+| ASK-01 | Phase 6 | Done |
+| ASK-02 | Phase 6 | Done |
+| ASK-03 | Phase 6 | Done |
+| WAKE-07 | Phase 6 | Done |
+| WAKE-08 | Phase 6 | Done |
+| WAKE-09 | Phase 6 | Done |
+| REG-01 | Phase 7 | Done |
+| REG-02 | Phase 7 | Done |
+| DOCS-03 | Phase 7 | Done |
 
 **Coverage:**
 - v1 requirements: 38 total, all done
-- v2 requirements: 14 total
+- v2 requirements: 14 total, all done
 - Mapped to phases: 14 (Phase 6: 11, Phase 7: 3)
 - Unmapped: 0
 
 ---
 *Requirements defined: 2026-02-17*
-*Last updated: 2026-02-18 — simplified: transcript OR pane diff, not both*
+*Last updated: 2026-02-18 — v2.0 milestone complete*
