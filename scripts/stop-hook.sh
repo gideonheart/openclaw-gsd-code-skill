@@ -15,6 +15,17 @@ debug_log() {
 
 debug_log "FIRED — PID=$$ TMUX=${TMUX:-<unset>}"
 
+# Source shared library BEFORE any guard exits (Phase 9 requirement)
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+LIB_PATH="${SCRIPT_DIR}/../lib/hook-utils.sh"
+if [ -f "$LIB_PATH" ]; then
+  source "$LIB_PATH"
+  debug_log "sourced lib/hook-utils.sh"
+else
+  debug_log "FATAL: hook-utils.sh not found at $LIB_PATH"
+  exit 0
+fi
+
 # stop-hook.sh - Claude Code Stop hook for managed GSD sessions
 # Fires when Claude finishes responding. Captures state, sends wake message to OpenClaw agent.
 
@@ -22,6 +33,7 @@ debug_log "FIRED — PID=$$ TMUX=${TMUX:-<unset>}"
 # 1. CONSUME STDIN IMMEDIATELY (prevent pipe blocking)
 # ============================================================================
 STDIN_JSON=$(cat)
+HOOK_ENTRY_MS=$(date +%s%3N)
 debug_log "stdin: ${#STDIN_JSON} bytes, hook_event_name=$(echo "$STDIN_JSON" | jq -r '.hook_event_name // "unknown"' 2>/dev/null)"
 
 # ============================================================================
@@ -52,25 +64,16 @@ fi
 debug_log "tmux_session=$SESSION_NAME"
 # Phase 2: redirect to per-session log file
 GSD_HOOK_LOG="${SKILL_LOG_DIR}/${SESSION_NAME}.log"
+JSONL_FILE="${SKILL_LOG_DIR}/${SESSION_NAME}.jsonl"
 debug_log "=== log redirected to per-session file ==="
 
 # ============================================================================
 # 5. REGISTRY LOOKUP (prefix match via shared function)
 # ============================================================================
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REGISTRY_PATH="${SCRIPT_DIR}/../config/recovery-registry.json"
 
 if [ ! -f "$REGISTRY_PATH" ]; then
   debug_log "EXIT: registry not found at $REGISTRY_PATH"
-  exit 0
-fi
-
-LIB_PATH="${SCRIPT_DIR}/../lib/hook-utils.sh"
-if [ -f "$LIB_PATH" ]; then
-  source "$LIB_PATH"
-  debug_log "sourced lib/hook-utils.sh"
-else
-  debug_log "EXIT: hook-utils.sh not found at $LIB_PATH"
   exit 0
 fi
 
@@ -162,16 +165,19 @@ fi
 # ============================================================================
 if [ -n "$EXTRACTED_RESPONSE" ]; then
   CONTENT_SECTION="$EXTRACTED_RESPONSE"
+  CONTENT_SOURCE="transcript"
   debug_log "content source: transcript"
 else
   # Fallback: pane diff from last 40 lines
   PANE_FOR_DIFF=$(printf '%s\n' "$PANE_CONTENT" | tail -40)
   if type extract_pane_diff &>/dev/null; then
     CONTENT_SECTION=$(extract_pane_diff "$SESSION_NAME" "$PANE_FOR_DIFF")
+    CONTENT_SOURCE="pane_diff"
     debug_log "content source: pane_diff (delta_length=${#CONTENT_SECTION})"
   else
     # Ultimate fallback if lib not loaded: use raw pane tail
     CONTENT_SECTION=$(printf '%s\n' "$PANE_CONTENT" | tail -40)
+    CONTENT_SOURCE="raw_pane_tail"
     debug_log "content source: raw_pane_tail (lib not available)"
   fi
 fi
@@ -210,6 +216,7 @@ menu-driver.sh ${SESSION_NAME} snapshot"
 # ============================================================================
 # 11. HYBRID MODE DELIVERY
 # ============================================================================
+TRIGGER="response_complete"
 debug_log "DELIVERING: mode=$HOOK_MODE session_id=$OPENCLAW_SESSION_ID"
 
 if [ "$HOOK_MODE" = "bidirectional" ]; then
@@ -217,6 +224,11 @@ if [ "$HOOK_MODE" = "bidirectional" ]; then
   debug_log "DELIVERING: bidirectional, waiting for response..."
   RESPONSE=$(openclaw agent --session-id "$OPENCLAW_SESSION_ID" --message "$WAKE_MESSAGE" --json 2>&1 || echo "")
   debug_log "RESPONSE: ${RESPONSE:0:200}"
+
+  write_hook_event_record \
+    "$JSONL_FILE" "$HOOK_ENTRY_MS" "$HOOK_SCRIPT_NAME" "$SESSION_NAME" \
+    "$AGENT_ID" "$OPENCLAW_SESSION_ID" "$TRIGGER" "$STATE" \
+    "$CONTENT_SOURCE" "$WAKE_MESSAGE" "$RESPONSE" "sync_delivered"
 
   # Parse response for decision injection
   if [ -n "$RESPONSE" ]; then
@@ -230,8 +242,11 @@ if [ "$HOOK_MODE" = "bidirectional" ]; then
   fi
   exit 0
 else
-  # Async mode (default): background call, exit immediately
-  openclaw agent --session-id "$OPENCLAW_SESSION_ID" --message "$WAKE_MESSAGE" >> "$GSD_HOOK_LOG" 2>&1 &
-  debug_log "DELIVERED (async, bg PID=$!)"
+  # Async mode (default): background call with JSONL logging
+  deliver_async_with_logging \
+    "$OPENCLAW_SESSION_ID" "$WAKE_MESSAGE" "$JSONL_FILE" "$HOOK_ENTRY_MS" \
+    "$HOOK_SCRIPT_NAME" "$SESSION_NAME" "$AGENT_ID" \
+    "$TRIGGER" "$STATE" "$CONTENT_SOURCE"
+  debug_log "DELIVERED (async with JSONL logging)"
   exit 0
 fi
