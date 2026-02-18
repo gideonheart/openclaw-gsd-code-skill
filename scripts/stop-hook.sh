@@ -1,8 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Debug logging - all hook invocations log to a shared file for diagnostics
-GSD_HOOK_LOG="${GSD_HOOK_LOG:-/tmp/gsd-hooks.log}"
+# Resolve skill-local log directory from this script's location
+SKILL_LOG_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/logs"
+mkdir -p "$SKILL_LOG_DIR"
+
+# Phase 1: log to shared file until session name is known
+GSD_HOOK_LOG="${GSD_HOOK_LOG:-${SKILL_LOG_DIR}/hooks.log}"
 HOOK_SCRIPT_NAME="$(basename "${BASH_SOURCE[0]}")"
 
 debug_log() {
@@ -46,6 +50,9 @@ if [ -z "$SESSION_NAME" ]; then
   exit 0
 fi
 debug_log "tmux_session=$SESSION_NAME"
+# Phase 2: redirect to per-session log file
+GSD_HOOK_LOG="${SKILL_LOG_DIR}/${SESSION_NAME}.log"
+debug_log "=== log redirected to per-session file ==="
 
 # ============================================================================
 # 5. REGISTRY LOOKUP (jq, no Python)
