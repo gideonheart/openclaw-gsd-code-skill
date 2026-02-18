@@ -95,6 +95,7 @@ None.
 |---|-------------|------|--------|-----------|
 | 5 | Move GSD hook logs from /tmp to skill-local logs/ with per-session files | 2026-02-18 | c9b74c3 | [5-move-gsd-hook-logs-from-tmp-to-skill-loc](./quick/5-move-gsd-hook-logs-from-tmp-to-skill-loc/) |
 | 6 | Update SKILL.md, README.md, docs/hooks.md for Phase 10-11 additions | 2026-02-18 | 9cb9b76 | [6-update-docs-skill-md-readme-md-docs-hook](./quick/6-update-docs-skill-md-readme-md-docs-hook/) |
+| 7 | Create install.sh single entry point installer | 2026-02-18 | 27cbed1 | [7-create-install-sh-single-entry-point-to-](./quick/7-create-install-sh-single-entry-point-to-/) |
 
 ### Quick Task Decisions
 
@@ -102,8 +103,10 @@ Quick-5 (2026-02-18): Two-phase logging — hooks.log shared until SESSION_NAME 
 
 Quick-6 (2026-02-18): Fixed stale /tmp reference in docs/hooks.md pane diff fallback description that was missed by Quick-5 migration.
 
+Quick-7 (2026-02-18): Logrotate failure non-critical (warns and continues). Diagnostics optional via agent-name argument.
+
 ## Session Continuity
 
 Last session: 2026-02-18
-Stopped at: Completed Quick Task 6 (Update documentation for Phase 10-11 additions)
+Stopped at: Completed Quick Task 7 (Create install.sh single entry point installer)
 Resume file: None
