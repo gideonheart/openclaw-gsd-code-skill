@@ -97,6 +97,7 @@ None.
 | 6 | Update SKILL.md, README.md, docs/hooks.md for Phase 10-11 additions | 2026-02-18 | 9cb9b76 | [6-update-docs-skill-md-readme-md-docs-hook](./quick/6-update-docs-skill-md-readme-md-docs-hook/) |
 | 7 | Create install.sh single entry point installer | 2026-02-18 | 27cbed1 | [7-create-install-sh-single-entry-point-to-](./quick/7-create-install-sh-single-entry-point-to-/) |
 | 8 | Remove logrotate dependency and update all docs | 2026-02-18 | a280418 | [8-remove-logrotate-dependency-and-update-a](./quick/8-remove-logrotate-dependency-and-update-a/) |
+| 9 | Review v3.0 code and write retrospective | 2026-02-18 | e35296b | [9-review-v3-0-code-and-write-retrospective](./quick/9-review-v3-0-code-and-write-retrospective/) |
 
 ### Quick Task Decisions
 
@@ -108,8 +109,10 @@ Quick-7 (2026-02-18): Logrotate failure non-critical (warns and continues). Diag
 
 Quick-8 (2026-02-18): Removed logrotate entirely — user-space skill should not require sudo/root system config. install.sh reduced to 5 steps: pre-flight, logs dir, hooks, diagnostics, banner.
 
+Quick-9 (2026-02-18): Incomplete v2.0 wake message migration — [CONTENT] applied only to stop-hook.sh; notification-idle, notification-permission, and pre-compact still use [PANE CONTENT]. Pre-compact state detection uses different grep patterns than other hooks (case-sensitive, different patterns). Diagnose Step 7 uses exact match vs hook prefix-match — fix needed for v4.0.
+
 ## Session Continuity
 
 Last session: 2026-02-18
-Stopped at: Completed Quick Task 8 (Remove logrotate dependency and update all docs)
+Stopped at: Completed Quick Task 9 (Review v3.0 code and write retrospective)
 Resume file: None
