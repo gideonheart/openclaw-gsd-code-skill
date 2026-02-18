@@ -121,9 +121,9 @@ Plans:
 **Plans**: 3 plans
 
 Plans:
-- [ ] 06-01-PLAN.md -- Shared library: lib/hook-utils.sh with three extraction functions (transcript, pane diff, question formatting)
-- [ ] 06-02-PLAN.md -- PreToolUse hook: scripts/pre-tool-use-hook.sh for AskUserQuestion forwarding
-- [ ] 06-03-PLAN.md -- Stop hook v2: transcript extraction, pane diff fallback, v2 [CONTENT] wake format
+- [x] 06-01-PLAN.md -- Shared library: lib/hook-utils.sh with three extraction functions (transcript, pane diff, question formatting)
+- [x] 06-02-PLAN.md -- PreToolUse hook: scripts/pre-tool-use-hook.sh for AskUserQuestion forwarding
+- [x] 06-03-PLAN.md -- Stop hook v2: transcript extraction, pane diff fallback, v2 [CONTENT] wake format
 
 ### Phase 7: Registration, Deployment, and Documentation
 **Goal**: New hooks are live in all Claude Code sessions, temp state files are cleaned up on session exit, and SKILL.md reflects the v2.0 architecture
@@ -150,9 +150,9 @@ Plans:
 **Plans**: 3 plans
 
 Plans:
-- [ ] 06-01-PLAN.md -- Shared library: lib/hook-utils.sh with three extraction functions (transcript, pane diff, question formatting)
-- [ ] 06-02-PLAN.md -- PreToolUse hook: scripts/pre-tool-use-hook.sh for AskUserQuestion forwarding
-- [ ] 06-03-PLAN.md -- Stop hook v2: transcript extraction, pane diff fallback, v2 [CONTENT] wake format
+- [x] 06-01-PLAN.md -- Shared library: lib/hook-utils.sh with three extraction functions (transcript, pane diff, question formatting)
+- [x] 06-02-PLAN.md -- PreToolUse hook: scripts/pre-tool-use-hook.sh for AskUserQuestion forwarding
+- [x] 06-03-PLAN.md -- Stop hook v2: transcript extraction, pane diff fallback, v2 [CONTENT] wake format
 
 ### Phase 7: Registration, Deployment, and Documentation
 **Goal**: New hooks are live in all Claude Code sessions, temp state files are cleaned up on session exit, and SKILL.md reflects the v2.0 architecture
@@ -176,5 +176,5 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7
 | 3. Launcher Updates | v1.0 | 2/2 | Complete | 2026-02-17 |
 | 4. Cleanup | v1.0 | 1/1 | Complete | 2026-02-17 |
 | 5. Documentation | v1.0 | 2/2 | Complete | 2026-02-17 |
-| 6. Core Extraction and Delivery Engine | v2.0 | 0/3 | Planned | - |
+| 6. Core Extraction and Delivery Engine | v2.0 | 3/3 | Complete | 2026-02-18 |
 | 7. Registration, Deployment, and Documentation | v2.0 | 0/TBD | Not started | - |
