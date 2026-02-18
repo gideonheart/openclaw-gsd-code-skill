@@ -35,7 +35,7 @@ The session starts in tmux with GSD system prompt, auto-detects the first comman
 
 Sessions follow this flow: **spawn** -> **hooks control session** -> **crash/reboot** -> **systemd timer** -> **recovery** -> **agents resume**.
 
-Hooks fire on Claude Code events (Stop, Notification, SessionEnd, PreCompact, PreToolUse) and send structured wake messages to the OpenClaw agent. The agent inspects session state, decides next action, and drives the TUI using `menu-driver.sh`.
+Hooks fire on Claude Code events (Stop, Notification, SessionEnd, PreCompact, PreToolUse, PostToolUse) and send structured wake messages to the OpenClaw agent. The agent inspects session state, decides next action, and drives the TUI using `menu-driver.sh`.
 
 After reboot or OOM, the systemd timer runs recovery, which restores tmux sessions, relaunches Claude Code, wakes OpenClaw agents, and resumes work automatically.
 
@@ -99,16 +99,19 @@ All hooks fire automatically on Claude Code events. For behavior specs, configur
 
 **pre-tool-use-hook.sh** - Fires when Claude calls AskUserQuestion (forwards structured question data to OpenClaw)
 
-All hooks:
+**post-tool-use-hook.sh** - Fires after AskUserQuestion completes (forwards selected answer and tool_use_id to OpenClaw for lifecycle correlation)
+
+All 7 hooks:
 - Exit in <5ms for non-managed sessions
-- Support async (default) or bidirectional mode via `hook_settings.hook_mode` (PreToolUse is async-only)
+- Support async (default) or bidirectional mode via `hook_settings.hook_mode` (PreToolUse and PostToolUse are async-only)
 - Use three-tier fallback for configuration: per-agent > global > hardcoded defaults
+- Log structured JSONL records per-session via `write_hook_event_record`
 
 ### Shared Libraries
 
-**lib/hook-utils.sh** - Shared extraction functions sourced by stop-hook.sh and pre-tool-use-hook.sh
+**lib/hook-utils.sh** - Shared functions sourced by all hook scripts
 
-Contains: `extract_last_assistant_response`, `extract_pane_diff`, `format_ask_user_questions`. No side effects on source.
+Contains 6 functions: `lookup_agent_in_registry`, `extract_last_assistant_response`, `extract_pane_diff`, `format_ask_user_questions`, `write_hook_event_record`, `deliver_async_with_logging`. No side effects on source.
 
 ### Utilities
 
@@ -130,13 +133,29 @@ scripts/menu-driver.sh warden-main clear_then "/gsd:resume-work"
 
 Use `--help` for full action list.
 
+**diagnose-hooks.sh** - End-to-end hook chain diagnostic for a registered agent
+
+```bash
+scripts/diagnose-hooks.sh <agent-name> [--send-test-wake]
+```
+
+Tests 11 steps: hook registration, script permissions, registry entry, tmux session, TMUX propagation, session name resolution, registry lookup, openclaw binary, debug logs, JSONL log analysis, and optional test wake.
+
+**install-logrotate.sh** - Install logrotate config for hook log rotation
+
+```bash
+scripts/install-logrotate.sh
+```
+
+Installs `config/logrotate.conf` to `/etc/logrotate.d/gsd-code-skill` via sudo tee. Uses copytruncate for safe rotation while hook scripts hold open file descriptors. Daily rotation, 7-day retention, compress with delaycompress.
+
 **register-hooks.sh** - Idempotent hook registration in ~/.claude/settings.json
 
 ```bash
 scripts/register-hooks.sh
 ```
 
-Registers all 6 hook events (Stop, Notification [idle_prompt + permission_prompt], SessionEnd, PreCompact, PreToolUse [AskUserQuestion]) and removes obsolete `gsd-session-hook.sh` from SessionStart. Creates backup before modifying settings. Restart all Claude Code sessions after registration to activate new hooks.
+Registers all 7 hook events (Stop, Notification [idle_prompt + permission_prompt], SessionEnd, PreCompact, PreToolUse [AskUserQuestion], PostToolUse [AskUserQuestion]) and removes obsolete `gsd-session-hook.sh` from SessionStart. Creates backup before modifying settings. Restart all Claude Code sessions after registration to activate new hooks.
 
 ## Configuration
 
@@ -155,6 +174,10 @@ Replacement model: per-agent `system_prompt` in registry replaces default entire
 
 **Hooks:** Registered in `~/.claude/settings.json` via `scripts/register-hooks.sh`
 
+**Logrotate:** `config/logrotate.conf`
+
+Template for log rotation. Install via `scripts/install-logrotate.sh` (requires sudo). Uses copytruncate to safely rotate while hook scripts hold open file descriptors.
+
 ## v2.0 Changes
 
 **Wake message format (breaking):** `[PANE CONTENT]` replaced by `[CONTENT]` section. Content is now extracted from Claude's transcript JSONL (primary) or pane diff (fallback) instead of raw pane dump. Downstream parsers expecting `[PANE CONTENT]` must update to `[CONTENT]`.
@@ -164,6 +187,18 @@ Replacement model: per-agent `system_prompt` in registry replaces default entire
 **AskUserQuestion forwarding:** When Claude calls AskUserQuestion, a PreToolUse hook sends structured question data to OpenClaw before the TUI renders. This is async and never blocks.
 
 **Minimum Claude Code version:** >= 2.0.76 (PreToolUse hook support and AskUserQuestion bug fix).
+
+## v3.0 Changes
+
+**Structured JSONL logging:** All 7 hooks emit per-session JSONL records (`logs/{session}.jsonl`) with timestamp, hook_script, trigger, outcome, duration_ms, and hook-specific extra fields. Plain-text debug logs (`logs/{session}.log`) are preserved in parallel.
+
+**PostToolUse hook (new):** Fires after AskUserQuestion completes. Logs `answer_selected` and `tool_use_id` for lifecycle correlation with the PreToolUse record. Always async, always notification-only.
+
+**Logrotate:** `config/logrotate.conf` with copytruncate handles both `*.jsonl` and `*.log` files. Install via `scripts/install-logrotate.sh`.
+
+**Diagnostics:** `scripts/diagnose-hooks.sh` now includes JSONL log analysis (Step 10) showing recent events, outcome distribution, hook script distribution, non-delivered event detection, and duration stats.
+
+**Minimum Claude Code version:** >= 2.0.76 (PostToolUse hook support added in same version as PreToolUse).
 
 ## Notes
 
