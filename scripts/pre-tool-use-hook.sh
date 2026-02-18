@@ -95,6 +95,8 @@ if [ -z "$TOOL_INPUT" ] || [ "$TOOL_INPUT" = "null" ]; then
   exit 0
 fi
 debug_log "tool_input_length=${#TOOL_INPUT}"
+TOOL_USE_ID=$(printf '%s' "$STDIN_JSON" | jq -r '.tool_use_id // ""' 2>/dev/null || echo "")
+debug_log "tool_use_id=$TOOL_USE_ID"
 
 # ============================================================================
 # 6. FORMAT QUESTIONS (hook-utils.sh already sourced in step 4)
@@ -141,7 +143,10 @@ menu-driver.sh ${SESSION_NAME} snapshot"
 TRIGGER="ask_user_question"
 STATE="awaiting_user_input"
 CONTENT_SOURCE="questions"
-EXTRA_FIELDS_JSON=$(jq -cn --arg questions_forwarded "$FORMATTED_QUESTIONS" '{"questions_forwarded": $questions_forwarded}')
+EXTRA_FIELDS_JSON=$(jq -cn \
+  --arg questions_forwarded "$FORMATTED_QUESTIONS" \
+  --arg tool_use_id "$TOOL_USE_ID" \
+  '{"questions_forwarded": $questions_forwarded, "tool_use_id": $tool_use_id}')
 deliver_async_with_logging \
   "$OPENCLAW_SESSION_ID" "$WAKE_MESSAGE" "$JSONL_FILE" "$HOOK_ENTRY_MS" \
   "$HOOK_SCRIPT_NAME" "$SESSION_NAME" "$AGENT_ID" \
