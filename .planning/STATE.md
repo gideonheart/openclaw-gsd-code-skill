@@ -5,7 +5,7 @@
 See: .planning/PROJECT.md (updated 2026-02-18)
 
 **Core value:** Reliable, intelligent agent session lifecycle — launch, recover, and respond without human intervention
-**Current focus:** v3.1 Hook Refactoring & Migration Completion
+**Current focus:** v3.1 Diagnostic Fixes (Phase 14)
 
 ## Current Position
 

@@ -47,15 +47,17 @@ Reliable, intelligent agent session lifecycle — launch, recover, and respond t
 - hook-preamble.sh shared bootstrap with BASH_SOURCE[1] identity and source guards (v3.1, Phase 12)
 - extract_hook_settings() three-tier jq fallback function in hook-utils.sh (v3.1, Phase 12)
 - detect_session_state() unified state detection in hook-utils.sh (v3.1, Phase 12)
+- All 7 hooks source hook-preamble.sh as single entry point — 320+ lines removed (v3.1, Phase 13)
+- v2.0 [CONTENT] migration complete for notification-idle, notification-permission, pre-compact (v3.1, Phase 13)
+- All jq piping uses printf '%s' across all 7 hooks — escape sequence safety (v3.1, Phase 13)
+- session-end-hook.sh jq error guards prevent crash on malformed registry data (v3.1, Phase 13)
 
 ### Active
 
 <!-- Current scope. Building toward these. -->
 
-- [ ] hook-preamble.sh sourced by all 7 hooks (REFAC-03 — Phase 13)
-- [ ] v2.0 [CONTENT] migration for notification-idle, notification-permission, pre-compact (MIGR-01 through MIGR-03)
-- [ ] State detection unified across all hooks (UNIFY-01 through UNIFY-02)
-- [ ] diagnose-hooks.sh prefix-match fix and echo-to-printf cleanup (FIX-01 through FIX-02)
+- [ ] diagnose-hooks.sh Step 7 prefix-match fix (FIX-01 — Phase 14)
+- [ ] diagnose-hooks.sh Step 2 checks all 7 hook scripts (FIX-02 — Phase 14)
 
 ### Out of Scope
 
@@ -67,7 +69,7 @@ Reliable, intelligent agent session lifecycle — launch, recover, and respond t
 ## Context
 
 - **Host:** Ubuntu 24 on Vultr, managed by Laravel Forge, user `forge`
-- **Current scripts:** 11 bash scripts (5 hooks + 6 core), all production-quality
+- **Current scripts:** 13 bash scripts (7 hooks + 6 core), all production-quality
 - **Agent architecture:** Gideon (orchestrator), Warden (coding), Forge (infra) — each with tmux sessions
 - **Integration points:** Claude Code (`--append-system-prompt`, hooks API), OpenClaw (`openclaw agent --session-id`), tmux, systemd
 - **Prior investigation:** Warden idle bug (resolved) — spawn.sh now uses `--append-system-prompt` correctly
@@ -101,6 +103,8 @@ Reliable, intelligent agent session lifecycle — launch, recover, and respond t
 | Skill logs/ directory (not OpenClaw sessions/) | Separation of concerns; avoids coupling to OpenClaw internal format and pruning | Confirmed |
 | BASH_SOURCE[1] for caller identity in sourced preamble | Automatic and verified; no parameter passing needed from hooks | Confirmed |
 | JSON return from extract_hook_settings() | Immune to injection risk; consistent with existing lib/hook-utils.sh pattern | Confirmed |
+| Pre-compact state name normalization | idle_prompt->idle, active->working to match detect_session_state() canonical names | Confirmed |
+| printf '%s' for all jq piping | echo can expand escape sequences (\n, \t) corrupting JSON; printf '%s' is literal | Confirmed |
 
 ---
-*Last updated: 2026-02-18 after Phase 12*
+*Last updated: 2026-02-18 after Phase 13*
