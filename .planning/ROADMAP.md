@@ -191,7 +191,10 @@ Plans:
   3. `answer_selected` record includes which option was chosen and TUI control action taken (menu-driver command)
   4. PreToolUse and PostToolUse records share `tool_use_id` enabling question-to-answer lifecycle linking
   5. PostToolUse stdin schema empirically validated before schema is committed
-**Plans**: TBD
+**Plans**: 1 plan
+
+Plans:
+- [ ] 10-01-PLAN.md -- PostToolUse hook, tool_use_id lifecycle linking, hook registration
 
 ### Phase 11: Operational Hardening
 **Goal**: Production-grade log management and diagnostic tooling for JSONL logs
