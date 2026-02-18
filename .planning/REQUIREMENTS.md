@@ -131,8 +131,8 @@ Requirements for milestone v3.0: Structured Hook Observability. Replaces plain-t
 ### AskUserQuestion Lifecycle
 
 - [ ] **ASK-04**: PreToolUse JSONL record includes `questions_forwarded` field showing what questions, options, and headers were sent to OpenClaw agent
-- [ ] **ASK-05**: PostToolUse hook (`post-tool-use-hook.sh`) emits JSONL record showing which answer OpenClaw agent selected and how TUI was controlled to achieve that decision
-- [ ] **ASK-06**: PreToolUse and PostToolUse records share `tool_use_id` field enabling question-to-answer lifecycle linking
+- [x] **ASK-05**: PostToolUse hook (`post-tool-use-hook.sh`) emits JSONL record showing which answer OpenClaw agent selected and how TUI was controlled to achieve that decision
+- [x] **ASK-06**: PreToolUse and PostToolUse records share `tool_use_id` field enabling question-to-answer lifecycle linking
 
 ### Operational
 
