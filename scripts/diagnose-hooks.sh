@@ -102,6 +102,8 @@ HOOK_SCRIPTS=(
   "notification-permission-hook.sh"
   "session-end-hook.sh"
   "pre-compact-hook.sh"
+  "pre-tool-use-hook.sh"
+  "post-tool-use-hook.sh"
 )
 
 for script_name in "${HOOK_SCRIPTS[@]}"; do
@@ -255,22 +257,24 @@ fi
 echo ""
 
 # ------------------------------------------------------------------
-# 7. Registry lookup by session name (simulating hook logic)
+# 7. Registry lookup by session name (prefix-match, matching hook behavior)
 # ------------------------------------------------------------------
-echo "--- Step 7: Registry Lookup by Session Name ---"
+echo "--- Step 7: Registry Lookup by Session Name (prefix-match) ---"
 
 TOTAL_CHECKS=$((TOTAL_CHECKS + 1))
+# Use prefix-match identical to lookup_agent_in_registry() in lib/hook-utils.sh:
+# session "gideon-2" matches agent_id "gideon" via startswith("gideon-")
 LOOKUP_RESULT=$(jq -c --arg session "$TMUX_SESSION_NAME" \
-  '.agents[] | select(.tmux_session_name == $session) | {agent_id, openclaw_session_id}' \
+  '.agents[] | . as $agent | select($session | startswith($agent.agent_id + "-")) | {agent_id, openclaw_session_id}' \
   "$REGISTRY_PATH" 2>/dev/null || echo "")
 
 if [ -n "$LOOKUP_RESULT" ] && [ "$LOOKUP_RESULT" != "null" ]; then
-  LOOKUP_AGENT=$(echo "$LOOKUP_RESULT" | jq -r '.agent_id')
-  LOOKUP_SESSION=$(echo "$LOOKUP_RESULT" | jq -r '.openclaw_session_id')
+  LOOKUP_AGENT=$(printf '%s' "$LOOKUP_RESULT" | jq -r '.agent_id')
+  LOOKUP_SESSION=$(printf '%s' "$LOOKUP_RESULT" | jq -r '.openclaw_session_id')
   pass "Registry lookup matched: agent_id=$LOOKUP_AGENT, session_id=$LOOKUP_SESSION"
   PASSED_CHECKS=$((PASSED_CHECKS + 1))
 else
-  fail "Registry lookup found NO agent with tmux_session_name=$TMUX_SESSION_NAME"
+  fail "Registry lookup found NO agent matching session=$TMUX_SESSION_NAME (prefix-match on agent_id)"
   info "This is the exact query the hook scripts use -- if this fails, hooks will exit silently"
 fi
 
