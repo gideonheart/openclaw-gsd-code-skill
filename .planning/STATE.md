@@ -118,6 +118,7 @@ None.
 | 7 | Create install.sh single entry point installer | 2026-02-18 | 27cbed1 | [7-create-install-sh-single-entry-point-to-](./quick/7-create-install-sh-single-entry-point-to-/) |
 | 8 | Remove logrotate dependency and update all docs | 2026-02-18 | a280418 | [8-remove-logrotate-dependency-and-update-a](./quick/8-remove-logrotate-dependency-and-update-a/) |
 | 9 | Review v3.0 code and write retrospective | 2026-02-18 | e35296b | [9-review-v3-0-code-and-write-retrospective](./quick/9-review-v3-0-code-and-write-retrospective/) |
+| 10 | Review v3.1 refactoring — code quality and retrospective | 2026-02-18 | dd96fb0 | [10-review-v3-1-refactoring-code-quality-and](./quick/10-review-v3-1-refactoring-code-quality-and/) |
 
 ### Quick Task Decisions
 
@@ -131,8 +132,10 @@ Quick-8 (2026-02-18): Removed logrotate entirely — user-space skill should not
 
 Quick-9 (2026-02-18): Incomplete v2.0 wake message migration — [CONTENT] applied only to stop-hook.sh; notification-idle, notification-permission, and pre-compact still use [PANE CONTENT]. Pre-compact state detection uses different grep patterns than other hooks (case-sensitive, different patterns). Diagnose Step 7 uses exact match vs hook prefix-match — fix needed for v4.0.
 
+Quick-10 (2026-02-18): v3.1 scored 7/12 v3.0 issues fixed, 1 partial, 4 unchanged. Largest remaining issues: delivery triplication (~90 lines, 3 hooks), JSON injection in bidirectional echo responses (3 occurrences), write_hook_event_record internal duplication (hook-utils.sh:203-258). Stale comment at hook-utils.sh:386-391 is now false — pre-compact uses shared detect_session_state(). v4.0 priorities: delivery triplication, JSON injection fix, write_hook_event_record cleanup.
+
 ## Session Continuity
 
 Last session: 2026-02-18
-Stopped at: Phase 14 complete — Milestone v3.1 complete, all 12 requirements shipped
+Stopped at: Quick Task 10 complete — v3.1 retrospective written
 Resume file: None
