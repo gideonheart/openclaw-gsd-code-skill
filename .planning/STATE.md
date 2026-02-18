@@ -9,17 +9,17 @@ See: .planning/PROJECT.md (updated 2026-02-18)
 
 ## Current Position
 
-Phase: 10 of 11 (AskUserQuestion Lifecycle Completion)
-Plan: 1/1 — complete
-Status: Phase 10 complete. Ready for `/gsd:plan-phase 11`
-Last activity: 2026-02-18 — Phase 10 AskUserQuestion Lifecycle Completion shipped (1/1 plans)
+Phase: 11 of 11 (Operational Hardening) -- COMPLETE
+Plan: 2/2 — complete
+Status: v3.0 Structured Hook Observability milestone COMPLETE. All phases 8-11 shipped.
+Last activity: 2026-02-18 — Phase 11 Operational Hardening shipped (2/2 plans)
 
-Progress: [█████░░░░░] 50% (v3.0 Phases 8-11)
+Progress: [██████████] 100% (v3.0 Phases 8-11)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 19 (v1.0 phases 1-5 + v2.0 phases 6-7 + v3.0 phases 8-9)
+- Total plans completed: 22 (v1.0 phases 1-5 + v2.0 phases 6-7 + v3.0 phases 8-11)
 - Average duration: —
 - Total execution time: —
 
@@ -32,10 +32,10 @@ Progress: [█████░░░░░] 50% (v3.0 Phases 8-11)
 | 7 (v2.0) | 2 | ~7 min | ~3.5 min |
 | 8 (v3.0) | 2 | ~6 min | ~3 min |
 | 9 (v3.0) | 3 | ~8 min | ~2.7 min |
+| 10 (v3.0) | 1 | ~3 min | ~3 min |
+| 11 (v3.0) | 2 | ~4 min | ~2 min |
 
 *Updated after each plan completion*
-
-| Phase 10 P01 | 3 | 3 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -73,6 +73,13 @@ Phase 10 decisions (confirmed and shipped):
 - Raw stdin logged via debug_log for ASK-05 empirical validation — intentionally verbose in Phase 10, can be reduced once schema confirmed
 - PostToolUse hook registers with AskUserQuestion matcher, timeout=10 (same as PreToolUse since hook backgrounds immediately)
 
+Phase 11 decisions (confirmed and shipped):
+- copytruncate for logrotate — required because hook scripts hold open >> file descriptors; standard rename would silently lose data
+- daily rotation without size trigger — logrotate checks once daily regardless; observed rates ~70KB/day make daily appropriate
+- No create directive in logrotate config — has no effect when copytruncate is in use
+- JSONL diagnostic as Step 10 in diagnose-hooks.sh — between existing Step 9 (Hook Debug Logs) and optional test-wake (renumbered to Step 11)
+- Missing JSONL file handled as INFO not FAIL — fresh installs have not fired hooks yet
+
 ### Pending Todos
 
 None.
@@ -95,5 +102,5 @@ Quick-5 (2026-02-18): Two-phase logging — hooks.log shared until SESSION_NAME 
 ## Session Continuity
 
 Last session: 2026-02-18
-Stopped at: Completed 10-01-PLAN.md (AskUserQuestion Lifecycle Completion)
+Stopped at: Completed Phase 11 (Operational Hardening) — v3.0 milestone complete
 Resume file: None

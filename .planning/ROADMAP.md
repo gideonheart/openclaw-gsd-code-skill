@@ -4,7 +4,7 @@
 
 - ✅ **v1.0 Hook-Driven Agent Control** - Phases 1-5 (shipped 2026-02-17)
 - ✅ **v2.0 Smart Hook Delivery** - Phases 6-7 (shipped 2026-02-18)
-- 🔵 **v3.0 Structured Hook Observability** - Phases 8-11
+- ✅ **v3.0 Structured Hook Observability** - Phases 8-11 (shipped 2026-02-18)
 
 ## Phases
 
@@ -194,7 +194,7 @@ Plans:
 **Plans**: 1 plan
 
 Plans:
-- [ ] 10-01-PLAN.md -- PostToolUse hook, tool_use_id lifecycle linking, hook registration
+- [x] 10-01-PLAN.md -- PostToolUse hook, tool_use_id lifecycle linking, hook registration
 
 ### Phase 11: Operational Hardening
 **Goal**: Production-grade log management and diagnostic tooling for JSONL logs
@@ -207,8 +207,8 @@ Plans:
 **Plans**: 2 plans
 
 Plans:
-- [ ] 11-01-PLAN.md -- Logrotate config template and install script (copytruncate for open >> fd safety)
-- [ ] 11-02-PLAN.md -- diagnose-hooks.sh Step 10: JSONL log analysis with jq diagnostic queries
+- [x] 11-01-PLAN.md -- Logrotate config template and install script (copytruncate for open >> fd safety)
+- [x] 11-02-PLAN.md -- diagnose-hooks.sh Step 10: JSONL log analysis with jq diagnostic queries
 
 ## Phase Details
 
@@ -259,5 +259,5 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 7. Registration, Deployment, and Documentation | v2.0 | 2/2 | Complete | 2026-02-18 |
 | 8. JSONL Logging Foundation | v3.0 | 2/2 | Complete | 2026-02-18 |
 | 9. Hook Script Migration | v3.0 | 3/3 | Complete | 2026-02-18 |
-| 10. AskUserQuestion Lifecycle Completion | 1/1 | Complete    | 2026-02-18 | — |
-| 11. Operational Hardening | v3.0 | 0/2 | Pending | — |
+| 10. AskUserQuestion Lifecycle Completion | v3.0 | 1/1 | Complete | 2026-02-18 |
+| 11. Operational Hardening | v3.0 | 2/2 | Complete | 2026-02-18 |
