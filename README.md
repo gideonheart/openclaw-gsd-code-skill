@@ -44,12 +44,14 @@ Run the hook registration script to configure Claude Code's event hooks:
 scripts/register-hooks.sh
 ```
 
-This registers 5 hook events in `~/.claude/settings.json`:
+This registers 7 hook events in `~/.claude/settings.json`:
 - Stop (agent stopped work)
 - Notification with idle_prompt matcher (agent waiting for input)
 - Notification with permission_prompt matcher (agent requesting permission)
 - SessionEnd (Claude Code session exited)
 - PreCompact (context approaching token limit)
+- PreToolUse with AskUserQuestion matcher (agent about to ask user a question)
+- PostToolUse with AskUserQuestion matcher (user answered agent's question)
 
 Verify registration succeeded:
 
@@ -57,7 +59,7 @@ Verify registration succeeded:
 jq '.hooks' ~/.claude/settings.json
 ```
 
-You should see all 5 hook events with absolute paths to hook scripts in this skill directory.
+You should see all 7 hook events with absolute paths to hook scripts in this skill directory.
 
 Important: Restart all Claude Code sessions after registration. Existing sessions use old configuration until restarted.
 
@@ -103,7 +105,23 @@ sudo systemctl enable --now recover-openclaw-agents.timer
 
 The timer runs the recovery service 45 seconds after each boot.
 
-### 4. Verify daemon
+### 4. Install logrotate (recommended)
+
+Install log rotation to prevent unbounded disk growth from hook JSONL and debug logs:
+
+```bash
+scripts/install-logrotate.sh
+```
+
+This installs `config/logrotate.conf` to `/etc/logrotate.d/gsd-code-skill` (requires sudo). Uses `copytruncate` for safe rotation while hook scripts hold open file descriptors. Daily rotation with 7-day retention.
+
+Verify installation:
+
+```bash
+cat /etc/logrotate.d/gsd-code-skill
+```
+
+### 5. Verify daemon
 
 Check timer status:
 
@@ -121,7 +139,7 @@ systemctl status recover-openclaw-agents.service
 
 After first boot trigger, you should see successful execution logs.
 
-### 5. Test spawn
+### 6. Test spawn
 
 Spawn a test agent to verify the full stack:
 
@@ -382,6 +400,8 @@ Hooks fire automatically once session is running:
 - **Notification (permission_prompt)**: Agent requesting permission
 - **SessionEnd**: Claude Code session exited (crash, user exit, OOM)
 - **PreCompact**: Context approaching token limit (auto or manual compact triggered)
+- **PreToolUse (AskUserQuestion)**: Agent about to ask user a question (forwards question data)
+- **PostToolUse (AskUserQuestion)**: User answered agent's question (logs answer for lifecycle correlation)
 
 ## Operational Runbook
 
@@ -440,6 +460,13 @@ tmux ls
 jq '.agents[] | {agent_id, enabled, auto_wake, openclaw_session_id}' config/recovery-registry.json
 ```
 
+**Check hook JSONL logs for a session**:
+```bash
+scripts/diagnose-hooks.sh <agent-name>
+```
+
+Runs 11-step diagnostic including JSONL log analysis (recent events, outcome distribution, non-delivered detection, duration stats).
+
 **Re-register hooks after script updates**:
 ```bash
 scripts/register-hooks.sh
@@ -497,12 +524,16 @@ journalctl -u recover-openclaw-agents.service -n 50 --no-pager
 | `scripts/spawn.sh` | Spawn new agent session. Auto-creates/updates registry entry. |
 | `scripts/recover-openclaw-agents.sh` | Deterministic multi-agent recovery after reboot/OOM. |
 | `scripts/sync-recovery-registry-session-ids.sh` | Sync `openclaw_session_id` values from OpenClaw session data. |
-| `scripts/register-hooks.sh` | Idempotent hook registration for Claude Code. Registers all 5 hook events. |
+| `scripts/register-hooks.sh` | Idempotent hook registration for Claude Code. Registers all 7 hook events. |
 | `scripts/stop-hook.sh` | Hook: fires when agent stops work. |
 | `scripts/notification-idle-hook.sh` | Hook: fires when agent idle (waiting for input). |
 | `scripts/notification-permission-hook.sh` | Hook: fires when agent requests permission. |
 | `scripts/session-end-hook.sh` | Hook: fires when Claude Code session exits. |
 | `scripts/pre-compact-hook.sh` | Hook: fires when context approaches token limit. |
+| `scripts/pre-tool-use-hook.sh` | Hook: fires when agent calls AskUserQuestion (forwards question data). |
+| `scripts/post-tool-use-hook.sh` | Hook: fires after AskUserQuestion completes (logs selected answer). |
+| `scripts/diagnose-hooks.sh` | End-to-end 11-step hook chain diagnostic with JSONL analysis. |
+| `scripts/install-logrotate.sh` | Install logrotate config for hook log rotation (requires sudo). |
 | `scripts/menu-driver.sh` | TUI helper for tmux pane inspection and resume menu navigation. |
 
 ### Config Files
@@ -512,6 +543,13 @@ journalctl -u recover-openclaw-agents.service -n 50 --no-pager
 | `config/recovery-registry.json` | Live registry (gitignored, contains session UUIDs). |
 | `config/recovery-registry.example.json` | Template registry with annotated schema. |
 | `config/default-system-prompt.txt` | Default system prompt for all agents. Minimal GSD workflow guidance. |
+| `config/logrotate.conf` | Logrotate template for hook logs. Install via `install-logrotate.sh`. |
+
+### Shared Libraries
+
+| File | Description |
+|------|-------------|
+| `lib/hook-utils.sh` | Shared library (6 functions) sourced by all hook scripts. No side effects on source. |
 
 ### systemd Units
 
