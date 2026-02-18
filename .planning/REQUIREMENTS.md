@@ -146,25 +146,25 @@ Requirements for milestone v3.1: Hook Refactoring & Migration Completion. Extrac
 
 - [x] **REFAC-01**: lib/hook-preamble.sh extracts the 27-line bootstrap block with BASH_SOURCE[1] caller identity, debug_log(), and hook-utils.sh sourcing
 - [x] **REFAC-02**: hook-preamble.sh includes source guard preventing double-sourcing and direct execution
-- [ ] **REFAC-03**: All 7 hooks source hook-preamble.sh as single entry point (no direct hook-utils.sh source)
+- [x] **REFAC-03**: All 7 hooks source hook-preamble.sh as single entry point (no direct hook-utils.sh source)
 - [x] **REFAC-04**: extract_hook_settings() in lib/hook-utils.sh replaces 4x duplicated 12-line settings extraction with three-tier fallback and error guards
 - [x] **REFAC-05**: detect_session_state() in lib/hook-utils.sh unifies state detection with consistent state names and case-insensitive extended regex patterns
 
 ### Migration
 
-- [ ] **MIGR-01**: notification-idle-hook.sh wake message uses [CONTENT] instead of [PANE CONTENT] (label rename only)
-- [ ] **MIGR-02**: notification-permission-hook.sh wake message uses [CONTENT] instead of [PANE CONTENT] (label rename only)
-- [ ] **MIGR-03**: pre-compact-hook.sh wake message uses [CONTENT] instead of [PANE CONTENT] (label rename only)
+- [x] **MIGR-01**: notification-idle-hook.sh wake message uses [CONTENT] instead of [PANE CONTENT] (label rename only)
+- [x] **MIGR-02**: notification-permission-hook.sh wake message uses [CONTENT] instead of [PANE CONTENT] (label rename only)
+- [x] **MIGR-03**: pre-compact-hook.sh wake message uses [CONTENT] instead of [PANE CONTENT] (label rename only)
 
 ### Diagnostic Fixes
 
 - [ ] **FIX-01**: diagnose-hooks.sh Step 7 uses prefix-match (startswith) matching actual hook lookup behavior
 - [ ] **FIX-02**: diagnose-hooks.sh Step 2 checks all 7 hook scripts (adds pre-tool-use-hook.sh and post-tool-use-hook.sh)
-- [ ] **FIX-03**: session-end-hook.sh jq calls have 2>/dev/null || echo "" error guards
+- [x] **FIX-03**: session-end-hook.sh jq calls have 2>/dev/null || echo "" error guards
 
 ### Code Quality
 
-- [ ] **QUAL-01**: All jq piping across all 7 hooks uses printf '%s' instead of echo for escape sequence safety
+- [x] **QUAL-01**: All jq piping across all 7 hooks uses printf '%s' instead of echo for escape sequence safety
 
 ## Future Requirements
 
@@ -259,12 +259,12 @@ Which phases cover which requirements. Updated during roadmap creation.
 | REFAC-02 | Phase 12 | Complete |
 | REFAC-04 | Phase 12 | Complete |
 | REFAC-05 | Phase 12 | Complete |
-| REFAC-03 | Phase 13 | Pending |
-| MIGR-01 | Phase 13 | Pending |
-| MIGR-02 | Phase 13 | Pending |
-| MIGR-03 | Phase 13 | Pending |
-| FIX-03 | Phase 13 | Pending |
-| QUAL-01 | Phase 13 | Pending |
+| REFAC-03 | Phase 13 | Done |
+| MIGR-01 | Phase 13 | Done |
+| MIGR-02 | Phase 13 | Done |
+| MIGR-03 | Phase 13 | Done |
+| FIX-03 | Phase 13 | Done |
+| QUAL-01 | Phase 13 | Done |
 | FIX-01 | Phase 14 | Pending |
 | FIX-02 | Phase 14 | Pending |
 
@@ -272,10 +272,10 @@ Which phases cover which requirements. Updated during roadmap creation.
 - v1 requirements: 38 total, all done
 - v2 requirements: 14 total, all done
 - v3 requirements: 17 total, all done
-- v3.1 requirements: 12 total, all pending
+- v3.1 requirements: 12 total, 10 done, 2 pending (FIX-01, FIX-02 in Phase 14)
 - Mapped to phases: 12
 - Unmapped: 0
 
 ---
 *Requirements defined: 2026-02-17*
-*Last updated: 2026-02-18 — v3.1 roadmap created, all 12 requirements mapped to Phases 12-14*
+*Last updated: 2026-02-18 — Phase 13 complete, 6 requirements verified*

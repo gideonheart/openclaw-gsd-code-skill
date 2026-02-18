@@ -9,15 +9,15 @@ See: .planning/PROJECT.md (updated 2026-02-18)
 
 ## Current Position
 
-Phase: 13 — Coordinated Hook Migration
+Phase: 14 — Diagnostic Fixes
 Plan: —
-Status: Ready to plan (Phase 12 complete)
-Last activity: 2026-02-18 — Phase 12 executed and verified (1 plan, ~4 min)
+Status: Ready to plan (Phase 13 complete)
+Last activity: 2026-02-18 — Phase 13 executed and verified (3 plans, 320+ lines removed)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 23 (v1.0 phases 1-5 + v2.0 phases 6-7 + v3.0 phases 8-11 + v3.1 phase 12)
+- Total plans completed: 26 (v1.0 phases 1-5 + v2.0 phases 6-7 + v3.0 phases 8-11 + v3.1 phases 12-13)
 - Average duration: —
 - Total execution time: —
 
@@ -33,6 +33,7 @@ Last activity: 2026-02-18 — Phase 12 executed and verified (1 plan, ~4 min)
 | 10 (v3.0) | 1 | ~3 min | ~3 min |
 | 11 (v3.0) | 2 | ~4 min | ~2 min |
 | 12 (v3.1) | 1 | ~4 min | ~4 min |
+| 13 (v3.1) | 3 | ~6 min | ~2 min |
 
 *Updated after each plan completion*
 
@@ -86,6 +87,14 @@ Phase 12 decisions (confirmed and shipped):
 - exit 0 only for lib-not-found fatal case in preamble — all other paths use return 0
 - lib/hook-utils.sh now has 8 functions: 6 original + extract_hook_settings + detect_session_state
 
+Phase 13 decisions (confirmed and shipped):
+- All 7 hooks source hook-preamble.sh as single entry point — zero direct hook-utils.sh sourcing
+- Pre-compact state detection normalized: idle_prompt -> idle, active -> working (using shared detect_session_state())
+- [PANE CONTENT] label replaced with [CONTENT] across notification-idle, notification-permission, and pre-compact hooks
+- All jq piping in hook scripts uses printf '%s' — echo-to-jq patterns eliminated from all 7 hooks
+- session-end-hook.sh jq calls all have 2>/dev/null error guards — cleanup never crashes on malformed data
+- Pre-tool-use and post-tool-use hooks needed only preamble migration — already used printf and had no settings/state detection
+
 ### Pending Todos
 
 None.
@@ -120,5 +129,5 @@ Quick-9 (2026-02-18): Incomplete v2.0 wake message migration — [CONTENT] appli
 ## Session Continuity
 
 Last session: 2026-02-18
-Stopped at: Phase 12 complete — Phase 13 planning is next
+Stopped at: Phase 13 complete — Phase 14 planning is next
 Resume file: None

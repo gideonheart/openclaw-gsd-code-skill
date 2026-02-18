@@ -216,7 +216,7 @@ Plans:
 **Milestone Goal:** Extract shared code from duplicated hook preambles, unify divergent patterns, and complete the v2.0 [CONTENT] migration left incomplete in v3.0. Zero new user-facing behavior — pure maintenance refactoring eliminating copy-paste debt.
 
 - [x] **Phase 12: Shared Library Foundation** - Create hook-preamble.sh and extend hook-utils.sh with extract_hook_settings() and detect_session_state() (completed 2026-02-18)
-- [ ] **Phase 13: Coordinated Hook Migration** - Apply preamble sourcing, settings function, [CONTENT] labels, printf sweep, and session-end guards across all 7 hooks in one pass
+- [x] **Phase 13: Coordinated Hook Migration** - Apply preamble sourcing, settings function, [CONTENT] labels, printf sweep, and session-end guards across all 7 hooks in one pass (completed 2026-02-18)
 - [ ] **Phase 14: Diagnostic Fixes** - Align diagnose-hooks.sh Step 7 (prefix-match) and Step 2 (complete 7-script list) with actual hook behavior
 
 ## Phase Details
@@ -265,7 +265,7 @@ Plans:
 **Plans**: 1 plan
 
 Plans:
-- [ ] 12-01-PLAN.md -- Create hook-preamble.sh, add extract_hook_settings() and detect_session_state() to hook-utils.sh, verify integration
+- [x] 12-01-PLAN.md -- Create hook-preamble.sh, add extract_hook_settings() and detect_session_state() to hook-utils.sh, verify integration
 
 ### Phase 13: Coordinated Hook Migration
 **Goal**: All 7 hook scripts are thinned and consistent — one source statement replaces the 27-line preamble block, four hooks call extract_hook_settings() instead of duplicating the 12-line settings block, three hooks use [CONTENT] label, all hooks use printf '%s' for jq piping, and session-end jq guards are in place
@@ -280,9 +280,9 @@ Plans:
 **Plans**: 3 plans
 
 Plans:
-- [ ] 13-01-PLAN.md -- Migrate notification-idle-hook.sh and notification-permission-hook.sh (preamble, settings, state, [CONTENT] label, printf sweep)
-- [ ] 13-02-PLAN.md -- Migrate pre-compact-hook.sh and session-end-hook.sh (preamble, settings, state normalization, [CONTENT] label, jq guards, printf sweep)
-- [ ] 13-03-PLAN.md -- Migrate stop-hook.sh, pre-tool-use-hook.sh, post-tool-use-hook.sh (preamble, settings, state, printf sweep, cross-hook verification)
+- [x] 13-01-PLAN.md -- Migrate notification-idle-hook.sh and notification-permission-hook.sh (preamble, settings, state, [CONTENT] label, printf sweep)
+- [x] 13-02-PLAN.md -- Migrate pre-compact-hook.sh and session-end-hook.sh (preamble, settings, state normalization, [CONTENT] label, jq guards, printf sweep)
+- [x] 13-03-PLAN.md -- Migrate stop-hook.sh, pre-tool-use-hook.sh, post-tool-use-hook.sh (preamble, settings, state, printf sweep, cross-hook verification)
 
 ### Phase 14: Diagnostic Fixes
 **Goal**: diagnose-hooks.sh accurately reflects production hook behavior — Step 7 uses prefix-match lookup and Step 2 checks all 7 hook scripts
@@ -312,6 +312,6 @@ Phase 14 depends on Phase 12 (not Phase 13) — can run in parallel with Phase 1
 | 9. Hook Script Migration | v3.0 | 3/3 | Complete | 2026-02-18 |
 | 10. AskUserQuestion Lifecycle Completion | v3.0 | 1/1 | Complete | 2026-02-18 |
 | 11. Operational Hardening | v3.0 | 2/2 | Complete | 2026-02-18 |
-| 12. Shared Library Foundation | 1/1 | Complete    | 2026-02-18 | - |
-| 13. Coordinated Hook Migration | v3.1 | 0/3 | Planned | - |
+| 12. Shared Library Foundation | v3.1 | 1/1 | Complete | 2026-02-18 |
+| 13. Coordinated Hook Migration | v3.1 | 3/3 | Complete | 2026-02-18 |
 | 14. Diagnostic Fixes | v3.1 | 0/TBD | Not started | - |
