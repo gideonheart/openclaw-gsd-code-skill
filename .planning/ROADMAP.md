@@ -291,7 +291,10 @@ Plans:
 **Success Criteria** (what must be TRUE):
   1. diagnose-hooks.sh Step 7 uses startswith(agent_id + "-") prefix-match — a session named "gideon-2" correctly resolves to agent "gideon" instead of reporting a lookup failure
   2. diagnose-hooks.sh Step 2 checks all 7 hook scripts including pre-tool-use-hook.sh and post-tool-use-hook.sh — a missing hook script is flagged as FAIL rather than silently ignored
-**Plans**: TBD
+**Plans**: 1 plan
+
+Plans:
+- [ ] 14-01-PLAN.md -- Fix Step 7 prefix-match lookup and Step 2 complete 7-script list
 
 ## Progress
 
@@ -314,4 +317,4 @@ Phase 14 depends on Phase 12 (not Phase 13) — can run in parallel with Phase 1
 | 11. Operational Hardening | v3.0 | 2/2 | Complete | 2026-02-18 |
 | 12. Shared Library Foundation | v3.1 | 1/1 | Complete | 2026-02-18 |
 | 13. Coordinated Hook Migration | v3.1 | 3/3 | Complete | 2026-02-18 |
-| 14. Diagnostic Fixes | v3.1 | 0/TBD | Not started | - |
+| 14. Diagnostic Fixes | v3.1 | 0/1 | Planned | - |
