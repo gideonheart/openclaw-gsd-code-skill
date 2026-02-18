@@ -277,7 +277,12 @@ Plans:
   3. All jq pipeline inputs across all 7 hooks use printf '%s' "$variable" instead of echo "$variable" — grep confirms zero echo-to-jq patterns remain
   4. session-end-hook.sh jq calls include 2>/dev/null error guards — session cleanup does not abort on malformed registry data
   5. A hook fired against a non-managed session still exits in under 5ms — preamble sourcing adds no measurable overhead to the fast-path guard exits
-**Plans**: TBD
+**Plans**: 3 plans
+
+Plans:
+- [ ] 13-01-PLAN.md -- Migrate notification-idle-hook.sh and notification-permission-hook.sh (preamble, settings, state, [CONTENT] label, printf sweep)
+- [ ] 13-02-PLAN.md -- Migrate pre-compact-hook.sh and session-end-hook.sh (preamble, settings, state normalization, [CONTENT] label, jq guards, printf sweep)
+- [ ] 13-03-PLAN.md -- Migrate stop-hook.sh, pre-tool-use-hook.sh, post-tool-use-hook.sh (preamble, settings, state, printf sweep, cross-hook verification)
 
 ### Phase 14: Diagnostic Fixes
 **Goal**: diagnose-hooks.sh accurately reflects production hook behavior — Step 7 uses prefix-match lookup and Step 2 checks all 7 hook scripts
@@ -308,5 +313,5 @@ Phase 14 depends on Phase 12 (not Phase 13) — can run in parallel with Phase 1
 | 10. AskUserQuestion Lifecycle Completion | v3.0 | 1/1 | Complete | 2026-02-18 |
 | 11. Operational Hardening | v3.0 | 2/2 | Complete | 2026-02-18 |
 | 12. Shared Library Foundation | 1/1 | Complete    | 2026-02-18 | - |
-| 13. Coordinated Hook Migration | v3.1 | 0/TBD | Not started | - |
+| 13. Coordinated Hook Migration | v3.1 | 0/3 | Planned | - |
 | 14. Diagnostic Fixes | v3.1 | 0/TBD | Not started | - |
