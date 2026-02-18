@@ -77,7 +77,7 @@ Requirements for milestone v2.0: Smart Hook Delivery. Replaces noisy 120-line ra
 
 - [ ] **EXTRACT-01**: Stop hook extracts last assistant response from transcript_path JSONL using type-filtered content parsing (`content[]? | select(.type == "text")`)
 - [ ] **EXTRACT-02**: When transcript extraction fails (file missing, empty, parse error), fall back to pane diff (only new/added lines from last 40 pane lines)
-- [ ] **EXTRACT-03**: Per-session previous pane state stored in /tmp for diff fallback calculation
+- [x] **EXTRACT-03**: Per-session previous pane state stored in /tmp for diff fallback calculation
 
 ### AskUserQuestion Forwarding
 
@@ -93,8 +93,8 @@ Requirements for milestone v2.0: Smart Hook Delivery. Replaces noisy 120-line ra
 
 ### Shared Library
 
-- [ ] **LIB-01**: lib/hook-utils.sh contains shared extraction and diff functions (DRY — sourced by stop-hook.sh and pre-tool-use-hook.sh only)
-- [ ] **LIB-02**: Each function in lib has single responsibility — extract response, compute diff, format questions are separate functions
+- [x] **LIB-01**: lib/hook-utils.sh contains shared extraction and diff functions (DRY — sourced by stop-hook.sh and pre-tool-use-hook.sh only)
+- [x] **LIB-02**: Each function in lib has single responsibility — extract response, compute diff, format questions are separate functions
 
 ### Registration
 
@@ -165,11 +165,11 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| LIB-01 | Phase 6 | Pending |
-| LIB-02 | Phase 6 | Pending |
+| LIB-01 | Phase 6 | Complete |
+| LIB-02 | Phase 6 | Complete |
 | EXTRACT-01 | Phase 6 | Pending |
 | EXTRACT-02 | Phase 6 | Pending |
-| EXTRACT-03 | Phase 6 | Pending |
+| EXTRACT-03 | Phase 6 | Complete |
 | ASK-01 | Phase 6 | Pending |
 | ASK-02 | Phase 6 | Pending |
 | ASK-03 | Phase 6 | Pending |
