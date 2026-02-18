@@ -111,7 +111,7 @@ All 7 hooks:
 
 **lib/hook-utils.sh** - Shared functions sourced by all hook scripts
 
-Contains 6 functions: `lookup_agent_in_registry`, `extract_last_assistant_response`, `extract_pane_diff`, `format_ask_user_questions`, `write_hook_event_record`, `deliver_async_with_logging`. No side effects on source.
+Contains 9 functions: `lookup_agent_in_registry`, `extract_last_assistant_response`, `extract_pane_diff`, `format_ask_user_questions`, `write_hook_event_record`, `deliver_async_with_logging`, `deliver_with_mode`, `extract_hook_settings`, `detect_session_state`. No side effects on source.
 
 ### Utilities
 

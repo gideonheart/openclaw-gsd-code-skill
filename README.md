@@ -531,7 +531,7 @@ journalctl -u recover-openclaw-agents.service -n 50 --no-pager
 
 | File | Description |
 |------|-------------|
-| `lib/hook-utils.sh` | Shared library (6 functions) sourced by all hook scripts. No side effects on source. |
+| `lib/hook-utils.sh` | Shared library (9 functions) sourced by all hook scripts. No side effects on source. |
 
 ### systemd Units
 
