@@ -1,8 +1,8 @@
 # Hook Behavior Specifications
 
-This document provides full behavior specs for all 5 Claude Code hooks used by gsd-code-skill. Load this when hook behavior is unexpected or when configuring advanced hook settings.
+This document provides full behavior specs for all 7 Claude Code hooks used by gsd-code-skill. Load this when hook behavior is unexpected or when configuring advanced hook settings.
 
-All hooks are registered in `~/.claude/settings.json` via `scripts/register-hooks.sh`. All hooks share common patterns: consume stdin immediately, check `$TMUX` environment, lookup registry, exit cleanly in <5ms for non-managed sessions, use jq for all registry operations.
+All hooks are registered in `~/.claude/settings.json` via `scripts/register-hooks.sh`. All hooks share common patterns: consume stdin immediately, check `$TMUX` environment, lookup registry, exit cleanly in <5ms for non-managed sessions, use jq for all registry operations. All 7 hooks emit structured JSONL records via `write_hook_event_record`.
 
 Hook settings use three-tier fallback: **per-agent** `agents[].hook_settings` > **global** top-level `hook_settings` > **hardcoded defaults** in hook scripts.
 
@@ -153,6 +153,43 @@ None. PreToolUse hook ignores `hook_mode` (always async, never bidirectional). T
 - No pane capture (question data comes from `tool_input` in stdin, not from tmux pane)
 - If `lib/hook-utils.sh` is missing, exits 0 with debug log (graceful degradation)
 - No bidirectional mode -- AskUserQuestion forwarding is always notification-only
+
+**Exit Time:** <5ms for non-managed sessions, ~20-50ms for managed sessions
+
+**Related Registry Fields:** `tmux_session_name`, `agent_id`, `openclaw_session_id`
+
+---
+
+## post-tool-use-hook.sh
+
+**Trigger:** Fires after AskUserQuestion completes (PostToolUse event with `AskUserQuestion` matcher)
+
+**What It Does:**
+
+1. Consume stdin JSON to prevent pipe blocking
+2. Log raw stdin via `debug_log` for empirical validation of `tool_response` schema (ASK-05 requirement)
+3. Check `$TMUX` environment (exit if not in tmux)
+4. Extract tmux session name via `tmux display-message -p '#S'`
+5. Lookup agent entry in registry via `lookup_agent_in_registry`
+6. Exit if no match (non-managed session)
+7. Extract `tool_use_id` from stdin JSON
+8. Extract `answer_selected` from stdin JSON using defensive multi-shape extractor (handles object with `.content`/`.text` and plain string shapes)
+9. Build wake message with `[ANSWER SELECTED]` section containing tool_use_id and answer
+10. Deliver wake message asynchronously via `deliver_async_with_logging` with JSONL record containing `tool_use_id` and `answer_selected` extra fields
+11. Exit 0 (always -- PostToolUse fires after tool ran, cannot block)
+
+**Configuration (hook_settings):**
+
+None. PostToolUse hook ignores `hook_mode` (always async, never bidirectional). Timeout: 10s in settings.json.
+
+**Edge Cases:**
+
+- Always exits 0 -- PostToolUse fires after the tool already ran, non-zero exit has no effect
+- No `stop_hook_active` check (PostToolUse doesn't recurse)
+- No pane capture (answer data comes from `tool_response` in stdin, not from tmux pane)
+- Defensive `answer_selected` extractor handles multiple `tool_response` shapes pending empirical validation
+- Raw stdin logged for schema validation -- can be narrowed once AskUserQuestion PostToolUse schema is confirmed from live session data
+- Lifecycle correlation: `tool_use_id` links PostToolUse record back to PreToolUse record via `jq --arg id "toolu_..." 'select(.tool_use_id == $id)' logs/session.jsonl`
 
 **Exit Time:** <5ms for non-managed sessions, ~20-50ms for managed sessions
 
@@ -315,19 +352,22 @@ The stop hook uses a three-tier fallback to populate the `[CONTENT]` section:
 
 1. **Transcript extraction (primary):** Reads `transcript_path` from stdin JSON, calls `extract_last_assistant_response` from `lib/hook-utils.sh`. Uses `tail -40` of the JSONL file with `jq` type-filtered selection to get Claude's last text response. No ANSI codes, no pane noise.
 
-2. **Pane diff (fallback):** If transcript extraction returns empty (file missing, parse error), calls `extract_pane_diff` from `lib/hook-utils.sh`. Compares current `tail -40` of pane content against previous capture stored in `/tmp/gsd-pane-prev-{session}.txt`. Sends only new/added lines using `diff --new-line-format='%L'`. Uses `flock` on `/tmp/gsd-pane-lock-{session}` for atomic read-write.
+2. **Pane diff (fallback):** If transcript extraction returns empty (file missing, parse error), calls `extract_pane_diff` from `lib/hook-utils.sh`. Compares current `tail -40` of pane content against previous capture stored in `logs/gsd-pane-prev-{session}.txt`. Sends only new/added lines using `diff --new-line-format='%L'`. Uses `flock` on `logs/gsd-pane-lock-{session}` for atomic read-write.
 
 3. **Raw pane tail (ultimate fallback):** If lib/hook-utils.sh cannot be sourced, falls back to `tail -40` of raw pane content.
 
 ## Shared Library
 
-`lib/hook-utils.sh` contains three functions:
+`lib/hook-utils.sh` contains 6 functions:
 
 | Function | Used By | Purpose |
 |----------|---------|---------|
+| `lookup_agent_in_registry` | all hooks | Registry agent lookup by tmux session name (prefix match) |
 | `extract_last_assistant_response` | stop-hook.sh | JSONL transcript text extraction |
 | `extract_pane_diff` | stop-hook.sh | Per-session pane line delta |
 | `format_ask_user_questions` | pre-tool-use-hook.sh | AskUserQuestion data formatting |
+| `write_hook_event_record` | all hooks (via deliver_async_with_logging) | Structured JSONL record emission with 13 positional parameters |
+| `deliver_async_with_logging` | all hooks | Backgrounded async delivery with JSONL logging (calls write_hook_event_record + openclaw agent) |
 
 The library is sourced (not executed) -- no side effects, no output on source.
 
@@ -337,13 +377,51 @@ Section order: `[SESSION IDENTITY]`, `[TRIGGER]`, `[CONTENT]`, `[STATE HINT]`, `
 
 **Breaking change:** `[PANE CONTENT]` (v1) replaced by `[CONTENT]` (v2). Downstream parsers must update.
 
-## Temp File Lifecycle
+## Log File Lifecycle
 
-Per-session state files in `/tmp`:
+Per-session log files in `logs/`:
+- `{session-name}.jsonl` -- structured JSONL records (one per hook invocation, written by `write_hook_event_record`)
+- `{session-name}.log` -- plain-text debug log (written by `debug_log` in each hook script)
+- `hooks.log` -- shared log for entries before session name is known (Phase 1 of two-phase logging)
+
+Pane diff state files in `logs/`:
 - `gsd-pane-prev-{session}.txt` -- last pane capture (written by `extract_pane_diff`)
 - `gsd-pane-lock-{session}` -- flock file for atomic diff operations
 
-Files are cleaned up by `session-end-hook.sh` when the Claude Code session terminates. No stale files accumulate across sessions.
+Log rotation handled by `config/logrotate.conf` (installed via `scripts/install-logrotate.sh`). Uses `copytruncate` for safe rotation while hooks hold open `>>` file descriptors.
+
+---
+
+# v3.0 Structured JSONL Logging
+
+All 7 hooks emit structured JSONL records to `logs/{session-name}.jsonl`. Each record contains:
+
+| Field | Description |
+|-------|-------------|
+| `timestamp` | ISO 8601 UTC timestamp |
+| `hook_script` | Hook script filename (e.g., `stop-hook.sh`) |
+| `session_name` | tmux session name |
+| `agent_id` | Agent identifier from registry |
+| `trigger` | Event trigger type (e.g., `stop`, `idle_prompt`, `ask_user_question_answered`) |
+| `state` | Detected session state |
+| `content_source` | Content extraction method used |
+| `outcome` | Delivery result: `delivered`, `sync_delivered`, `skipped`, `error` |
+| `duration_ms` | Hook execution duration in milliseconds |
+| `extra` | Hook-specific extra fields (JSON object) |
+
+**Hook-specific extra fields:**
+
+- `pre-tool-use-hook.sh`: `{"questions_forwarded": N, "tool_use_id": "toolu_..."}`
+- `post-tool-use-hook.sh`: `{"tool_use_id": "toolu_...", "answer_selected": "..."}`
+- Other hooks: `{}` (empty object)
+
+**Lifecycle correlation:** Link PreToolUse question to PostToolUse answer via shared `tool_use_id`:
+
+```bash
+jq --arg id "toolu_abc123" 'select(.tool_use_id == $id)' logs/session-name.jsonl
+```
+
+**Diagnostics:** Run `scripts/diagnose-hooks.sh <agent-name>` for JSONL analysis including recent events, outcome distribution, non-delivered detection, and duration stats.
 
 ---
 
@@ -372,3 +450,14 @@ Files are cleaned up by `session-end-hook.sh` when the Claude Code session termi
 - Check `agent_id` and `openclaw_session_id` are non-empty
 - Check tmux session exists: `tmux has-session -t <name>`
 - All hook stderr goes to `/dev/null` in async mode
+
+**No JSONL records appearing:**
+- Hooks only write JSONL for managed sessions (agent must be in registry)
+- Check `logs/` directory exists and is writable
+- Check `logs/{session-name}.jsonl` after a hook fires
+- Run `scripts/diagnose-hooks.sh <agent-name>` for Step 10 JSONL analysis
+
+**Hook delivery failures in JSONL:**
+- Run `scripts/diagnose-hooks.sh <agent-name>` -- Step 10 shows non-delivered events
+- Check `logs/{session-name}.log` for detailed error context around the failed delivery
+- Verify openclaw binary is available: `command -v openclaw`
