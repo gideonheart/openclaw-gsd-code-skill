@@ -1,327 +1,356 @@
 # Feature Research
 
-**Domain:** Structured JSONL event logging for hook/webhook interaction lifecycle — gsd-code-skill v3.0
+**Domain:** Bash hook system refactoring — gsd-code-skill v3.1 (Hook Refactoring & Migration Completion)
 **Researched:** 2026-02-18
-**Confidence:** HIGH (existing codebase well-understood; JSONL log schema patterns verified via multiple sources)
+**Confidence:** HIGH (existing codebase is the ground truth; all patterns verified by reading actual code)
 
 ---
 
-## Context: What v2.0 Built (Already Shipped)
+## Context: What v3.0 Built (Already Shipped)
 
-This is a subsequent milestone research file. v2.0 shipped:
-- Transcript JSONL extraction as primary content source (no tmux noise)
-- Pane diff fallback when transcript unavailable
-- PreToolUse hook for AskUserQuestion forwarding (structured question + options)
-- Wake message v2 format: [SESSION IDENTITY], [TRIGGER], [CONTENT], [STATE HINT], [CONTEXT PRESSURE], [AVAILABLE ACTIONS]
-- Per-session log files in skill logs/ directory (plain-text debug_log())
-- Shared lib/hook-utils.sh with DRY extraction functions
+This is a subsequent milestone research file. v3.0 shipped:
+- 7 hook scripts (stop, notification-idle, notification-permission, session-end, pre-compact, pre-tool-use, post-tool-use)
+- lib/hook-utils.sh with 6 functions: `lookup_agent_in_registry`, `extract_last_assistant_response`, `extract_pane_diff`, `format_ask_user_questions`, `write_hook_event_record`, `deliver_async_with_logging`
+- JSONL structured logging per-session (one record per invocation)
+- v2.0 [CONTENT] format with transcript extraction — but only applied to stop-hook.sh
+- State detection pattern matching — two divergent implementations
+- Three-tier hook_settings fallback (per-agent > global > hardcoded) — duplicated 4 times
+- diagnose-hooks.sh with 11 diagnostic steps — Step 7 uses wrong lookup strategy
 
-**v3.0 problem statement:** The current plain-text log format captures debug breadcrumbs but not structured events. What actually went into the wake message (the full body sent to OpenClaw) is never recorded. What OpenClaw responded with is only recorded as the first 200 characters in bidirectional mode, and as background PID in async mode. No request/response pairs are correlated. No AskUserQuestion lifecycle is captured (questions asked → option selected). This makes post-hoc debugging difficult and makes automation impossible — you can't grep for "all ask_user_question interactions in the last hour" or "all bidirectional responses where decision=block."
+**v3.1 problem statement:** v3.0 achieved structured logging but did not address the copy-paste debt that was present since v1.0. The 27-line hook preamble is duplicated across all 7 hooks. The hook_settings extraction block is duplicated across 4 hooks. State detection exists in two different implementations. The v2.0 [CONTENT] wake format migration was applied only to stop-hook.sh, leaving 3 hooks using the old [PANE CONTENT] header. diagnose-hooks.sh Step 7 uses exact-match lookup while the actual hooks use prefix-match — producing false diagnostic failures. These are pure maintenance debt items with no new user-facing features.
 
 ---
 
 ## Feature Landscape
 
-### Table Stakes (Users Expect These)
+### Table Stakes (Must Ship — Milestone Incomplete Without These)
 
-Features that must exist for v3.0 to be considered functional. These are the non-negotiable building blocks. Missing any makes the milestone incomplete by its own definition.
+These are the non-negotiable deliverables. The milestone is defined by these. All are internal refactoring — no new external behavior.
 
-| Feature | Why Expected | Complexity | Dependencies on v2.0 |
-|---------|--------------|------------|----------------------|
-| JSONL event schema with standard fields | Every structured log system uses machine-parseable one-record-per-line format. Fields: `timestamp`, `event_type`, `correlation_id`, `session_name`, `agent_id`, `hook_script`, `level` | LOW | Existing debug_log() replaced or wrapped in all 6 hook scripts |
-| Shared JSONL logging function in lib/hook-utils.sh | All 6 hook scripts currently duplicate the debug_log() definition inline — a shared emit_event() function that writes a JSONL line belongs in hook-utils.sh (DRY, SRP) | LOW | lib/hook-utils.sh (exists, 4 functions) |
-| hook_fired event (request) on every hook invocation | The moment a hook script fires is a meaningful lifecycle event: which hook, which session, which agent, timestamp, stdin size, trigger type — this is the "request" side of each interaction | LOW | All 6 hook scripts — add after stdin consumed and session resolved |
-| wake_sent event (request delivery) capturing full wake message body | The complete text sent to OpenClaw is currently never stored. Logging it in a JSONL field makes it queryable and replayable. This is the primary gap. | LOW | Stop hook and notification hooks — log after building WAKE_MESSAGE and before the openclaw call |
-| wake_response_received event (response) with OpenClaw response body | In bidirectional mode, RESPONSE is currently truncated to 200 chars. Log the full response. In async mode, log the background PID and that response capture is not available. | LOW | Bidirectional branches in stop-hook.sh, notification-idle-hook.sh, notification-permission-hook.sh, pre-compact-hook.sh |
-| correlation_id linking request and response events | Async mode fires the openclaw call in a background process — the parent and background process can't share a variable after fork. A correlation_id generated before the fork and passed to the background process links the wake_sent and wake_response_received events from different PIDs. | MEDIUM | All hooks using async backgrounding — generate ID before fork, pass via env or argument |
-| Per-session JSONL log file (one file per session, session-prefixed name) | v2.0 already uses per-session plain-text logs ({SESSION_NAME}.log). The JSONL file should use the same pattern: {SESSION_NAME}.jsonl in logs/. | LOW | Existing per-session plain-text log pattern (sessions already write to logs/{SESSION_NAME}.log) |
-| hook_exit event on early-exit paths (non-managed sessions, guards) | When a hook exits early (no TMUX, no registry match, stop_hook_active guard), that exit should be a minimal JSONL record so early exits are distinguishable from never-fired hooks | LOW | All 6 hooks — add before each early-exit point |
+| Feature | Why Expected | Complexity | Dependencies |
+|---------|--------------|------------|--------------|
+| hook-preamble.sh — shared bootstrap for all 7 hooks | The 27-line preamble (SKILL_LOG_DIR, GSD_HOOK_LOG, HOOK_SCRIPT_NAME, debug_log function, SCRIPT_DIR, LIB_PATH, source with guard) is copy-pasted verbatim across all 7 hook scripts. One change (e.g., log format) requires 7 coordinated edits. Extracted as a sourced snippet, it becomes single-authoritative. | LOW | Must exist before any hook uses it. All 7 hooks must be updated in the same pass to avoid a mixed state where some hooks use preamble and some don't. |
+| extract_hook_settings() in lib/hook-utils.sh | 12-line block extracting GLOBAL_SETTINGS, PANE_CAPTURE_LINES, CONTEXT_PRESSURE_THRESHOLD, HOOK_MODE from registry is duplicated identically in stop-hook.sh, notification-idle-hook.sh, notification-permission-hook.sh, pre-compact-hook.sh. The pre-compact copy omits the `2>/dev/null` error guards that the other three have — a silent inconsistency. Extract to a function; all 4 hooks call it with consistent behavior. | LOW | Requires lib/hook-utils.sh (exists). The 4 hooks source the lib before the settings extraction block, so the function is available. Hook-preamble.sh must exist first (since it sources lib). |
+| [CONTENT] migration for notification-idle-hook.sh | This hook fires on idle_prompt events and sends [PANE CONTENT] section header. The v2.0 format uses [CONTENT] and is the documented canonical format. OpenClaw consumers must handle both or miss data from this hook. Apply the same migration stop-hook.sh got in v2.0: rename section header, replace raw PANE_CONTENT dump with transcript extraction (primary) and pane diff (fallback). | MEDIUM | Depends on extract_last_assistant_response() (in lib/hook-utils.sh, already exists) and extract_pane_diff() (exists). This is a behavior change — the content sent to OpenClaw becomes cleaner (transcript-extracted) vs the current raw pane dump. |
+| [CONTENT] migration for notification-permission-hook.sh | Same as above. This hook fires on permission_prompt events. Same [PANE CONTENT] → [CONTENT] migration, same transcript/pane-diff extraction chain. | MEDIUM | Same as notification-idle migration. The two scripts are structurally identical post-guard — changes are parallel. |
+| [CONTENT] migration for pre-compact-hook.sh | Same migration, but pre-compact is slightly different: it uses a different context pressure extraction pattern (grep -oP with Perl lookahead) and a different state detection pattern set. Migration includes normalizing context pressure extraction and unifying state detection if applicable. | MEDIUM | Same lib functions. However, pre-compact state detection is genuinely different (fires at a different point in the Claude Code lifecycle) so the decision on whether to unify state detection affects this migration. |
+| diagnose-hooks.sh Step 7 prefix-match fix | Step 7 checks the registry with `select(.tmux_session_name == $session)` — exact match. The actual hooks use `lookup_agent_in_registry` which does `startswith($agent.agent_id + "-")` — prefix match. When a session has a `-2` suffix (tmux conflict resolution), hooks work but Step 7 reports failure. The diagnostic must match production behavior. Fix: replace Step 7 jq with the same startswith prefix logic (or call lookup_agent_in_registry if diagnose can source the lib). | LOW | lookup_agent_in_registry() exists in lib/hook-utils.sh. diagnose-hooks.sh can source the lib (it already knows SCRIPT_DIR and lib path). |
+| diagnose-hooks.sh Step 2 — add pre-tool-use-hook.sh and post-tool-use-hook.sh | Step 2 checks 5 hook scripts but the system now has 7. pre-tool-use-hook.sh and post-tool-use-hook.sh added in Phases 6-10 were never added to Step 2's array. A missing or non-executable post-tool-use-hook.sh would silently break AskUserQuestion lifecycle logging without the diagnostic catching it. | LOW | No dependencies. Array addition only. |
+| echo → printf '%s' cleanup for jq piping | Older hooks (stop-hook.sh, notification-idle-hook.sh, notification-permission-hook.sh, session-end-hook.sh) use `echo "$AGENT_DATA" | jq ...` to pipe JSON. Under some shells, `echo` interprets backslash sequences and adds trailing newlines that corrupt JSON strings. Newer hooks (pre-tool-use-hook.sh, post-tool-use-hook.sh) correctly use `printf '%s'`. Under `set -euo pipefail`, this is a latent correctness risk. Replace all `echo "$VAR" \| jq` with `printf '%s' "$VAR" \| jq` in the affected hooks. | LOW | No dependencies. Search-and-replace across 4 files. |
 
-### Differentiators (Competitive Advantage)
+### Differentiators (High Leverage — Ship If Time Allows)
 
-Features that make this logging system significantly more capable than plain-text logs. Not required for basic correctness, but high diagnostic and automation value.
+These improve the system beyond baseline correctness but are not required for the milestone goal.
 
-| Feature | Value Proposition | Complexity | Dependencies on v2.0 |
-|---------|-------------------|------------|----------------------|
-| AskUserQuestion lifecycle: question_forwarded event | When PreToolUse hook fires for AskUserQuestion, log which questions and options were forwarded — structured: question text, options list, tool_use_id. Enables "how often does Claude ask questions?" analysis. | LOW | pre-tool-use-hook.sh (question data already extracted in format_ask_user_questions); add JSONL emit before openclaw call |
-| AskUserQuestion lifecycle: answer_selected event via PostToolUse hook | When AskUserQuestion tool completes, a PostToolUse hook fires with the selected answer in tool_result. Logging the answer_selected event closes the question/answer lifecycle: you know what was asked AND what was chosen. This requires adding a new PostToolUse hook script and registering it. | MEDIUM | Requires new post-tool-use-hook.sh (new script); new PostToolUse hook registration in register-hooks.sh and settings.json; tool_result field in hook stdin |
-| Duration field in wake events (ms from hook_fired to wake_sent) | Time from hook entry to openclaw call reveals slow registry lookups, slow transcript reads, slow pane captures. Single arithmetic subtraction (EPOCHREALTIME or date +%s%N). | LOW | All hooks — capture start timestamp at entry, compute delta before wake_sent event |
-| content_source field in wake events (transcript vs pane_diff vs raw_pane) | The stop hook already knows which source was used (extracted response vs pane diff fallback). Recording this in the JSONL event exposes when fallback mode activates — a signal that transcript extraction is failing. | LOW | stop-hook.sh — content source decision already made (line 163-177), just add to event fields |
-| decision field in response events (block vs proceed for bidirectional mode) | When bidirectional response contains decision=block, log the decision and reason explicitly. Enables "how many times did Gideon block an action?" queries. | LOW | Bidirectional response parsing already done in stop-hook.sh and notification-idle-hook.sh |
-| Shared log rotation awareness (max file size guard before writing) | JSONL files grow indefinitely. A simple guard: if logs/{SESSION_NAME}.jsonl exceeds 10MB, rotate to .jsonl.1 or truncate. Prevents disk fill on long-running sessions. | LOW | Per-session JSONL file — add size check before emit_event() writes |
+| Feature | Value Proposition | Complexity | Dependencies |
+|---------|-------------------|------------|--------------|
+| session-end-hook.sh jq error guard fix | `session-end-hook.sh` lines 71-72 use `echo "$AGENT_DATA" \| jq -r '.agent_id'` without `2>/dev/null \|\| echo ""` guards that all other hooks use. Under `set -euo pipefail`, a malformed AGENT_DATA causes the hook to crash (propagating a non-zero exit to Claude Code). Fix: add `2>/dev/null \|\| echo ""` to both lines. | LOW | No dependencies. Same fix pattern used in all other hooks. |
+| Unified context pressure extraction | stop-hook.sh, notification-idle-hook.sh, notification-permission-hook.sh use `grep -oE '[0-9]{1,3}%' \| tr -d '%'` — matches any N% string. pre-compact-hook.sh uses `grep -oP '\d+(?=% of context)'` — matches only numbers before "% of context". The pre-compact pattern is strictly more precise. After the [CONTENT] migration touches all four files, unify to the more precise pattern. Normalizes CONTEXT_PRESSURE="unknown" vs CONTEXT_PRESSURE_PCT=0 sentinel values. | LOW | Requires [CONTENT] migration of pre-compact-hook.sh. Can be bundled with that migration. |
+| Unified state detection — document pre-compact intentional differences | pre-compact-hook.sh uses different grep patterns (case-sensitive, different keywords, `active` fallback vs `working`) than the other three pane-capturing hooks. Before unifying, verify whether these differences are intentional (different TUI text at PreCompact time) or accidental copy-paste divergence. If intentional, add an explanatory comment. If accidental, extract `detect_session_state()` to lib/hook-utils.sh and use it everywhere. | MEDIUM | Requires understanding of Claude Code TUI behavior at PreCompact vs Stop events. Cannot verify without a live session — flag as needing validation. |
+| write_hook_event_record() internal deduplication | The function in lib/hook-utils.sh (lines 203-258) has two near-identical `jq -cn` blocks differing only by the extra_fields merge. A single invocation that conditionally includes `--argjson extra_fields` and `+ $extra_fields` only when extra_fields_json is non-empty would halve the function body. Reduces the risk of the two code paths diverging. | LOW | Internal to lib/hook-utils.sh. No hook script changes needed. |
 
-### Anti-Features (Commonly Requested, Often Problematic)
+### Anti-Features (Do Not Build)
 
 | Feature | Why Requested | Why Problematic | Alternative |
 |---------|---------------|-----------------|-------------|
-| Log the full pane content in JSONL events | Seems useful for debugging — store exactly what the pane showed | Pane content is 40-120 lines per hook fire, potentially 8000+ characters, mostly unchanged between fires. JSONL files grow to hundreds of MB per session per day. The pane content is already captured in the wake message which IS logged. | Log wake_message_bytes (size of the payload) and content_source (transcript/pane_diff) — enough for diagnosis without storing the full content twice |
-| Log the full transcript content in JSONL events | Complete conversation context enables replaying sessions | Transcripts grow to hundreds of KB. Logging them in JSONL events creates 100x storage amplification. The transcript file itself is the source of truth at transcript_path. | Log transcript_path (string reference) and transcript_bytes (file size) in the event — pointer, not copy |
-| Emit JSONL to stdout or stderr instead of a log file | Simpler — no file management | Claude Code captures hook stdout for decision injection (bidirectional mode). Writing JSONL to stdout corrupts the decision JSON. Writing to stderr risks interleaving with Claude Code's own stderr. | Write to per-session .jsonl files in logs/ — completely separate from hook stdout/stderr |
-| OpenTelemetry / structured logging framework (Python/Node runtime) | Industry-standard distributed tracing with OTLP export | Adds Python or Node.js startup penalty (50-200ms) to hooks that must complete in <5ms for non-managed sessions. Violates the "Bash + jq only" constraint. No OTLP collector running on this host. | Use jq -n with --arg parameters to emit JSONL directly — no runtime dependency, same output format, <1ms overhead |
-| Centralized JSONL log file across all sessions (single hooks.jsonl) | Easier to query one file | Concurrent hook fires from multiple sessions race to write to the same file. Requires flock on every event emit. Per-session files have no concurrent writers. | Per-session JSONL files — session isolation means no locking needed. Cross-session queries use: jq -s '.' logs/*.jsonl |
-| SQLite event store instead of JSONL | Structured queries, proper indexing, atomic writes | SQLite requires sqlite3 binary (not guaranteed installed), adds dependency. Querying JSONL with jq is sufficient for single-host use. Migration path away from SQLite is painful. | JSONL files queryable with: jq 'select(.event_type == "wake_sent")' logs/*.jsonl — no additional dependencies |
-| Real-time streaming / tailing of events | Useful for live dashboards | Not in scope for v3.0 (out of scope in PROJECT.md: "Dashboard rendering/UI — warden.kingdom.lv integration is separate work"). JSONL files support tail -f natively for humans. | JSONL files are inherently tail-able. Dashboard integration deferred to separate milestone. |
+| Hook generator script (template → 7 hook scripts) | 7 scripts share 70-80% structure — a generator would enforce consistency | v3.1 scope is reducing existing duplication, not introducing new build tooling. Generator adds a build step to a bash-only skill. The preamble extraction achieves the same duplication reduction with no new tooling dependency. | Extract hook-preamble.sh + extract_hook_settings() — these achieve the same structural consistency without a build pipeline. |
+| Consolidating 7 hook scripts into fewer files | "One file per event type" seems verbose | Each script must exit fast, independently, and has event-specific logic. Merging scripts that fire for different events would require multiplexing on event type inside one script — increasing branching complexity and making individual hook behavior harder to audit. The Claude Code hooks API calls each script independently; merging provides no performance benefit. | Keep 7 scripts. Reduce their shared boilerplate to a sourced preamble. |
+| Retry logic for failed openclaw deliveries | Some deliveries return no_response — retrying would improve reliability | Retries inside async hook background processes create latency uncertainty. The hook architecture is fire-and-forget by design. Failed deliveries are already captured in JSONL as `no_response` outcomes — the diagnostic surfaces them. A retry mechanism belongs in OpenClaw's session management, not in hook scripts. | Keep `no_response` JSONL records as the signal. No retry in hooks. |
+| PostToolUse tool_response schema validation in v3.1 | post-tool-use-hook.sh defensive extractor still unvalidated | Requires a live AskUserQuestion session to collect raw stdin data — this is an empirical investigation task, not a refactoring task. It is out of scope for a refactoring milestone. | Keep raw stdin logging and defensive extractor in post-tool-use-hook.sh. Resolve in a dedicated Quick Task when live session data is available. |
+| printf '%s' migration to STDIN_JSON processing | STDIN_JSON comes from `cat` (not `echo`), so no echo-related risk | STDIN_JSON is set by `STDIN_JSON=$(cat)` — this is correct. Only the *piping* of STDIN_JSON or AGENT_DATA through `echo "$VAR" \| jq` is risky. Don't change the `cat` input pattern, only the downstream piping. | Scope the echo→printf fix only to `echo "$AGENT_DATA" \| jq` and `echo "$STDIN_JSON" \| jq` patterns — not to stdin consumption. |
 
 ---
 
 ## Feature Dependencies
 
 ```
-Shared JSONL logging function (emit_event in lib/hook-utils.sh)
-    └──required by──> hook_fired event (all 6 hooks)
-    └──required by──> wake_sent event (all hooks with openclaw delivery)
-    └──required by──> wake_response_received event (bidirectional hooks)
-    └──required by──> hook_exit event (all early-exit paths)
-    └──required by──> question_forwarded event (pre-tool-use-hook.sh)
-    └──required by──> answer_selected event (post-tool-use-hook.sh, if built)
+hook-preamble.sh
+    └──must exist before──> all 7 hooks use it
+    └──must source──> lib/hook-utils.sh (to make debug_log visible from preamble, or preamble defines debug_log itself)
+    └──ordering note──> ALL 7 hooks must be updated in one coordinated pass — mixed state (some with preamble, some without) is valid but confusing
 
-correlation_id
-    └──requires──> generation before openclaw call (in hook script, before fork)
-    └──required by──> wake_sent event (carries the ID)
-    └──required by──> wake_response_received event (carries same ID from background process)
-    └──links──> hook_fired → wake_sent → wake_response_received (same invocation chain)
+extract_hook_settings() in lib/hook-utils.sh
+    └──must exist before──> stop-hook.sh calls it (replaces lines 99-111)
+    └──must exist before──> notification-idle-hook.sh calls it (replaces lines 92-104)
+    └──must exist before──> notification-permission-hook.sh calls it (replaces lines 93-105)
+    └──must exist before──> pre-compact-hook.sh calls it (replaces lines 81-93)
+    └──requires──> hook-preamble.sh exists (hooks source lib via preamble; lib must be sourced before settings extraction)
+    └──outputs──> PANE_CAPTURE_LINES, CONTEXT_PRESSURE_THRESHOLD, HOOK_MODE (set in calling hook scope via nameref or echo parsing)
 
-hook_fired event
-    └──requires──> Shared JSONL logging function
-    └──requires──> session_name resolved (fires after TMUX check + registry lookup)
-    └──enhances──> duration_ms in wake_sent (needs start timestamp from hook_fired)
+[CONTENT] migration — notification-idle-hook.sh
+    └──requires──> extract_last_assistant_response() in lib/hook-utils.sh (exists, no change needed)
+    └──requires──> extract_pane_diff() in lib/hook-utils.sh (exists, no change needed)
+    └──requires──> hook-preamble.sh applied (lib already sourced, so functions available)
+    └──parallel with──> notification-permission-hook.sh migration (identical structure, can be one plan)
 
-wake_sent event
-    └──requires──> Shared JSONL logging function
-    └──requires──> correlation_id (generated before openclaw call)
-    └──requires──> hook_fired (provides start timestamp for duration_ms calculation)
-    └──requires──> WAKE_MESSAGE built (logs full body or byte count)
+[CONTENT] migration — notification-permission-hook.sh
+    └──same dependency tree as notification-idle migration
+    └──parallel with──> notification-idle-hook.sh migration
 
-wake_response_received event
-    └──requires──> Shared JSONL logging function
-    └──requires──> correlation_id (passed to background process or captured in bidirectional branch)
-    └──requires──> openclaw call completed (async: after background process waits; bidirectional: after synchronous call)
-    └──contains──> decision field (only relevant in bidirectional mode with block response)
+[CONTENT] migration — pre-compact-hook.sh
+    └──same extraction functions as above
+    └──enhances──> context pressure unification (same file, bundle in same pass)
+    └──may require──> state detection decision (unify vs document) before migration commits
 
-AskUserQuestion question_forwarded event
-    └──requires──> Shared JSONL logging function
-    └──requires──> format_ask_user_questions output (already extracted in pre-tool-use-hook.sh)
-    └──contains──> tool_use_id (links to answer_selected event)
+diagnose-hooks.sh Step 7 prefix-match fix
+    └──can source──> lib/hook-utils.sh and call lookup_agent_in_registry() directly
+    └──independent of all other features (can ship in any order)
 
-AskUserQuestion answer_selected event
-    └──requires──> Shared JSONL logging function
-    └──requires──> post-tool-use-hook.sh (NEW script — does not exist yet)
-    └──requires──> PostToolUse hook registration in settings.json with matcher "AskUserQuestion"
-    └──requires──> tool_result field in PostToolUse hook stdin (contains selected answer)
-    └──links to──> question_forwarded (via tool_use_id)
-    └──conflicts with──> "ASK-03: always exit 0, always async" (PostToolUse is separate from PreToolUse — no conflict)
+diagnose-hooks.sh Step 2 script list update
+    └──independent of all other features
+    └──parallel with──> Step 7 fix (same file, ship together)
 
-Per-session JSONL log file
-    └──requires──> Shared JSONL logging function (writes to file path)
-    └──follows same pattern as──> Per-session plain-text log (logs/{SESSION_NAME}.log already exists)
-    └──enhanced by──> Log rotation guard (optional, prevents disk fill)
+echo → printf '%s' cleanup
+    └──affects──> stop-hook.sh, notification-idle-hook.sh, notification-permission-hook.sh, session-end-hook.sh
+    └──can be bundled with──> [CONTENT] migration of notification hooks (same files touched)
+    └──independent of preamble and settings extraction
+
+session-end-hook.sh jq guard fix
+    └──independent of all other features (one file, two lines)
+    └──can be bundled with──> echo-to-printf cleanup (session-end is in the affected list)
 ```
 
 ### Dependency Notes
 
-- **emit_event requires no external calls:** It is a pure jq -n invocation writing one JSON line — no network, no flock needed (per-session files have single writer).
-- **correlation_id bridges async fork boundary:** Generated with `date +%s%N-$$-$RANDOM` or similar before `openclaw ... &` — the background subshell inherits the variable from the parent environment.
-- **answer_selected event has the highest complexity:** It requires a new script (post-tool-use-hook.sh) and a new hook registration. It is the only v3.0 feature that touches scripts/settings beyond lib/hook-utils.sh additions. This makes it a candidate for a separate phase from the core JSONL infrastructure.
-- **duration_ms requires start timestamp capture:** The hook_fired event must capture a start timestamp (EPOCHREALTIME in bash 5+, or date +%s%3N). All subsequent events in the same hook invocation compute duration relative to this start.
-
----
-
-## Event Schema
-
-### Core Event Fields (All Events)
-
-```json
-{
-  "timestamp": "2026-02-18T10:00:00.123Z",
-  "event_type": "hook_fired | hook_exit | wake_sent | wake_response_received | question_forwarded | answer_selected",
-  "hook_script": "stop-hook.sh",
-  "session_name": "warden-main",
-  "agent_id": "warden",
-  "correlation_id": "1708250400123-12345-47829",
-  "level": "info | warn | error"
-}
-```
-
-### Event-Specific Fields
-
-**hook_fired** (emitted when hook starts, after stdin consumed and session resolved):
-```json
-{
-  "event_type": "hook_fired",
-  "hook_event_name": "Stop",
-  "stdin_bytes": 1842,
-  "pid": 12345
-}
-```
-
-**hook_exit** (emitted on early-exit paths — non-managed session, guard triggered):
-```json
-{
-  "event_type": "hook_exit",
-  "exit_reason": "no_tmux | no_registry_match | stop_hook_active | empty_session_name | registry_missing",
-  "exit_phase": "tmux_guard | registry_lookup | agent_id_empty"
-}
-```
-
-**wake_sent** (emitted after openclaw call is dispatched, before hook exits):
-```json
-{
-  "event_type": "wake_sent",
-  "openclaw_session_id": "sess_abc123",
-  "hook_mode": "async | bidirectional",
-  "wake_message_bytes": 1247,
-  "content_source": "transcript | pane_diff | raw_pane",
-  "trigger_type": "response_complete | idle_prompt | permission_prompt | pre_compact | session_end | ask_user_question",
-  "duration_ms": 12,
-  "bg_pid": 12348
-}
-```
-
-**wake_response_received** (emitted by background process after openclaw responds, or synchronously in bidirectional mode):
-```json
-{
-  "event_type": "wake_response_received",
-  "hook_mode": "async | bidirectional",
-  "response_bytes": 98,
-  "response_status": "ok | error | empty",
-  "decision": "block | proceed | null",
-  "reason": "reason text if block, else null",
-  "duration_ms": 843
-}
-```
-
-**question_forwarded** (emitted by pre-tool-use-hook.sh after AskUserQuestion wake is dispatched):
-```json
-{
-  "event_type": "question_forwarded",
-  "tool_use_id": "toolu_01ABC...",
-  "question_count": 1,
-  "options_count": 3,
-  "multi_select": false,
-  "duration_ms": 8
-}
-```
-
-**answer_selected** (emitted by post-tool-use-hook.sh after AskUserQuestion completes):
-```json
-{
-  "event_type": "answer_selected",
-  "tool_use_id": "toolu_01ABC...",
-  "answer_text": "OAuth (Recommended)",
-  "answer_index": 0,
-  "duration_ms": 4521
-}
-```
+- **hook-preamble.sh is the root dependency.** All hook changes (settings extraction, [CONTENT] migration, echo→printf) touch the same files that will gain the preamble. Applying the preamble first means the subsequent changes operate on already-refactored files. Applying it last means doing two passes over every hook file. Build preamble first.
+- **extract_hook_settings() is the second dependency.** It must land in lib/hook-utils.sh before the 4 pane-capture hooks are updated to call it. Since lib changes are additive (no hook behavior changes), this can land alongside or slightly after the preamble.
+- **[CONTENT] migrations are independent of each other.** notification-idle and notification-permission are structurally identical — they can be one plan or two plans. pre-compact is different enough (context pressure extraction, state detection) to warrant its own plan.
+- **diagnose-hooks.sh changes are fully independent.** They can ship in any order and do not affect hook behavior.
+- **State detection unification requires investigation before committing.** Do not assume pre-compact patterns are wrong — they may be intentionally different. Flag this for a validation step, and default to documenting the difference if uncertain.
 
 ---
 
 ## MVP Definition
 
-### Launch With (v3.0 — core JSONL infrastructure)
+### Ship With This Milestone (v3.1 Core)
 
-The minimum that makes v3.0 meaningful. All must ship together since they share the emit_event function.
+The minimum that makes v3.1 meaningful. All refactoring with no new behavior.
 
-- [ ] **Shared emit_event() in lib/hook-utils.sh** — Replaces debug_log() with a jq-based JSONL emitter. Writes one JSON line per call to the per-session .jsonl file. Accepts event_type and arbitrary key-value fields. Shared by all hook scripts via source.
-- [ ] **hook_fired event** — Emitted in all 6 hook scripts after stdin consumed and session resolved. Fields: hook_script, hook_event_name, session_name, agent_id, correlation_id, stdin_bytes, pid.
-- [ ] **hook_exit event** — Emitted on early-exit paths in all 6 hook scripts. Replaces "EXIT: ..." debug_log lines. Fields: exit_reason, exit_phase.
-- [ ] **wake_sent event** — Emitted in stop-hook.sh, notification-idle-hook.sh, notification-permission-hook.sh, pre-compact-hook.sh, pre-tool-use-hook.sh, session-end-hook.sh after openclaw call is dispatched. Fields: wake_message_bytes, content_source, trigger_type, hook_mode, duration_ms, bg_pid (async only).
-- [ ] **wake_response_received event** — Emitted in bidirectional branches (stop, notification-idle, notification-permission, pre-compact) after openclaw responds synchronously. Fields: response_bytes, response_status, decision, reason, duration_ms. In async mode: emitted by background subprocess after openclaw call completes.
-- [ ] **correlation_id linking request and response** — Generated once per hook invocation (before the openclaw fork), carried in hook_fired, wake_sent, and wake_response_received events.
-- [ ] **question_forwarded event** — Emitted in pre-tool-use-hook.sh after AskUserQuestion wake is dispatched. Fields: tool_use_id, question_count, options_count, multi_select.
-- [ ] **Per-session JSONL file** — logs/{SESSION_NAME}.jsonl, parallel to existing logs/{SESSION_NAME}.log plain-text file. emit_event() writes here; debug_log() continues writing to .log for backward compatibility during transition.
+- [ ] **hook-preamble.sh** — All 7 hooks source it instead of carrying 27 lines of bootstrap code each. Immediate maintenance benefit: one place to change log format, lib path, or debug_log() behavior.
+- [ ] **extract_hook_settings()** — Function in lib/hook-utils.sh replacing 4 identical 12-line blocks. The pre-compact copy's missing 2>/dev/null guards are fixed as a side effect.
+- [ ] **[CONTENT] migration — notification-idle-hook.sh** — Section header and content extraction matches stop-hook.sh format. OpenClaw receives transcript-extracted content (not raw pane noise) for idle_prompt events.
+- [ ] **[CONTENT] migration — notification-permission-hook.sh** — Same as above for permission_prompt events.
+- [ ] **[CONTENT] migration — pre-compact-hook.sh** — Same migration plus context pressure extraction normalization.
+- [ ] **diagnose-hooks.sh Step 7 prefix-match fix** — Diagnostic matches actual hook behavior for sessions with -2 suffix.
+- [ ] **diagnose-hooks.sh Step 2 complete script list** — All 7 hook scripts checked, not 5.
+- [ ] **echo → printf '%s' cleanup** — All `echo "$VAR" | jq` patterns in hook files replaced with `printf '%s' "$VAR" | jq`.
 
-### Add After Validation (v3.x)
+### Add After Validation (v3.1 Follow-on)
 
-- [ ] **answer_selected event via PostToolUse hook** — Requires new post-tool-use-hook.sh and hook registration. Closes the AskUserQuestion lifecycle loop. Add after confirming question_forwarded works correctly and correlation via tool_use_id is reliable.
-- [ ] **duration_ms in all events** — Requires capturing hook start time (EPOCHREALTIME) immediately on script entry. Straightforward but requires touching all 6 hooks. Add in second pass after core events are confirmed correct.
-- [ ] **Log rotation guard** — Size check before emit_event writes. Add when log accumulation becomes visible in practice (depends on session frequency).
+- [ ] **session-end-hook.sh jq error guard fix** — Can bundle with echo→printf cleanup since session-end is in the affected list.
+- [ ] **Unified context pressure extraction** — Bundle with pre-compact [CONTENT] migration. Evaluate during that pass whether to use the more precise `grep -oP` pattern everywhere.
+- [ ] **State detection documentation or unification** — Requires live session observation to confirm whether pre-compact TUI text differs. Default to documenting if unsure.
 
 ### Future Consideration (v4+)
 
-- [ ] **Remove plain-text debug_log() entirely** — Once JSONL events cover all cases debug_log() covered, delete the duplicate plain-text logging. Requires confirming JSONL log contains no gaps.
-- [ ] **Cross-session query tooling** — A query-logs.sh script that wraps jq queries across all session JSONL files. Deferred to when dashboard integration begins.
-- [ ] **OTLP export** — If a local collector is ever running, add OTLP transport as an alternative destination for emit_event(). Separate from file-based logging, not replacing it.
+- [ ] **write_hook_event_record() internal deduplication** — Low priority; function works correctly. Reduce code duplication within lib/hook-utils.sh when next touching the file for other reasons.
+- [ ] **Eliminate plain-text debug_log() entirely** — Once JSONL covers all debug_log cases, remove the parallel plain-text log. Requires confirming JSONL has no coverage gaps.
+- [ ] **PostToolUse tool_response schema validation** — Empirical investigation requiring live AskUserQuestion session data. Separate Quick Task, not a refactoring phase.
 
 ---
 
 ## Feature Prioritization Matrix
 
-| Feature | Diagnostic Value | Implementation Cost | Priority |
+| Feature | Maintenance Value | Implementation Cost | Priority |
 |---------|-----------------|---------------------|----------|
-| Shared emit_event() in lib | HIGH — enables all other features | LOW — 10-15 lines of jq bash | P1 |
-| hook_fired event | HIGH — proves hook executed, captures entry state | LOW — one call per hook after session resolved | P1 |
-| wake_sent event with wake_message_bytes | HIGH — confirms delivery, captures payload size | LOW — one call per hook before openclaw | P1 |
-| correlation_id | HIGH — links request/response across async fork | MEDIUM — generate before fork, pass to bg subprocess | P1 |
-| wake_response_received (bidirectional) | HIGH — captures what OpenClaw actually said | LOW — synchronous, already in response variable | P1 |
-| wake_response_received (async) | MEDIUM — async response captured after the fact | MEDIUM — background subprocess must emit to same file | P2 |
-| hook_exit event | MEDIUM — distinguishes early exits from never-fired | LOW — replaces existing debug_log exit lines | P1 |
-| question_forwarded event | MEDIUM — AskUserQuestion audit trail starts here | LOW — data already extracted in pre-tool-use-hook.sh | P1 |
-| answer_selected event (PostToolUse) | HIGH — closes the lifecycle loop | MEDIUM — new script + new hook registration | P2 |
-| duration_ms in wake events | LOW-MEDIUM — performance diagnosis | LOW — one arithmetic op per event | P2 |
-| content_source in wake events | MEDIUM — reveals transcript fallback rate | LOW — already a local variable in stop-hook.sh | P1 |
-| Log rotation guard | LOW — prevents disk fill over weeks | LOW — wc -c check + mv | P3 |
+| hook-preamble.sh | HIGH — 7 files reduced to sourced snippet | LOW — write once, source in 7 files | P1 |
+| extract_hook_settings() | HIGH — 4 identical blocks collapsed | LOW — 12-line function, 4 call sites | P1 |
+| [CONTENT] migration — notification-idle | HIGH — format consistency, cleaner content | MEDIUM — transcript extraction chain | P1 |
+| [CONTENT] migration — notification-permission | HIGH — same as above | MEDIUM — identical to idle migration | P1 |
+| [CONTENT] migration — pre-compact | MEDIUM — format consistency | MEDIUM — context pressure normalization needed | P1 |
+| diagnose Step 7 prefix-match fix | HIGH — false diagnostic failures eliminated | LOW — replace one jq select() | P1 |
+| diagnose Step 2 script list | MEDIUM — diagnostic coverage complete | LOW — array addition | P1 |
+| echo → printf '%s' cleanup | MEDIUM — latent correctness risk removed | LOW — search-and-replace | P1 |
+| session-end jq guard fix | MEDIUM — crash under malformed AGENT_DATA | LOW — add 2>/dev/null || echo "" | P2 |
+| Context pressure unification | LOW — sentinel value consistency | LOW — bundle with pre-compact migration | P2 |
+| State detection unification | MEDIUM — eliminates pattern divergence | MEDIUM — needs investigation first | P2 |
+| write_hook_event_record() deduplication | LOW — internal quality | LOW — rewrites the jq block | P3 |
 
 **Priority key:**
-- P1: Core JSONL infrastructure — must ship in first phase
-- P2: Completeness — add in second phase within same milestone
-- P3: Operational hygiene — add when problem manifests
+- P1: Core milestone scope — ships together
+- P2: High value, low risk — bundle with P1 if same files are being touched
+- P3: Quality improvement — deferred unless already in the same file pass
 
 ---
 
-## AskUserQuestion Lifecycle Detail
+## Implementation Mechanics: Concrete Expected Behavior Per Feature Area
 
-### Current State (v2.0)
-```
-Claude calls AskUserQuestion tool
-    → PreToolUse hook fires
-    → pre-tool-use-hook.sh: extracts question + options from tool_input
-    → Formats and sends wake message to Gideon (async background)
-    → debug_log: "DELIVERED (async AskUserQuestion forward, bg PID=X)"
-    → Hook exits 0 (TUI menu renders)
-    → [NOTHING LOGGED ABOUT WHICH OPTION WAS SELECTED]
-```
+### 1. Shared Preamble Sourcing (hook-preamble.sh)
 
-### Target State (v3.0)
-```
-Claude calls AskUserQuestion tool
-    → PreToolUse hook fires
-    → pre-tool-use-hook.sh:
-        → correlation_id = "1708250400123-12345-47829"
-        → emit_event: {event_type: "hook_fired", correlation_id: ..., tool_use_id: "toolu_01ABC..."}
-        → extracts question + options
-        → sends wake to Gideon (async background, background process emits wake_response_received)
-        → emit_event: {event_type: "question_forwarded", tool_use_id: "toolu_01ABC...", question_count: 1, options_count: 3}
-        → hook exits 0 (TUI menu renders)
+**Pattern in bash hook systems:** A shared preamble is a sourced snippet (not a function library) that runs initialization code when sourced. It has intentional side effects: creating directories, setting variables, defining functions.
 
-Gideon selects option (via menu-driver.sh choose 2)
-    → Claude Code submits answer
-    → PostToolUse hook fires (NEW in v3.x)
-    → post-tool-use-hook.sh:
-        → reads tool_use_id from stdin
-        → reads answer from tool_result in stdin
-        → emit_event: {event_type: "answer_selected", tool_use_id: "toolu_01ABC...", answer_text: "JWT", answer_index: 1}
-        → hook exits 0
+**The source idiom in each hook script:**
+```bash
+# Capture SCRIPT_DIR BEFORE sourcing — BASH_SOURCE[0] reflects the preamble path after source
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "${SCRIPT_DIR}/../lib/hook-preamble.sh"
 ```
 
-### tool_use_id as the Lifecycle Link
+The `BASH_SOURCE[0]` reference must be captured in the hook script before the source call, because after source, `BASH_SOURCE[0]` reflects the preamble file path, not the hook's path.
 
-The `tool_use_id` field in PreToolUse and PostToolUse hook stdin is the stable identifier for a single AskUserQuestion invocation. It links the question_forwarded event to the answer_selected event. This is the canonical way to correlate question and answer across the async gap between hook fires.
+**What hook-preamble.sh must set (verified against all 7 hook scripts):**
+- `SKILL_LOG_DIR` — resolved relative to SCRIPT_DIR (which the hook set before sourcing)
+- `mkdir -p "$SKILL_LOG_DIR"` — intentional side effect on source (must happen before logging)
+- `GSD_HOOK_LOG="${GSD_HOOK_LOG:-${SKILL_LOG_DIR}/hooks.log}"` — shared log with env override
+- `HOOK_SCRIPT_NAME` — set via `$(basename "${BASH_SOURCE[1]}")` (BASH_SOURCE[1] is the sourcing script, not the preamble)
+- `debug_log()` — function definition writing to GSD_HOOK_LOG via printf
+- `debug_log "FIRED — PID=$$ TMUX=${TMUX:-<unset>}"` — first log line, fires immediately on source
+- `LIB_PATH="${SCRIPT_DIR}/../lib/hook-utils.sh"` — path to function library
+- Source lib/hook-utils.sh with `[ -f "$LIB_PATH" ]` guard and fatal exit on missing
 
-PostToolUse hook stdin structure (for AskUserQuestion completion):
-```json
-{
-  "hook_event_name": "PostToolUse",
-  "tool_name": "AskUserQuestion",
-  "tool_use_id": "toolu_01ABC...",
-  "tool_input": { "questions": [...] },
-  "tool_response": {
-    "type": "tool_result",
-    "content": "JWT"
-  }
+**The BASH_SOURCE[1] trick for HOOK_SCRIPT_NAME:**
+When hook-preamble.sh is sourced by a hook script, `BASH_SOURCE[0]` is the preamble file and `BASH_SOURCE[1]` is the sourcing hook script. Using `$(basename "${BASH_SOURCE[1]}")` in the preamble correctly sets HOOK_SCRIPT_NAME to the hook's name ("stop-hook.sh"), not "hook-preamble.sh". This is the correct pattern — any preamble that sets script identity must reference `BASH_SOURCE[1]`.
+
+**Current inconsistency the preamble normalizes:** 3 hooks (stop, pre-tool-use, post-tool-use) emit `debug_log "sourced lib/hook-utils.sh"` inside the lib-source guard. The other 4 do not. The preamble standardizes this — either all hooks emit it (via the preamble) or none do. Recommended: include it in the preamble.
+
+### 2. Shared Settings Extraction (extract_hook_settings())
+
+**Pattern in bash function libraries:** A function that accepts parameters and echoes a structured result (JSON object) to stdout. The caller captures and parses the output.
+
+**What must be extracted (verified against 4 duplicate blocks):**
+```bash
+# Current duplicated pattern in stop-hook.sh, notification-idle, notification-permission, pre-compact:
+GLOBAL_SETTINGS=$(jq -r '.hook_settings // {}' "$REGISTRY_PATH" 2>/dev/null || echo "{}")
+PANE_CAPTURE_LINES=$(echo "$AGENT_DATA" | jq -r \
+  --argjson global "$GLOBAL_SETTINGS" \
+  '(.hook_settings.pane_capture_lines // $global.pane_capture_lines // 100)' 2>/dev/null || echo "100")
+CONTEXT_PRESSURE_THRESHOLD=$(echo "$AGENT_DATA" | jq -r \
+  --argjson global "$GLOBAL_SETTINGS" \
+  '(.hook_settings.context_pressure_threshold // $global.context_pressure_threshold // 50)' 2>/dev/null || echo "50")
+HOOK_MODE=$(echo "$AGENT_DATA" | jq -r \
+  --argjson global "$GLOBAL_SETTINGS" \
+  '(.hook_settings.hook_mode // $global.hook_mode // "async")' 2>/dev/null || echo "async")
+```
+
+**Two valid output approaches for the extracted function:**
+
+Option 1 — Echo JSON object (consistent with all other lib functions):
+```bash
+extract_hook_settings() {
+  local registry_path="$1"
+  local agent_data="$2"
+  local global_settings
+  global_settings=$(jq -r '.hook_settings // {}' "$registry_path" 2>/dev/null || printf '{}')
+  jq -cn \
+    --argjson global "$global_settings" \
+    --argjson agent "$agent_data" \
+    '{
+      pane_capture_lines: ($agent.hook_settings.pane_capture_lines // $global.pane_capture_lines // 100),
+      context_pressure_threshold: ($agent.hook_settings.context_pressure_threshold // $global.context_pressure_threshold // 50),
+      hook_mode: ($agent.hook_settings.hook_mode // $global.hook_mode // "async")
+    }' 2>/dev/null || printf '{"pane_capture_lines":100,"context_pressure_threshold":50,"hook_mode":"async"}'
+}
+# Caller:
+SETTINGS=$(extract_hook_settings "$REGISTRY_PATH" "$AGENT_DATA")
+PANE_CAPTURE_LINES=$(printf '%s' "$SETTINGS" | jq -r '.pane_capture_lines')
+CONTEXT_PRESSURE_THRESHOLD=$(printf '%s' "$SETTINGS" | jq -r '.context_pressure_threshold')
+HOOK_MODE=$(printf '%s' "$SETTINGS" | jq -r '.hook_mode')
+```
+
+Option 2 — Set variables directly (fewer jq invocations):
+```bash
+extract_hook_settings() {
+  local registry_path="$1"
+  local agent_data="$2"
+  # Uses printf -v or global variables — less clean, harder to test
 }
 ```
 
-Note: The `tool_response.content` field contains the raw selected answer text (or comma-separated for multiSelect). Confidence: MEDIUM — inferred from PreToolUse pattern and Claude Code hooks documentation structure; PostToolUse is in the hooks spec but the exact field name for AskUserQuestion response needs verification during implementation.
+**Recommendation:** Option 1. Consistent with the echo-to-stdout pattern used by all 5 existing lib functions. The extra 3 jq calls at 2ms each add 6ms total — acceptable for a one-time hook setup step. Easier to unit test.
+
+**The guard inconsistency the function fixes:** pre-compact-hook.sh lines 81-93 lack `2>/dev/null || echo "default"` on all three jq calls. The function adds them consistently. Under `set -euo pipefail` with malformed AGENT_DATA, the unguarded pre-compact jq calls currently crash the hook.
+
+### 3. [CONTENT] Migration (notification-idle, notification-permission, pre-compact)
+
+**What [PANE CONTENT] currently sends (notification hooks):**
+```bash
+WAKE_MESSAGE="...
+[PANE CONTENT]
+${PANE_CONTENT}
+..."
+# PANE_CONTENT = raw tmux capture-pane output: prompts, colors, UI chrome, progress bars
+```
+
+**What [CONTENT] sends (stop-hook.sh reference implementation):**
+```bash
+# Primary source: extract last assistant response from transcript JSONL
+TRANSCRIPT_PATH=$(printf '%s' "$STDIN_JSON" | jq -r '.transcript_path // ""' 2>/dev/null || echo "")
+EXTRACTED_RESPONSE=$(extract_last_assistant_response "$TRANSCRIPT_PATH")
+# Fallback: pane diff (delta from last invocation only)
+if [ -n "$EXTRACTED_RESPONSE" ]; then
+  CONTENT_SECTION="$EXTRACTED_RESPONSE"
+  CONTENT_SOURCE="transcript"
+else
+  PANE_FOR_DIFF=$(printf '%s\n' "$PANE_CONTENT" | tail -40)
+  CONTENT_SECTION=$(extract_pane_diff "$SESSION_NAME" "$PANE_FOR_DIFF")
+  CONTENT_SOURCE="pane_diff"
+fi
+WAKE_MESSAGE="...
+[CONTENT]
+${CONTENT_SECTION}
+..."
+```
+
+**Expected behavior after migration:**
+- notification-idle and notification-permission: identical to stop-hook.sh content extraction chain
+- `CONTENT_SOURCE` field in JSONL record reflects "transcript" or "pane_diff" correctly
+- For notification hooks, `transcript_path` comes from STDIN_JSON — must verify that Notification hook stdin includes `transcript_path`. If not, fallback to pane_diff is automatic and correct (extract_last_assistant_response returns empty for missing file).
+- The `[PANE CONTENT]` section header is removed. `[CONTENT]` replaces it.
+- pre-compact: same chain but `transcript_path` may not be in PreCompact hook stdin (different hook type). Default behavior: pane_diff fallback.
+
+**Scope boundary:** The section header rename (`[PANE CONTENT]` → `[CONTENT]`) and the content source upgrade (raw pane → transcript/pane_diff) are a single atomic change per hook. Do not rename without upgrading content source — a [CONTENT] section containing raw pane dump is worse than a [PANE CONTENT] section containing the same.
+
+### 4. diagnose-hooks.sh Step 7 Prefix-Match Fix
+
+**Current broken behavior (line 263-265):**
+```bash
+LOOKUP_RESULT=$(jq -c --arg session "$TMUX_SESSION_NAME" \
+  '.agents[] | select(.tmux_session_name == $session) | {agent_id, openclaw_session_id}' \
+  "$REGISTRY_PATH" 2>/dev/null || echo "")
+```
+Uses `select(.tmux_session_name == $session)` — exact match on the field `tmux_session_name`.
+
+**Actual hook behavior (lookup_agent_in_registry in lib/hook-utils.sh line 34-37):**
+```bash
+jq -r \
+  --arg session "$session_name" \
+  '.agents[] | . as $agent |
+   select($session | startswith($agent.agent_id + "-")) |
+   {agent_id, openclaw_session_id, hook_settings}' \
+  "$registry_path" 2>/dev/null || printf ''
+```
+Uses `startswith($agent.agent_id + "-")` — prefix match on the session name against agent_id.
+
+**Expected behavior after fix:** Step 7 sources lib/hook-utils.sh (safe — lib has no side effects on source) and calls `lookup_agent_in_registry "$REGISTRY_PATH" "$TMUX_SESSION_NAME"`. Pass/fail reflects whether the actual hook would find the agent for this session.
+
+**Alternative (inline the same logic):**
+```bash
+LOOKUP_RESULT=$(jq -c --arg session "$TMUX_SESSION_NAME" \
+  '.agents[] | . as $agent |
+   select($session | startswith($agent.agent_id + "-")) |
+   {agent_id, openclaw_session_id}' \
+  "$REGISTRY_PATH" 2>/dev/null || echo "")
+```
+Inline is simpler (no source needed) but duplicates the lookup logic. If lookup_agent_in_registry ever changes, Step 7 will diverge again. Recommended: source the lib and call the function directly.
+
+### 5. echo → printf '%s' Cleanup
+
+**Why echo is risky for JSON piping:**
+In bash with `set -euo pipefail`, `echo "$VAR"` has two problems when piping JSON:
+1. `echo` in some shells (notably older bash and sh-compatible modes) interprets `\n`, `\t` etc. as escape sequences, potentially corrupting JSON string values containing backslash sequences.
+2. `echo` adds a trailing newline — harmless for jq (jq ignores trailing whitespace) but semantically incorrect for strings expected to be exact.
+
+`printf '%s' "$VAR"` has neither problem: no escape interpretation, no trailing newline unless explicitly specified.
+
+**Affected patterns (verified by code search across all 7 hooks):**
+- `echo "$AGENT_DATA" | jq ...` — in stop, notification-idle, notification-permission, pre-compact, session-end
+- `echo "$STDIN_JSON" | jq ...` — in stop (line 42: STOP_HOOK_ACTIVE extraction), notification-idle (line 36), notification-permission (line 37), pre-compact (line 35), session-end (line 35)
+- `echo "$RESPONSE" | jq ...` — in stop, notification-idle, notification-permission bidirectional branches
+- `echo "$PANE_CONTENT" | grep ...` — this is grep, not jq, and echo is safe here (PANE_CONTENT is plain text, not JSON)
+
+**Not affected (already correct):** pre-tool-use-hook.sh and post-tool-use-hook.sh use `printf '%s'` throughout.
+
+**Scope of fix:** Replace only the `echo "$VAR" | jq` patterns. Do not change `echo "$PANE_CONTENT" | grep` (grep doesn't care about escape sequences) or `echo "$STDIN_JSON"` inside debug_log (debug_log is printf-based, not piped). Targeted, surgical replacement only.
 
 ---
 
@@ -329,38 +358,37 @@ Note: The `tool_response.content` field contains the raw selected answer text (o
 
 | Scenario | Severity | Behavior |
 |----------|----------|----------|
-| emit_event() fails (disk full, permission error) | LOW | emit_event must be fire-and-forget with `|| true` — never abort hook execution on logging failure |
-| JSONL file gets corrupted (partial write) | LOW | JSONL is append-only; a corrupted line is one bad record; jq --raw-input skips invalid lines gracefully |
-| Background subprocess can't write to JSONL file (file deleted between hook_fired and bg completion) | LOW | The bg process emits with `|| true`; lost wake_response_received events are non-fatal |
-| correlation_id generation in same-second, same-PID, same-RANDOM scenario | VERY LOW | Use `$EPOCHREALTIME-$$-$RANDOM` — EPOCHREALTIME has microsecond precision, collision probability is negligible |
-| PostToolUse stdin for AskUserQuestion field names | MEDIUM | Needs empirical verification during implementation — test with a real session before committing to field schema |
-| debug_log() and emit_event() writing to different files simultaneously | LOW | The .log and .jsonl files are independent write targets — no conflict, both append-only |
-| Session name contains characters that break jq --arg | LOW | SESSION_NAME already used in .log filenames without issue; jq --arg handles arbitrary strings safely |
+| hook-preamble.sh sets HOOK_SCRIPT_NAME using BASH_SOURCE[1] but is called from a non-hook context | LOW | Acceptable — BASH_SOURCE[1] will be whatever sourced the preamble. Add a comment in preamble that this variable is hook-script-identity. |
+| [CONTENT] migration sends transcript content for permission_prompt events but transcript may not yet exist (early in session) | LOW | extract_last_assistant_response() returns empty on missing transcript — fallback to pane diff handles this correctly. Same behavior as stop-hook.sh today. |
+| Notification hook stdin does not include transcript_path field | LOW | extract_last_assistant_response() returns empty for missing/empty path — pane_diff fallback activates automatically. CONTENT_SOURCE logged as "pane_diff". No error. |
+| extract_hook_settings() encounters AGENT_DATA with no hook_settings field | NONE | The three-tier fallback (per-agent // global // hardcoded) handles this — missing field returns global or hardcoded defaults. This is the existing behavior; just extracting it to a function doesn't change the logic. |
+| diagnose-hooks.sh sources lib/hook-utils.sh to call lookup_agent_in_registry() | LOW | diagnose-hooks.sh currently does not source the lib. Adding a source call at the start of diagnose is safe — lib has no side effects on source (confirmed by code comment: "Contains ONLY function definitions - no side effects on source"). |
+| State detection for pre-compact TUI is intentionally different | MEDIUM | The `grep -q "Continue this conversation"` pattern (pre-compact line 112) may be unique to the PreCompact TUI rendering. Must not blindly replace with stop-hook patterns without verifying the TUI text. Default: document the difference, do not force-unify. |
+| echo in debug_log argument expansion | NONE | `debug_log "stdin: ${#STDIN_JSON} bytes, hook_event_name=$(echo "$STDIN_JSON" | jq ...)"` — the echo is inside a command substitution inside a string argument. The string is passed to debug_log which uses printf. This echo pattern is inside a subshell with no pipefail propagation risk. Not in scope for echo→printf cleanup. |
 
 ---
 
 ## Sources
 
-**HIGH confidence (existing codebase — ground truth):**
-- scripts/stop-hook.sh (v2.0 shipped) — current plain-text debug_log pattern, async/bidirectional branches, RESPONSE capture
-- scripts/pre-tool-use-hook.sh (v2.0 shipped) — AskUserQuestion forwarding, format_ask_user_questions call
-- lib/hook-utils.sh (v2.0 shipped) — existing shared library, format_ask_user_questions, extract functions
-- .planning/PROJECT.md — v3.0 target features, constraints (bash + jq only), out-of-scope declarations
-- .planning/REQUIREMENTS.md — ADV-05 (PostToolUse for AskUserQuestion answer) — pre-existing requirement
+**HIGH confidence (existing codebase — ground truth, all directly read):**
+- `scripts/stop-hook.sh` — current state, copy-paste patterns, [CONTENT] format reference
+- `scripts/notification-idle-hook.sh` — [PANE CONTENT] format, hook_settings copy #2
+- `scripts/notification-permission-hook.sh` — [PANE CONTENT] format, hook_settings copy #3
+- `scripts/pre-compact-hook.sh` — divergent state detection, hook_settings copy #4 (missing 2>/dev/null)
+- `scripts/session-end-hook.sh` — missing jq error guards on lines 71-72
+- `scripts/pre-tool-use-hook.sh` — already uses printf '%s', sourced lib before guards
+- `scripts/post-tool-use-hook.sh` — raw stdin logging for empirical validation
+- `scripts/diagnose-hooks.sh` — Step 7 exact-match vs prefix-match gap (line 263-265), Step 2 missing scripts (lines 99-105)
+- `lib/hook-utils.sh` — all 6 functions, write_hook_event_record() internal duplication (lines 203-258)
+- `.planning/PROJECT.md` — milestone goal, active requirements, constraints (bash + jq only)
+- `docs/v3-retrospective.md` — systematic code review identifying all 8 improvement areas with exact line numbers
 
-**HIGH confidence (structured logging best practices — multiple sources):**
-- [Structured Logging: Best Practices & JSON Examples — Uptrace](https://uptrace.dev/glossary/structured-logging) — standard fields: timestamp, level, service, correlation_id, event; request/response schema
-- [Practical Structured Logging — Dash0](https://www.dash0.com/guides/structured-logging-for-modern-applications) — correlation ID propagation, 2-3 level nesting limit, ISO 8601 UTC
-- [Log Event JSON Schema — vectordotdev](https://github.com/vectordotdev/log-event-json-schema) — context object for cross-cutting data (session, agent identity), event object for typed event data
-
-**MEDIUM confidence (bash JSONL pattern — implementation pattern):**
-- [How to make a shell script log JSON messages — stegard.net](https://stegard.net/2021/07/how-to-make-a-shell-script-log-json-messages/) — jq-based structured logging in bash, field expansion approach; does NOT cover correlation IDs (verified: not in the article)
-- jq -n --arg pattern — standard `jq` usage for constructing JSON from bash variables; widely documented
-
-**MEDIUM confidence (PostToolUse hook stdin schema):**
-- Claude Code Hooks Reference (via training data + v2.0 PreToolUse investigation) — PostToolUse fires after tool execution with tool_result in stdin; specific field names for AskUserQuestion tool_response require empirical verification
+**HIGH confidence (bash preamble patterns — standard practice):**
+- BASH_SOURCE[1] for caller identity from sourced scripts — standard bash idiom, documented in bash manual section 6.11 "Special Parameters"
+- Source-safe library design (no side effects except intentional init) — confirmed by lib/hook-utils.sh header comment: "Contains ONLY function definitions - no side effects on source"
+- `printf '%s' "$VAR" | jq` vs `echo "$VAR" | jq` — correctness difference in echo escape handling documented in bash manual section 4.1 "Bourne Shell Builtins"
 
 ---
 
-*Feature research for: gsd-code-skill v3.0 Structured Hook Observability*
+*Feature research for: gsd-code-skill v3.1 Hook Refactoring & Migration Completion*
 *Researched: 2026-02-18*

@@ -1,290 +1,397 @@
 # Pitfalls Research
 
-**Domain:** Adding structured JSONL event logging to existing bash hook scripts (v3.0 Structured Hook Observability)
+**Domain:** Hook script refactoring — extracting shared preamble, unifying patterns, completing [CONTENT] migration in production bash hook system
 **Researched:** 2026-02-18
-**Confidence:** HIGH — based on Linux kernel documentation, empirical write-atomicity research, analysis of the existing v2.0 codebase, and confirmed bash+jq behavior patterns
+**Confidence:** HIGH — pitfalls derived from empirical bash testing (BASH_SOURCE chain, set -e propagation, variable scoping, double-source behavior), direct reading of all 7 production hook scripts, v3.0 retrospective analysis, and confirmed diagnose-hooks.sh mismatch
 
 ---
 
 ## Scope
 
-This document covers pitfalls specific to v3.0: replacing plain-text `debug_log()` with structured JSONL event logging in 6 bash hook scripts. The prior milestone pitfalls (transcript extraction, PreToolUse blocking, race conditions on pane state files, wake format changes) are already solved and NOT re-documented here. This document focuses exclusively on integration risks when adding JSONL logging to a working production hook system.
+This document covers pitfalls specific to v3.1 refactoring: extracting a shared `hook-preamble.sh`, unifying state detection and context pressure patterns, completing the [CONTENT] wake format migration in notification hooks, fixing `diagnose-hooks.sh` to use prefix-match lookup, and replacing `echo` with `printf '%s'` for JSON pipeline safety. The prior milestone pitfalls (JSON escaping, flock atomicity, correlation IDs, async stdin inheritance) are solved in the shipped v3.0 codebase and are NOT re-documented here.
 
 ---
 
 ## Critical Pitfalls
 
-### Pitfall 1: Wake Message Contains Characters That Break JSON Validity
+### Pitfall 1: hook-preamble.sh Using BASH_SOURCE[0] Computes Its Own Location, Not the Hook's Location
 
 **What goes wrong:**
-The `wake_message` field in the `hook.request` event contains the full multiline wake message body. Wake messages are free-form text that can include: newlines, tabs, backslashes, double quotes (from code blocks, JSON output, file paths), null bytes (from binary pane content leaking into tmux capture), and ANSI escape codes. If the JSONL serialization uses naive bash string interpolation — even a `printf '{"wake_message": "%s"}\n' "$WAKE_MESSAGE"` — the resulting JSON is invalid. jq will fail to parse any record containing an unescaped newline, double quote, or control character. This silently corrupts the entire log file from that record onward for any consumer that streams the file.
+If `hook-preamble.sh` lives in `lib/` and uses `BASH_SOURCE[0]` to compute `SKILL_LOG_DIR` — as the current hook scripts do with `$(dirname "${BASH_SOURCE[0]}")` — it resolves to `lib/`, not `scripts/`. The path computation `$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)` inside a sourced file returns the directory of the sourced file itself, not the directory of the script that called `source`. This is the expected bash behavior but counterintuitive for preamble extraction.
+
+Concretely: `hook-preamble.sh` in `lib/` using `$(dirname "${BASH_SOURCE[0]}")/../logs` would resolve to `lib/../logs` which happens to equal `logs/` — the same result as `scripts/../logs`. This is accidentally correct in the current layout where `lib/` and `scripts/` are siblings under the skill root. If the layout ever changes (preamble moves to `scripts/lib/` or any nested directory), the path computation breaks silently.
 
 **Why it happens:**
-JSON prohibits unescaped characters in the range U+0000–U+001F (including newlines U+000A, carriage returns U+000D, and tabs U+0009) inside string values. Wake messages routinely contain all of these: the structured sections use newlines as delimiters, pane content contains tab-indented code, and tmux capture occasionally emits raw ANSI sequences. Developers test with clean messages like `"idle_prompt"` and miss the failure mode for real production messages containing error stack traces, JSONL content from other tools, or markdown code fences.
+Developers extracting preamble code copy the existing `BASH_SOURCE[0]` pattern verbatim without verifying what it resolves to in the preamble's context. They test with the current layout where `lib/../logs` and `scripts/../logs` happen to be identical, and the test passes. The bug only surfaces if directory layout changes.
 
 **How to avoid:**
-Use `jq -n --arg` for ALL string fields without exception. The `--arg` flag routes values through jq's internal string encoder, which correctly escapes newlines as `\n`, tabs as `\t`, double quotes as `\"`, backslashes as `\\`, and all U+0000–U+001F control characters as `\uXXXX`. This is the only correct approach in bash+jq:
+Use `BASH_SOURCE[1]` to get the calling hook's directory when computing paths inside the preamble, OR pass the hook's `SCRIPT_DIR` as a parameter to the preamble, OR use the accidentally-correct `BASH_SOURCE[0]` only after documenting that it must remain in `lib/` (sibling of `scripts/`).
+
+The cleanest approach: have the hook script compute `SKILL_LOG_DIR` and `SCRIPT_DIR` before sourcing the preamble, then the preamble inherits those values via `${SKILL_LOG_DIR:-}` conditionals. This keeps path computation in the hook (where it belongs) and preamble stays path-agnostic.
 
 ```bash
-# WRONG — any special character in $WAKE_MESSAGE invalidates the JSON line
-printf '{"event":"hook.request","wake_message":"%s"}\n' "$WAKE_MESSAGE"
+# In hook script (before sourcing preamble):
+SKILL_LOG_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/logs"
+mkdir -p "$SKILL_LOG_DIR"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/../lib/hook-preamble.sh"
 
-# WRONG — heredoc string interpolation has the same problem
-jq -n "{\"wake_message\": \"$WAKE_MESSAGE\"}"
-
-# CORRECT — jq --arg handles all escaping internally
-jq -n \
-  --arg event "hook.request" \
-  --arg ts "$TIMESTAMP" \
-  --arg correlation_id "$CORRELATION_ID" \
-  --arg wake_message "$WAKE_MESSAGE" \
-  '{event: $event, ts: $ts, correlation_id: $correlation_id, wake_message: $wake_message}'
+# In hook-preamble.sh (uses inherited SKILL_LOG_DIR, no BASH_SOURCE path math):
+GSD_HOOK_LOG="${GSD_HOOK_LOG:-${SKILL_LOG_DIR}/hooks.log}"
+HOOK_SCRIPT_NAME="$(basename "${BASH_SOURCE[1]:-}")"
 ```
 
-For the `raw_response` field (OpenClaw stdout), use the same pattern. OpenClaw responses can also contain arbitrary text including JSON, error messages with colons and quotes, and stack traces.
+Empirically verified: `BASH_SOURCE[1]` inside a sourced preamble correctly returns the calling hook script's path (tested with bash 5.2.21 on the production host).
 
 **Warning signs:**
-- `jq .` run on the log file exits with `parse error: Invalid string: control characters from U+0000 through U+001F must be escaped`
-- Log reader shows events for simple sessions but not for sessions where Claude ran tool calls (pane content includes error output)
-- `grep -c '^{' hooks.log` count is lower than the number of hook fires in the plain-text hook log
-- Log corruption is intermittent — clean in testing, broken in production where pane content is richer
+- Preamble tests pass but preamble is always tested from `lib/` directory or with matching layout
+- `SKILL_LOG_DIR` resolves correctly in CI but breaks when symlinked or when install path changes
+- Logs appear in wrong directory without error (silent wrong path)
 
 **Phase to address:**
-Phase 1 (JSONL schema and `jsonl_log()` function) — the `jsonl_log()` function must use `jq -n --arg` for every field; this is non-negotiable and must be established in the shared library before any hook script calls it.
+Phase 1 (hook-preamble.sh creation) — establish the path computation contract before writing any preamble code. Document which BASH_SOURCE index is used and why.
 
 ---
 
-### Pitfall 2: Concurrent Hook Fires to the Same Log File Without Atomic Append Guarantee
+### Pitfall 2: HOOK_SCRIPT_NAME Set by Preamble Before debug_log Is Defined Produces Wrong Script Name
 
 **What goes wrong:**
-Multiple hooks can fire simultaneously for the same session — Stop hook and a Notification hook can both be executing concurrently, both writing to `logs/{SESSION_NAME}.log`. The current `printf ... >> "$GSD_HOOK_LOG"` pattern uses bash's `>>` redirect, which opens the file with `O_WRONLY|O_APPEND`. On Linux ext4, POSIX atomicity guarantees apply for writes up to `PIPE_BUF` (4,096 bytes on Linux). But a JSONL event containing a full wake message body easily exceeds 4,096 bytes — a wake message with 100 lines of pane content plus a multiline assistant response can be 8–15KB. Writes larger than 4,096 bytes are not atomically guaranteed: two concurrent writes can interleave at arbitrary byte boundaries, producing a corrupted line in the log that is neither valid JSON nor a complete event record.
+If `hook-preamble.sh` sets `HOOK_SCRIPT_NAME` using `$(basename "${BASH_SOURCE[0]}")`, every hook logs `[hook-preamble.sh]` instead of `[stop-hook.sh]` or `[notification-idle-hook.sh]`. The `debug_log()` function uses `$HOOK_SCRIPT_NAME` in its output. If preamble sets this variable using its own `BASH_SOURCE[0]`, all log entries are attributed to the preamble, not the calling hook. This makes log analysis impossible — you cannot filter by hook script name.
 
 **Why it happens:**
-Developers assume `>>` append is atomic. This is true for small writes (debug log lines of 50–200 bytes are well under 4KB). But JSONL event records with full wake message bodies embedded are large. The failure mode is invisible in single-session testing because only one hook fires at a time. In production with multiple simultaneous sessions or events like Stop + Notification firing within milliseconds of each other, interleaved writes appear as lines that start with `{` but end mid-field or are merged with the start of another record.
+The current per-hook preamble code uses `HOOK_SCRIPT_NAME="$(basename "${BASH_SOURCE[0]}")"` — this works in each hook because `BASH_SOURCE[0]` is the hook itself. When this line is moved verbatim to `hook-preamble.sh`, `BASH_SOURCE[0]` becomes `hook-preamble.sh`. Developers run a quick test and see logs appear — they do not notice the script name is wrong until checking actual log entries.
 
 **How to avoid:**
-Use `flock` on a per-session log lock file for any JSONL append that may exceed 4,096 bytes. The existing `gsd-pane-lock-{SESSION}` pattern is already proven in the codebase — apply the same pattern to log writes:
+Set `HOOK_SCRIPT_NAME` using `BASH_SOURCE[1]` (the caller's path) inside the preamble, or have each hook set `HOOK_SCRIPT_NAME` itself before sourcing the preamble (in which case the preamble uses `${HOOK_SCRIPT_NAME:-}` conditionally). The `BASH_SOURCE[1]` approach is cleaner because hooks do not need to know about this detail:
 
 ```bash
-# In jsonl_log() in lib/hook-utils.sh:
-jsonl_log() {
-  local log_file="$1"
-  local json_record="$2"
-  local lock_file="${log_file}.lock"
-
-  (
-    flock -x -w 2 200 || return 0  # Timeout = skip write, not block forever
-    printf '%s\n' "$json_record" >> "$log_file" 2>/dev/null || true
-  ) 200>"$lock_file"
-}
+# In hook-preamble.sh:
+HOOK_SCRIPT_NAME="$(basename "${BASH_SOURCE[1]:-hook-unknown.sh}")"
 ```
 
-Alternative: keep wake message body in a separate field with a length cap (truncate to 4,000 bytes if needed) so every record fits within the atomicity guarantee. However, this loses the full wake message, defeating v3.0's primary goal.
-
-Flock is the correct solution. It is already used in the codebase for pane state files. Applying the same pattern to log writes is consistent and well-understood.
+Empirically verified: `BASH_SOURCE[1]` inside `hook-preamble.sh` sourced by `stop-hook.sh` returns `stop-hook.sh` (tested).
 
 **Warning signs:**
-- `jq -c '.' logs/warden-main.log 2>&1 | grep 'parse error'` reports errors on specific lines
-- Lines in the log file that do not begin with `{` or do not end with `}`
-- Two partial records appear merged on one line (starts with `{..."event":"hook.request"...{"event":"hook.response"`)
-- Only visible in long sessions or when Stop + Notification hooks fire within 50ms of each other
+- Log entries show `[hook-preamble.sh]` instead of `[stop-hook.sh]`
+- All hook invocations appear to come from the same script in log analysis
+- `grep 'stop-hook.sh' logs/warden-main.log` returns zero results for stop events
 
 **Phase to address:**
-Phase 1 (JSONL logging library) — `jsonl_log()` must use `flock` from the first implementation; add it to the function definition before any hook script calls it.
+Phase 1 (hook-preamble.sh creation) — verify `HOOK_SCRIPT_NAME` in log output after preamble extraction by checking a live hook fire log.
 
 ---
 
-### Pitfall 3: Correlation ID Only Links the Synchronous Path — Async Background Subprocess Loses It
+### Pitfall 3: exit in Sourced Preamble Terminates the Calling Hook
 
 **What goes wrong:**
-The correlation ID is generated in the hook script's main process: `CORRELATION_ID=$(generate_correlation_id ...)`. The `hook.request` event is logged before the `openclaw` call. The `openclaw` call is then backgrounded with `&` in the async delivery wrapper (`deliver_async_with_logging()`). The background subprocess must also emit the `hook.response` event using the same correlation ID. If the correlation ID is passed as a function argument and the background subshell captures it correctly via closure, this works. But if the background subshell is defined in a context where the variable is not yet set, or if the wrapper function does not explicitly pass the ID to the subshell, the response event either has an empty correlation ID or a different generated ID — breaking the pairing entirely.
+`exit` in a sourced file (`source hook-preamble.sh`) terminates the entire calling hook process, not just the preamble. This is correct bash behavior — `exit` in a sourced script exits the calling process. However, if `hook-preamble.sh` ever contains an early-exit guard (e.g., `if [ ! -f "$LIB_PATH" ]; then exit 0; fi`), that `exit 0` would silently terminate any hook that sources the preamble whenever the library is missing. This is hard to detect because the hook exits cleanly (exit code 0) with no indication of where it stopped.
+
+The current per-hook guard pattern uses `exit 0` on missing lib — this is intentional. But if the preamble gains additional early-exit conditions in the future (or if a developer copies the pattern incorrectly), the preamble's exit propagates to the hook without warning.
 
 **Why it happens:**
-Bash background subshells (`&`) inherit the parent's environment, but only variables that exist at the time of the fork. If the correlation ID is stored as a local variable inside a function, and the background subshell is spawned from inside the same function (which is the correct pattern), the local variable IS visible to the subshell because the subshell duplicates the function's stack frame. However, if the subshell is spawned from a subshell (double fork, e.g., `( openclaw ... ) &`), the local variable scope may not propagate correctly depending on the function structure. This is a subtle bash scoping issue that only manifests in specific implementations of `deliver_async_with_logging()`.
+Developers who know `exit` in a subshell stays local to the subshell forget that `source` does NOT create a subshell — it executes in the current shell. An `exit` in a sourced file is an `exit` in the current shell.
 
 **How to avoid:**
-Pass the correlation ID explicitly as a function argument — never rely on implicit variable inheritance across forks. The wrapper function signature should be:
+Limit preamble early-exit paths to exactly one: the lib-not-found case. Document the behavior explicitly in the preamble header. Do not add any other early-exit conditions to `hook-preamble.sh` — it should be a pure setup file. If `hook-preamble.sh` itself sources `hook-utils.sh`, the lib-not-found guard should remain in `hook-preamble.sh` (not the hook script), and that is the only `exit` the preamble should contain.
 
 ```bash
-deliver_async_with_logging() {
-  local openclaw_session_id="$1"
-  local wake_message="$2"
-  local log_file="$3"
-  local correlation_id="$4"   # Explicit parameter, not inherited variable
-  local hook_name="$5"
-  local session_name="$6"
-
-  (
-    local response exit_code
-    response=$(openclaw agent --session-id "$openclaw_session_id" --message "$wake_message" 2>&1)
-    exit_code=$?
-    # correlation_id is available here because it was passed as $4, not inherited
-    log_hook_response "$log_file" "$correlation_id" "$hook_name" "$session_name" \
-      "$exit_code" "$response"
-  ) &
-}
-```
-
-Test with: after backgrounding, verify the response event's `correlation_id` matches the request event's `correlation_id` in the log. A mismatch means the correlation is broken.
-
-**Warning signs:**
-- Response events in the log have `"correlation_id": ""` (empty)
-- Request events have correlation IDs but no matching response event with the same ID
-- Works in simple tests but breaks when the delivery wrapper is refactored
-- `jq 'select(.event == "hook.response") | .correlation_id' hooks.log` returns empty strings
-
-**Phase to address:**
-Phase 1 (JSONL logging library) — `deliver_async_with_logging()` must take correlation ID as an explicit parameter; document why implicit inheritance is insufficient.
-
----
-
-### Pitfall 4: Log File Switches Mid-Invocation (Phase 1 → Phase 2 Routing) Breaks Correlation Pairing
-
-**What goes wrong:**
-Every hook script has a two-phase log file routing: Phase 1 writes to `hooks.log` (before the session name is known), Phase 2 writes to `{SESSION_NAME}.log` (after tmux session name extraction). In the plain-text debug_log, this is transparent — both phases write to wherever `$GSD_HOOK_LOG` points at the moment of the call. With JSONL paired events, the `hook.request` event is emitted late in the script (just before delivery, when the session name is already known — always Phase 2). But early guards that emit JSONL events (e.g., an event for "registry not found" or "agent not matched") may emit to `hooks.log` while the corresponding or related request event goes to `{SESSION_NAME}.log`. A consumer correlating by session cannot find all events for a session in one file.
-
-Additionally, if the `hook.request` event is emitted after session name resolution (Phase 2 file) but the `hook.response` event is emitted from the async background subprocess using a captured `$GSD_HOOK_LOG` value that was set at the time of fork — and if the variable was captured before the Phase 2 redirect — the response event goes to `hooks.log` while the request went to `{SESSION_NAME}.log`. The correlation ID links them but they are in different files.
-
-**Why it happens:**
-The `GSD_HOOK_LOG` variable is mutated mid-script. Background subshells fork at the point of the `&` — they inherit whatever value `GSD_HOOK_LOG` had at fork time. If the fork happens after the Phase 2 redirect (`GSD_HOOK_LOG="${SKILL_LOG_DIR}/${SESSION_NAME}.log"`), they use the correct file. But if the `deliver_async_with_logging()` function captures `GSD_HOOK_LOG` at the time it is defined (not at the time it is called), the file path may be stale.
-
-**How to avoid:**
-Pass the log file path as an explicit argument to `deliver_async_with_logging()` — never read it from `$GSD_HOOK_LOG` inside the function. The log file path must be captured by the hook script at the point of the call and passed explicitly:
-
-```bash
-# In hook script, after Phase 2 redirect is established:
-GSD_HOOK_LOG="${SKILL_LOG_DIR}/${SESSION_NAME}.log"   # Phase 2 redirect
-
-# Pass the current log file explicitly — not read from global inside the function
-deliver_async_with_logging \
-  "$OPENCLAW_SESSION_ID" \
-  "$WAKE_MESSAGE" \
-  "$GSD_HOOK_LOG" \        # Explicit path — resolved BEFORE the background fork
-  "$CORRELATION_ID" \
-  "$HOOK_SCRIPT_NAME" \
-  "$SESSION_NAME"
-```
-
-For the early-exit guard events (registry not found, agent not matched), emit them to whatever `$GSD_HOOK_LOG` points to at the time — this is acceptable. The key constraint is that the request and response events for one hook invocation always go to the same file.
-
-**Warning signs:**
-- `jq 'select(.correlation_id == "X")' logs/hooks.log logs/warden-main.log` finds the request in one file and the response in another
-- `jq 'select(.event == "hook.response")' logs/hooks.log` shows response events that should be in the session file
-- After a script execution completes, paired events are split across two files
-
-**Phase to address:**
-Phase 1 (logging library design) — `deliver_async_with_logging()` must take log_file as an explicit parameter; Phase 1 code review — verify the log file path is captured post-redirect before any `deliver_async_with_logging` call.
-
----
-
-### Pitfall 5: jq Process Startup Overhead Per Log Call Accumulates to Measurable Latency
-
-**What goes wrong:**
-The `jsonl_log()` function spawns a `jq -n` process to build the JSON record. jq has a process startup cost of approximately 5–15ms on a warm system (cold: 20–50ms). The existing hook scripts already use jq multiple times per invocation (stdin parsing, registry lookup, field extraction). Adding 2–3 more jq calls per hook invocation for logging adds 10–45ms to hook execution time in the hot path. For the Stop hook (which must not block Claude Code), this is acceptable — the hook runs on a background thread. But for hooks in bidirectional mode that must return decisions synchronously, added latency delays Claude Code's next action.
-
-Additionally, if `jsonl_log()` is called at every guard exit point (e.g., "TMUX not set", "registry not found", "agent not matched"), hooks that fire for unmanaged sessions — which currently exit in under 5ms — now take 10–30ms. If Claude Code is running many unmanaged sessions (personal use alongside agent sessions), this multiplies.
-
-**Why it happens:**
-Each `jq -n` invocation is a full process fork+exec. In a language like Python, you would use a logging library object that stays in memory. In bash, every call is a new process. Developers add `jsonl_log()` calls liberally for debugging without considering that each call costs 5–15ms. Five logging calls = 25–75ms of jq overhead per hook invocation.
-
-**How to avoid:**
-- Reserve JSONL events for meaningful lifecycle points only: hook.request (before delivery) and hook.response (after delivery). Do not emit JSONL events for every guard exit. Guard exits are low-value and high-frequency — keep them as plain-text lines or omit them entirely.
-- For the `hooks.log` (unmanaged session fast-path), do NOT emit JSONL events. The fast-path guards exit before session name resolution — emitting JSONL here adds jq overhead to every Claude Code session on the system, managed or not.
-- Build the JSON record as a single `jq -n` call with all fields at once — do not call jq once per field.
-- For the hooks.log early-exit path: keep plain-text `printf` for guard exits, JSONL only for managed session events.
-
-```bash
-# WRONG — 3 separate jq process spawns
-jsonl_log "$LOG" "event" "hook.start"
-jsonl_log "$LOG" "session" "$SESSION_NAME"
-jsonl_log "$LOG" "status" "registry_not_found"
-
-# CORRECT — single jq -n builds complete record
-jsonl_log "$LOG_FILE" "$CORRELATION_ID" "guard_exit" "$SESSION_NAME" "registry_not_found"
-# But better: don't emit JSONL for guard exits at all — use plain printf or omit
-```
-
-**Warning signs:**
-- Hook log shows timestamps with 50ms+ gaps between sequential steps that should be near-instant
-- Claude Code sessions for non-agent users (e.g., Gideon's own Claude Code sessions) become noticeably slower after v3.0 deployment
-- `time bash stop-hook.sh < /dev/null` shows >100ms execution for unmanaged sessions
-
-**Phase to address:**
-Phase 1 (logging library design) — establish the rule: JSONL events for managed session request/response pairs only, not guard exits; document the performance rationale in lib/hook-utils.sh comments.
-
----
-
-### Pitfall 6: Response Capture from Async Background Subprocess Hangs on stdin Inheritance
-
-**What goes wrong:**
-The `deliver_async_with_logging()` wrapper must capture the output of `openclaw agent --session-id ... --message ...` to store it in the `raw_response` field of the `hook.response` event. The natural bash pattern for capturing subprocess output is `response=$(openclaw ...)`. When this runs inside a background subprocess (`( response=$(openclaw ...) ) &`), the background subprocess inherits stdin from the hook script. The hook script's stdin is the Claude Code hook event JSON (already consumed by `STDIN_JSON=$(cat)` at the start). After `cat` consumes stdin, the file descriptor is at EOF — future reads return immediately. This is fine for the `openclaw` call itself, but if `openclaw` has a subprocess that expects interactive input or reads from stdin, it may block waiting for data that never comes.
-
-More specifically: the background subprocess `&` without stdin redirection inherits the hook's stdin. On some systems, when a background job is launched from a non-interactive shell, bash replaces stdin with `/dev/null` automatically. But this is not guaranteed when using `( ... ) &` with explicit subshell syntax. Without explicit stdin redirection, the behavior is implementation-dependent.
-
-**Why it happens:**
-The v2.0 delivery pattern uses `openclaw ... >> "$GSD_HOOK_LOG" 2>&1 &` — no stdin redirection needed because the response was discarded. v3.0 must capture the response: `response=$(openclaw ...)` inside the background subshell. This changes the stdin inheritance behavior because command substitution `$(...)` creates a new pipe for stdout capture, but stdin is still inherited from the outer shell.
-
-**How to avoid:**
-Always redirect stdin to `/dev/null` explicitly in the background subprocess, and in the `openclaw` call:
-
-```bash
-(
-  local response exit_code
-  response=$(openclaw agent --session-id "$openclaw_session_id" \
-    --message "$wake_message" </dev/null 2>&1)
-  exit_code=$?
-  log_hook_response "$log_file" "$correlation_id" "$hook_name" "$session_name" \
-    "$exit_code" "$response"
-) </dev/null &
-```
-
-The `</dev/null` on both the `openclaw` call and the outer subshell closes all stdin-related blocking risks. This matches the pattern already documented in v2.0 PITFALLS.md (Pitfall 6: PreToolUse Must Exit Immediately).
-
-**Warning signs:**
-- `deliver_async_with_logging` calls appear to hang indefinitely on some hook fires
-- `ps aux` shows orphaned `openclaw` processes that never exit
-- Hook log shows the `hook.request` event but no corresponding `hook.response` event hours later
-- The hanging behavior only occurs when Claude Code passes a specific type of event (may correlate with hook events that include binary content in pane capture)
-
-**Phase to address:**
-Phase 1 (delivery wrapper implementation) — explicit `</dev/null` on both the subshell and the `openclaw` call is required from the first implementation.
-
----
-
-### Pitfall 7: Replacing debug_log Inline Definition Breaks Hooks Before lib is Sourced
-
-**What goes wrong:**
-Every hook script currently defines `debug_log()` inline at the top of the file, before any other code runs. This means logging works from line 1. If v3.0 replaces `debug_log()` with `jsonl_log()` that lives in `lib/hook-utils.sh`, the function is not available until `source "$LIB_PATH"` runs — which happens after the TMUX guard and session name extraction (currently around line 35–50 in each hook script). Any `debug_log()` or `jsonl_log()` calls in the early guards (lines 1–35: FIRED message, stdin consumption, TMUX check) would fail with "command not found" if the inline definition is removed before the sourcing is moved earlier.
-
-Additionally, if `source "$LIB_PATH"` fails (lib file missing, permission error, syntax error in lib), the hook script currently falls through to a debug_log call that would also fail — silently. The failure path for a missing lib goes from "logs an error and exits" to "silent exit with no log entry."
-
-**Why it happens:**
-Developers move lib sourcing later in the script during v2.0 (to avoid sourcing for non-managed sessions — an optimization). v3.0 needs lib early (for the FIRED event and early guard logging). The tension between "source lib early for logging" and "source lib late for performance on unmanaged sessions" is not obvious until the first logging call fails with a confusing "command not found" error.
-
-**How to avoid:**
-Move `source "$LIB_PATH"` to the top of each hook script — immediately after `SKILL_LOG_DIR` and `GSD_HOOK_LOG` are set. The performance cost of sourcing the lib for unmanaged sessions is the 4 function definitions being parsed (~1ms), not any function execution. The tradeoff is acceptable: 1ms extra for unmanaged sessions to enable consistent logging from line 1 of managed sessions.
-
-Remove the inline `debug_log()` function completely. Replace it with calls to the lib's `jsonl_log()` or a plain-text wrapper function defined in the lib. Do not define both — having two logging functions with different outputs in the same invocation creates inconsistent logs.
-
-The failure path for a missing lib must be a plain `printf` fallback:
-```bash
-LIB_PATH="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../lib/hook-utils.sh"
+# hook-preamble.sh: only acceptable exit pattern
+LIB_PATH="${PREAMBLE_DIR}/hook-utils.sh"
 if [ ! -f "$LIB_PATH" ]; then
-  printf '[%s] [%s] FATAL: lib/hook-utils.sh not found — hook disabled\n' \
-    "$(date -u +'%Y-%m-%dT%H:%M:%SZ')" "$(basename "${BASH_SOURCE[0]}")" \
-    >> "$GSD_HOOK_LOG" 2>/dev/null || true
+  printf '[%s] [%s] FATAL: hook-utils.sh not found\n' \
+    "$(date -u +'%Y-%m-%dT%H:%M:%SZ')" "$(basename "${BASH_SOURCE[1]:-}")" \
+    >> "${GSD_HOOK_LOG:-/dev/stderr}" 2>/dev/null || true
   exit 0
 fi
 source "$LIB_PATH"
 ```
 
 **Warning signs:**
-- Early hook fires show `command not found: jsonl_log` in stderr (captured in Claude Code's hook error output)
-- Hooks appear to run (exit 0) but no log entries appear from the first 30 lines of execution
-- After refactoring, some hooks log and some do not — the difference is which hooks had lib sourcing moved to the top
+- Hook fires but produces no log entries at all (exits at preamble, before debug_log "FIRED")
+- `diagnose-hooks.sh` shows hooks registered and scripts executable, but no FIRED entries in logs
+- Behavior changes after adding a new condition to preamble
 
 **Phase to address:**
-Phase 1 (hook script refactoring) — move lib sourcing to the top of ALL 6 hook scripts before any logging call; maintain a plain-printf fallback for lib-not-found to preserve the silent exit behavior.
+Phase 1 (hook-preamble.sh creation) — document the exit propagation behavior in the preamble header comment; code review any future preamble changes for unapproved exit paths.
+
+---
+
+### Pitfall 4: Preamble Unconditional Variable Assignment Overwrites Hook's Pre-Set Values
+
+**What goes wrong:**
+If `hook-preamble.sh` uses direct assignment (`GSD_HOOK_LOG="..."`) instead of conditional assignment (`GSD_HOOK_LOG="${GSD_HOOK_LOG:-...}"`), it overwrites any value the hook set before sourcing. Empirically tested: preamble direct assignment clobbers the hook's pre-set value. This becomes a problem if any hook needs to set `GSD_HOOK_LOG` to a custom value before calling the preamble, or if the preamble is sourced from a context where the variable is already set correctly.
+
+More importantly: `set -euo pipefail` in hooks means `${UNSET_VAR}` causes an immediate exit. If preamble sets `HOOK_SCRIPT_NAME` conditionally with `:-` and the variable is expected to be set already by the hook — but is not — the hook exits at the first reference to `$HOOK_SCRIPT_NAME`. The opposite is also a risk: if preamble unconditionally sets variables the hook later expects to control, the hook's assignments after sourcing have no effect on already-computed values.
+
+**Why it happens:**
+Developers copying the existing top-of-hook pattern copy the direct assignment form (because that is what the current hooks use). The conditional form requires a conscious choice to prefer it. Without testing the override scenario explicitly, the overwrite behavior is invisible.
+
+**How to avoid:**
+Use `${VAR:-default}` for any variable that the hook might legitimately set before or after sourcing the preamble. Use direct assignment only for variables that the preamble definitively owns and the hook should never override. For `GSD_HOOK_LOG` specifically: use conditional because hooks redirect it mid-execution in Phase 2 (after session name is known). For `HOOK_SCRIPT_NAME`: use `${BASH_SOURCE[1]}` approach which is always correct regardless of pre-set values.
+
+**Warning signs:**
+- Hook sets a variable before sourcing preamble, but preamble's value takes effect
+- GSD_HOOK_LOG points to `hooks.log` even after the hook's Phase 2 redirect (because preamble reset it)
+- Custom per-hook log paths ignored silently
+
+**Phase to address:**
+Phase 1 (hook-preamble.sh creation) — review each variable the preamble sets and decide: conditional vs unconditional. Document the contract.
+
+---
+
+### Pitfall 5: Double-Sourcing hook-utils.sh When Preamble Already Sources It
+
+**What goes wrong:**
+All 7 current hooks contain the pattern:
+```bash
+LIB_PATH="${SCRIPT_DIR}/../lib/hook-utils.sh"
+if [ -f "$LIB_PATH" ]; then
+  source "$LIB_PATH"
+fi
+```
+If `hook-preamble.sh` is introduced and it also sources `hook-utils.sh`, this block becomes a double-source. The functions redefine harmlessly (empirically verified: double-sourcing does not cause errors), but any state variables set inside `hook-utils.sh` at source time (not in functions) get reset. The current `hook-utils.sh` has no top-level state assignments — it is pure function definitions — so double-sourcing is currently harmless but fragile.
+
+The real risk: the old `source hook-utils.sh` block must be DELETED from each hook during migration. If it is not deleted — which is an easy omission when making multiple edits to 7 files — the hook sources hook-utils.sh twice. This adds ~1ms overhead per hook fire and creates confusion when reading the scripts.
+
+**Why it happens:**
+Refactoring 7 files simultaneously with a shared preamble requires remembering to remove the per-hook lib-source block from each file. This is a deletion that must happen alongside the addition of the preamble source line. Forgetting one file is easy.
+
+**How to avoid:**
+Make the deletion explicit in the migration plan — not just "add preamble source" but "add preamble source AND delete the existing lib-source block". Verify with `grep -n 'source.*hook-utils.sh' scripts/*.sh` after migration — all matches should be zero (the source now happens inside preamble.sh, not in hook scripts directly).
+
+**Warning signs:**
+- `grep -rn 'source.*hook-utils.sh' scripts/'` shows hits in any hook script after migration
+- Hook scripts are slightly slower (one extra source per invocation)
+- `hook-utils.sh` contains a counter or `echo` statement for debugging — you see it fire twice
+
+**Phase to address:**
+Phase 1 (hook script migration) — include explicit deletion step in migration checklist; verify with grep after each hook script is modified.
+
+---
+
+### Pitfall 6: Pre-compact-hook.sh State Detection Uses Different Grep Patterns — Unification Changes Behavior
+
+**What goes wrong:**
+`pre-compact-hook.sh` state detection differs from all other hooks in four confirmed ways (empirically verified):
+
+| Aspect | stop/notification hooks | pre-compact-hook.sh |
+|--------|------------------------|---------------------|
+| Case sensitivity | `grep -Eiq` (case-insensitive) | `grep -q` (case-sensitive) |
+| Menu pattern | `'Enter to select\|numbered.*option'` | `"Choose an option:"` |
+| Idle pattern | `'What can I help\|waiting for'` | `"Continue this conversation"` |
+| Fallback state | `"working"` | `"active"` |
+| Error detection | `grep -Ei 'error\|failed\|exception'` present | Absent (no error state) |
+
+These are NOT equivalent. A pane containing `"Choose an option:"` is detected as `menu` by pre-compact but falls through to `working` by the stop/notification pattern (empirically confirmed). A pane containing `"Continue this conversation"` is detected as `idle_prompt` by pre-compact but falls through to `working` by stop/notification.
+
+If `detect_session_state` is extracted as a shared function using the stop/notification pattern, `pre-compact-hook.sh` would silently start reporting `working` for states it currently reports as `menu` or `idle_prompt`.
+
+**Why it happens:**
+The patterns were written at different times for different triggers. The PreCompact event fires during Claude Code's compaction dialog (specific TUI text). The Stop/Notification events fire at different points with different TUI content. The patterns may be genuinely different TUI text — or they may be stale copies from before the TUI text was known precisely. The difference is undocumented.
+
+**How to avoid:**
+Do not blindly unify state detection. Investigate whether the patterns reflect different actual TUI text (if yes: keep separate patterns, add a comment explaining why) or whether they are historical accidents (if yes: consolidate after verifying with live session data). Until verified, treat pre-compact state detection as intentionally different from stop/notification state detection.
+
+If a `detect_session_state` function is added to `lib/hook-utils.sh`, it should accept a variant parameter:
+```bash
+detect_session_state "compact" "$PANE_CONTENT"  # pre-compact patterns
+detect_session_state "standard" "$PANE_CONTENT"  # stop/notification patterns
+```
+
+Or keep two separate named functions: `detect_state_standard()` and `detect_state_compact()`.
+
+**Warning signs:**
+- After extraction, `pre-compact-hook.sh` JSONL records show `state=working` where they previously showed `state=menu` or `state=idle_prompt`
+- OpenClaw agents receive different state hints for pre-compact events after refactoring
+- No visible error — silent behavior change in state detection
+
+**Phase to address:**
+Phase 1 or dedicated research — before extracting state detection into a shared function, document why the two patterns exist and confirm (via live session observation or code archaeology) whether they should be unified.
+
+---
+
+### Pitfall 7: [CONTENT] Migration on Notification Hooks Fails Because transcript_path Is Absent
+
+**What goes wrong:**
+The v2.0 [CONTENT] format migration in `stop-hook.sh` uses `transcript_path` from stdin JSON:
+```bash
+TRANSCRIPT_PATH=$(printf '%s' "$STDIN_JSON" | jq -r '.transcript_path // ""')
+EXTRACTED_RESPONSE=$(extract_last_assistant_response "$TRANSCRIPT_PATH")
+```
+`transcript_path` is provided by Claude Code only for Stop events (which fire after a response completes). `notification-idle-hook.sh`, `notification-permission-hook.sh`, and `pre-compact-hook.sh` do NOT receive `transcript_path` in their stdin — these events fire during Claude Code UI state changes, not after response completion.
+
+If [CONTENT] migration for notification hooks is implemented by copying the stop-hook.sh pattern verbatim (including transcript extraction), `TRANSCRIPT_PATH` will always be empty for these hooks, `extract_last_assistant_response ""` will return empty, and the content section will fall through to the pane diff fallback. This is the same end result as the current [PANE CONTENT] approach — correct behavior but wasteful (runs transcript extraction that always fails).
+
+The real risk is if the check `if [ -f "$TRANSCRIPT_PATH" ]` is not guarded and triggers a failure when the path is empty under `set -euo pipefail`. The current `extract_last_assistant_response()` function guards against empty path:
+```bash
+if [ -z "$transcript_path" ] || [ ! -f "$transcript_path" ]; then
+  printf ''
+  return
+fi
+```
+So a direct copy would be safe but wasteful.
+
+**Why it happens:**
+Developers implementing [CONTENT] migration apply the stop-hook.sh pattern uniformly without checking which events provide `transcript_path`. The notification hooks fire on different events than Stop and have different stdin schemas.
+
+**How to avoid:**
+For notification and pre-compact hooks, the [CONTENT] migration is specifically NOT about transcript extraction — it is only about renaming the wake message section from `[PANE CONTENT]` to `[CONTENT]`. The content source remains pane capture. The change is minimal: replace the string `[PANE CONTENT]` with `[CONTENT]` in the WAKE_MESSAGE heredoc. Do not add transcript extraction to these hooks.
+
+```bash
+# WRONG for notification hooks:
+EXTRACTED_RESPONSE=$(extract_last_assistant_response "$TRANSCRIPT_PATH")  # Always empty
+CONTENT_SECTION="${EXTRACTED_RESPONSE:-$PANE_CONTENT}"  # Falls through to pane anyway
+
+# CORRECT for notification hooks:
+CONTENT_SECTION="$PANE_CONTENT"  # Direct — no transcript for these events
+# And in WAKE_MESSAGE:
+WAKE_MESSAGE="...
+[CONTENT]
+${CONTENT_SECTION}
+..."
+```
+
+**Warning signs:**
+- Notification hooks always show `content_source=pane_diff` instead of expected pane capture
+- Slight latency increase on notification hooks from unnecessary transcript path checking
+- `transcript_path` appears in notification hook debug logs with empty value
+
+**Phase to address:**
+Phase covering [CONTENT] migration — specify per-hook what the migration means: notification/pre-compact hooks change only the section label; stop-hook.sh already has full transcript extraction and should not be changed.
+
+---
+
+### Pitfall 8: diagnose-hooks.sh Step 7 Prefix-Match Fix Must Not Break Agent Name Lookup in Step 3
+
+**What goes wrong:**
+`diagnose-hooks.sh` Step 3 uses exact `agent_id` match: `select(.agent_id == $agent_id)`. Step 7 currently uses exact `tmux_session_name` match: `select(.tmux_session_name == $session)`. The fix for Step 7 is to use the same `startswith($agent.agent_id + "-")` prefix logic that hooks use. However, the fix must not accidentally change Step 3 — which correctly uses exact match on `agent_id` (the user provides the agent name as CLI argument).
+
+Additionally, the prefix-match fix for Step 7 requires knowing `AGENT_ID` (which comes from Step 3). The current Step 7 uses the raw `TMUX_SESSION_NAME` variable from Step 3's registry lookup. The fix must chain from Step 3's data, not from the raw CLI argument.
+
+If the fix incorrectly modifies Step 3 to use prefix match on `agent_id`, a user running `diagnose-hooks.sh warden` would match ALL agents whose ID starts with "warden" — potentially a false positive for similarly-named agents.
+
+**Why it happens:**
+The two lookups serve different purposes: Step 3 is "find the configured entry for this agent name" (user-provided exact name), Step 7 is "simulate what the hook scripts would do with this session name" (prefix match on session name). Conflating them produces either false positives (Step 3 too loose) or false negatives (Step 7 too strict, current bug).
+
+**How to avoid:**
+Fix ONLY Step 7. Replace the exact `tmux_session_name` match with the `startswith($agent.agent_id + "-")` pattern, sourcing `AGENT_ID` from the Step 3 result:
+
+```bash
+# Step 7 fix: use same prefix-match logic as lookup_agent_in_registry()
+LOOKUP_RESULT=$(jq -c \
+  --arg session "$TMUX_SESSION_NAME" \
+  --arg agent_id "$AGENT_ID" \
+  '.agents[] | select($session | startswith($agent_id + "-")) | {agent_id, openclaw_session_id}' \
+  "$REGISTRY_PATH" 2>/dev/null || echo "")
+```
+
+Alternative: import `lookup_agent_in_registry` from `lib/hook-utils.sh` into `diagnose-hooks.sh` by sourcing it, then call the same function. This guarantees diagnose and hooks use identical logic and any future changes to the lookup logic update both.
+
+**Warning signs:**
+- After Step 7 fix, a session `warden-main-2` triggers prefix match on agent_id `warden-` — matched correctly
+- A session `forge-prod` with agent_id `forge` also matches — verify this is correct behavior
+- Step 3 results are unchanged (agent name lookup still uses exact `agent_id` match)
+
+**Phase to address:**
+Phase covering diagnose-hooks.sh fixes — fix is isolated to Step 7 jq query; verify Step 3 is untouched.
+
+---
+
+### Pitfall 9: session-end-hook.sh Missing 2>/dev/null Guards — Still Unfixed After v3.0
+
+**What goes wrong:**
+`session-end-hook.sh` lines 71-72 use bare `jq -r '.agent_id'` without `2>/dev/null || echo ""` guards:
+```bash
+AGENT_ID=$(echo "$AGENT_DATA" | jq -r '.agent_id')
+OPENCLAW_SESSION_ID=$(echo "$AGENT_DATA" | jq -r '.openclaw_session_id')
+```
+All other hooks add `2>/dev/null || echo ""`. Under `set -euo pipefail`, a jq non-zero exit on malformed `AGENT_DATA` propagates and terminates the hook. The v3.0 retrospective (item 6) identified this but it was not fixed during v3.0. If this hook is touched during v3.1 preamble migration, the missing guards remain unless explicitly fixed.
+
+**Why it happens:**
+`session-end-hook.sh` was written at a different time (pre-Phase 8 style) and the guards were added to other hooks during v3.0 porting without retrofitting session-end-hook.sh. Code review on a single file during refactoring may not catch this because the pattern looks syntactically valid.
+
+**How to avoid:**
+Fix the guards during the preamble migration pass since session-end-hook.sh will be touched anyway:
+```bash
+AGENT_ID=$(echo "$AGENT_DATA" | jq -r '.agent_id' 2>/dev/null || echo "")
+OPENCLAW_SESSION_ID=$(echo "$AGENT_DATA" | jq -r '.openclaw_session_id' 2>/dev/null || echo "")
+```
+
+**Warning signs:**
+- session-end-hook.sh silently exits on malformed registry entries (no log entry, no JSONL record)
+- Other hooks handle malformed data gracefully but session-end-hook terminates without notification delivery
+
+**Phase to address:**
+Phase 1 (hook script migration) — fix during the preamble extraction pass since the file is being edited; treat as "while we're here" cleanup.
+
+---
+
+### Pitfall 10: echo "$VAR" | jq Silently Corrupts JSON Containing Backslash Sequences
+
+**What goes wrong:**
+The older hooks (`stop-hook.sh`, `notification-idle-hook.sh`, `notification-permission-hook.sh`, `session-end-hook.sh`, `pre-compact-hook.sh`) use `echo "$AGENT_DATA" | jq ...` to pipe JSON to jq. In bash, `echo` with the `-e` flag (or when `xpg_echo` is set) interprets escape sequences — `\n`, `\t`, `\r`, `\\`, etc. If `AGENT_DATA` or any piped variable ever contains a literal backslash followed by `n`, `t`, or other escape characters, `echo` may emit a newline or tab instead, corrupting the JSON string before jq receives it.
+
+The newer hooks (`pre-tool-use-hook.sh`, `post-tool-use-hook.sh`) correctly use `printf '%s'` which always passes content literally without escape interpretation. The inconsistency means that a registry entry with backslash sequences in agent_id or openclaw_session_id would cause the older hooks to extract wrong values, while the newer hooks would work correctly. Bash's built-in `echo` behavior also varies across shells (dash vs bash vs zsh), creating portability risk if scripts are ever run under a different interpreter.
+
+**Why it happens:**
+The older hooks were written before the retrospective identified `echo "$VAR" | jq` as a latent correctness risk. The `printf '%s'` convention was adopted in newer hooks but the older hooks were not updated. During the v3.1 refactoring pass, the echo→printf migration requires visiting every hook file — it is easy to update some files and not others, leaving the system in a mixed state.
+
+**How to avoid:**
+Replace all `echo "$VAR" | jq` patterns with `printf '%s' "$VAR" | jq`. This applies to every occurrence in scripts/, not just the agent data extractions. Do a comprehensive sweep with:
+```bash
+grep -n "echo \"\$" scripts/*.sh | grep '| jq'
+```
+Every match should be changed to `printf '%s'`. The replacement is mechanical — identical behavior for non-backslash content, correct behavior for backslash-containing content.
+
+Note: `echo "$STDIN_JSON" | jq ...` in a few places needs the same treatment. The current hooks have a mix — `post-tool-use-hook.sh` (line 45) correctly uses `printf '%s' "$STDIN_JSON"` while `notification-idle-hook.sh` (line 36) and `session-end-hook.sh` (line 35) use `echo "$STDIN_JSON"`.
+
+**Warning signs:**
+- After migration, `grep -n "echo \"\$" scripts/*.sh | grep '| jq'` returns hits — migration is incomplete
+- Any hook using `echo` for jq input instead of `printf '%s'` is a mixed-state indicator
+- Agent IDs or session IDs with backslash sequences produce empty extraction results (silent wrong value)
+
+**Phase to address:**
+Phase covering echo→printf migration — apply to all 7 hook scripts in a single pass; verify with grep after completion.
+
+---
+
+### Pitfall 11: Context Pressure Extraction Unification Introduces grep -oP Dependency or Changes Sentinel Value
+
+**What goes wrong:**
+`stop-hook.sh` and `notification-*` hooks extract context pressure with:
+```bash
+PERCENTAGE=$(echo "$PANE_CONTENT" | tail -5 | grep -oE '[0-9]{1,3}%' | tail -1 | tr -d '%' 2>/dev/null || echo "")
+```
+This uses POSIX ERE (`grep -oE`) and falls through to `CONTEXT_PRESSURE="unknown"` when no percentage is found.
+
+`pre-compact-hook.sh` uses:
+```bash
+CONTEXT_PRESSURE_PCT=$(echo "$LAST_LINES" | grep -oP '\d+(?=% of context)' | tail -1 || echo "0")
+```
+This uses Perl-compatible regex (`grep -oP`) — not guaranteed available on all systems — and falls through to `CONTEXT_PRESSURE_PCT=0` (numeric zero, not the string "unknown").
+
+These two extraction patterns produce different behavior:
+1. The stop/notification pattern matches ANY `N%` in the last 5 lines and may false-positive on unrelated percentages (e.g., battery level, disk usage shown in pane).
+2. The pre-compact pattern is more precise — only matches numbers followed by `% of context` — but requires Perl regex support.
+3. The sentinel values differ: `"unknown"` (string, non-numeric) vs `0` (numeric zero). Downstream code that checks `[ "$CONTEXT_PRESSURE" = "unknown" ]` will fail to detect the pre-compact fallback.
+
+If context pressure extraction is unified into a shared function, choosing the grep -oP pattern introduces a grep dependency that may not be available. Choosing the grep -oE pattern reduces precision. Using "unknown" as the universal sentinel breaks pre-compact's existing behavior (where 0 means "no pressure detected"). Using 0 as sentinel silently reports 0% pressure when extraction fails.
+
+**Why it happens:**
+The two hooks were written at different times for different event types (Stop vs PreCompact). The PreCompact hook was written with a more targeted pattern because compaction events happen during a specific Claude Code dialog that shows percentage of context. The Stop hook uses a broader pattern because stop events occur at any point.
+
+**How to avoid:**
+Before unifying, decide: is the stop/notification pattern's broader matching actually causing false positives in practice? If not, unify on the grep -oE pattern (wider compatibility) and standardize on `"unknown"` as the sentinel. If precision matters, unify on the grep -oP pattern but add a fallback for systems where grep -oP is unavailable. Document the sentinel choice explicitly: downstream code must handle both `"unknown"` and numeric strings.
+
+Do not silently change pre-compact's sentinel from `0` to `"unknown"` without verifying that no downstream consumer checks `[ "$CONTEXT_PRESSURE_PCT" -eq 0 ]`.
+
+**Warning signs:**
+- After unification, pre-compact events log `context_pressure=unknown` where they previously logged `context_pressure=at 0%`
+- grep -oP fails on minimal Linux installations where grep is compiled without PCRE support
+- Downstream OpenClaw agent parsing breaks when receiving `"unknown"` instead of a numeric `0`
+
+**Phase to address:**
+Phase covering state detection / context pressure unification — document the sentinel choice and test with a pre-compact event after the change to verify pressure reporting is unchanged.
 
 ---
 
@@ -294,44 +401,32 @@ Shortcuts that seem reasonable but create long-term problems.
 
 | Shortcut | Immediate Benefit | Long-term Cost | When Acceptable |
 |----------|-------------------|----------------|-----------------|
-| String interpolation in JSON (`"field": "$VAR"`) | Less typing than `--arg` | Invalid JSON whenever `$VAR` contains `"`, `\`, or newline | Never — `--arg` is mandatory |
-| JSONL logging for every guard exit point | More visibility | jq overhead on every hook fire for every session (managed or not); 25–75ms latency tax | Never — restrict to managed session lifecycle events only |
-| Omitting flock on log appends | Simpler jsonl_log() | Interleaved writes when concurrent hooks fire; corrupted records > 4KB | Never when wake_message field is included (routinely > 4KB) |
-| Truncating raw_response to 500 chars in response event | Smaller log records | Lose full error messages from openclaw failures; debugging requires re-running the call | Acceptable in MVP; document truncation with `...<truncated>` suffix |
-| Single log file for all sessions | No per-session routing needed | Pre-session events (hooks.log guard exits) mixed with managed session events; hard to filter by session | Acceptable — hooks.log is for unmanaged session events only; SESSION.log is for managed events |
-| Relying on implicit variable inheritance to pass correlation_id to background subprocess | Simpler function signatures | Correlation broken if function structure changes (local variable scope) | Never — pass correlation_id as explicit parameter |
+| Copying hook preamble verbatim into preamble.sh without verifying BASH_SOURCE context | Fast extraction | BASH_SOURCE[0] resolves to wrong location in preamble; script name wrong in logs | Never — must verify BASH_SOURCE[0] vs [1] |
+| Unifying state detection with single grep pattern | Simpler shared function | Pre-compact behavior changes silently — `menu` and `idle_prompt` states become `working` | Never — verify pattern equivalence first |
+| Applying [CONTENT] migration by copying stop-hook.sh extract pattern | Uniform code | Wasteful transcript extraction for events with no transcript_path | Never — notification hooks need only label change |
+| Fixing diagnose Step 7 without sourcing lookup_agent_in_registry | Simpler change | Logic diverges again when hook-utils.sh lookup logic changes | Acceptable short-term; prefer sourcing hook-utils.sh for full parity |
+| Leaving double-source block in hook scripts after preamble migration | Defensive coding | Redundant source adds overhead; creates confusion during future edits | Never — preamble owns the single source of hook-utils.sh |
+| Partial echo→printf migration (update some hooks, skip others) | Less work | Mixed-state codebase — harder to audit, backslash bugs lurk in skipped hooks | Never — migrate all 7 hooks in a single pass |
+| Unifying context pressure extraction on grep -oP pattern | More precise matching | PCRE dependency fails on minimal systems; sentinel value change breaks downstream | Only if grep -oP availability is confirmed and sentinel is documented |
 
 ---
 
 ## Integration Gotchas
 
-Common mistakes when connecting JSONL logging to the existing hook system.
+Common mistakes when connecting hook-preamble.sh to existing hook scripts.
 
 | Integration Point | Common Mistake | Correct Approach |
 |-------------------|----------------|------------------|
-| jq JSON building | `printf '{"field":"%s"}' "$VAR"` — breaks on any special char | `jq -n --arg field "$VAR" '{field: $field}'` — all escaping done by jq |
-| Wake message field | Embedding `$WAKE_MESSAGE` directly in jq template string | Pass as `--arg wake_message "$WAKE_MESSAGE"` — handles multiline, quotes, ANSI codes |
-| Raw response field | `response=$(openclaw ...)` then string interpolate | `--arg raw_response "$(printf '%s' "$response" \| head -c 2000)"` — cap length, still use --arg |
-| Async subprocess | `( openclaw ... ) &` — inherits hook stdin | `( openclaw ... </dev/null ) </dev/null &` — explicit stdin nulling |
-| Correlation ID in async | Generate inside background subshell | Generate in parent, pass as explicit parameter to wrapper function |
-| Log file routing | Read `$GSD_HOOK_LOG` from global inside delivery wrapper | Pass log_file as explicit parameter — captured value at call site after Phase 2 redirect |
-| lib sourcing order | Source lib after TMUX guard and session extraction | Source lib immediately after SKILL_LOG_DIR/GSD_HOOK_LOG setup (top of script) |
-| Guard exit logging | `jsonl_log()` call at every guard exit | Plain `printf` or no log at guard exits — JSONL only for managed session lifecycle events |
-| Concurrent log writes | Bare `printf >> $LOG` for JSONL append | `flock` on `$LOG.lock` wrapping the append — prevents interleaving for large records |
-
----
-
-## Performance Traps
-
-Patterns that work at small scale but fail as usage grows.
-
-| Trap | Symptoms | Prevention | When It Breaks |
-|------|----------|------------|----------------|
-| jq process per log call | Each call adds 5–15ms; 5 calls = 25–75ms per hook fire | Single `jq -n` call building full record; JSONL only for lifecycle events | Immediately noticeable in bidirectional mode; subtle in async mode |
-| JSONL events at every guard exit | Unmanaged sessions (personal Claude Code use) slow by 20–50ms per hook | Guard exits use plain printf or no log; JSONL for managed only | Every hook fire for every session system-wide |
-| No length cap on raw_response | openclaw returns verbose output on error (stack trace, debug JSON); single response event can be 50KB | Cap raw_response at 2–4KB with `head -c N`; log full to separate overflow file if needed | When openclaw encounters errors with verbose output |
-| No length cap on wake_message | Full wake message with pane content is 5–15KB; stored in every request event | Cap or omit wake_message in log (log first 2KB + "...truncated"); full message still sent to openclaw | Every hook fire in sessions with active pane content |
-| flock timeout too long | Two concurrent hooks both wait 2s = 4s total delay if lock is held during openclaw call | Keep flock scope tight: lock only the `printf >> file` line, not the entire openclaw call | When openclaw call is slow (network timeout, OpenClaw server slow) |
+| BASH_SOURCE in preamble | Use BASH_SOURCE[0] for SKILL_LOG_DIR | Compute SKILL_LOG_DIR in hook before sourcing preamble; preamble inherits via ${SKILL_LOG_DIR:-} |
+| HOOK_SCRIPT_NAME in preamble | Use BASH_SOURCE[0] (gives preamble.sh) | Use BASH_SOURCE[1] to get calling hook's name |
+| GSD_HOOK_LOG assignment | Unconditional assignment in preamble | Conditional: `${GSD_HOOK_LOG:-${SKILL_LOG_DIR}/hooks.log}` — hook's Phase 2 redirect must survive |
+| hook-utils.sh source block | Leave old source block in hook scripts | Delete old block from every hook — preamble owns the single source |
+| set -e propagation | Assume sourced preamble is isolated | exit in preamble exits the calling hook — keep preamble exits to minimum (lib-not-found only) |
+| [CONTENT] migration for notification hooks | Copy stop-hook.sh extract_last_assistant_response call | Notification hooks: rename label only — pane capture is the correct content source |
+| diagnose Step 7 lookup | Change Step 3 logic to match hooks | Fix ONLY Step 7 to use startswith prefix-match; Step 3 keeps exact agent_id match |
+| Pre-compact state unification | Replace with stop/notification grep patterns | Verify TUI text equivalence first; if in doubt, keep separate patterns with comment explaining difference |
+| echo→printf migration | Update only newly touched files | Sweep all 7 hook scripts in a single pass; verify with grep after completion |
+| Context pressure sentinel | Change pre-compact sentinel from 0 to "unknown" without checking downstream | Decide sentinel once, document it, apply consistently; check JSONL consumers before changing |
 
 ---
 
@@ -339,14 +434,17 @@ Patterns that work at small scale but fail as usage grows.
 
 Things that appear complete but are missing critical pieces.
 
-- [ ] **jq --arg usage:** All string fields use `--arg` not string interpolation — verify by running: `grep -n 'jq.*".*\$' lib/hook-utils.sh` and confirming zero matches (no unquoted variable in jq template strings)
-- [ ] **Correlation pairing:** Every `hook.request` has a matching `hook.response` in the same log file — verify by checking `jq -r '.correlation_id' SESSION.log | sort | uniq -c | grep -v '2 '` shows no unpaired IDs after a full hook cycle
-- [ ] **File routing:** Request and response events for one hook invocation are in the same file — verify by running two concurrent hooks and checking no split pairs across hooks.log and SESSION.log
-- [ ] **stdin nulling:** `deliver_async_with_logging` uses `</dev/null` — verify `grep -n '</dev/null' lib/hook-utils.sh` shows it in the delivery wrapper
-- [ ] **lib sourcing order:** All 6 hook scripts source lib BEFORE any jsonl_log call — verify `grep -n 'source.*hook-utils\|jsonl_log' scripts/*.sh` shows source always comes first in each file
-- [ ] **Guard exits:** No JSONL events for guard exits in unmanaged session fast path — verify by running a hook in a non-tmux environment and confirming no jq processes are spawned: `strace -e execve bash stop-hook.sh < /dev/null 2>&1 | grep jq` (should show zero or one jq call only)
-- [ ] **flock on log write:** `jsonl_log()` uses flock — verify by running Stop + Notification hooks concurrently 20 times and checking `jq -c '.' SESSION.log` returns valid JSON for all lines with zero parse errors
-- [ ] **Wake message escaping:** Wake message with embedded JSON, double quotes, and newlines produces valid JSONL — test by crafting a wake message containing `{"key": "value"}`, backticks, and multiline content, then running `jq -c '.' hooks.log`
+- [ ] **hook-preamble.sh BASH_SOURCE test:** After extraction, fire a live hook and verify log entries show `[stop-hook.sh]` not `[hook-preamble.sh]` — check `tail -5 logs/warden-main.log`
+- [ ] **Old source blocks removed:** `grep -rn 'source.*hook-utils.sh' scripts/` returns zero matches (source now inside preamble.sh only)
+- [ ] **GSD_HOOK_LOG Phase 2 redirect works:** After session name extraction, debug_log goes to per-session file not hooks.log — verify by checking session-specific log exists after a Stop event
+- [ ] **Notification [CONTENT] label only:** `grep -n 'PANE CONTENT' scripts/notification-*.sh scripts/pre-compact-hook.sh` returns zero matches; `grep -n '\[CONTENT\]' scripts/notification-*.sh` returns matches
+- [ ] **No transcript extraction added to notification hooks:** `grep -n 'extract_last_assistant_response\|TRANSCRIPT_PATH' scripts/notification-*.sh scripts/pre-compact-hook.sh` returns zero matches
+- [ ] **Pre-compact state detection unchanged:** After refactoring, fire a pre-compact event and verify `state=menu` is reported when "Choose an option:" is in pane; `state=working` should NOT appear for this pane content
+- [ ] **diagnose Step 7 prefix match:** Run `diagnose-hooks.sh warden` against a session named `warden-main-2`; Step 7 should PASS (was failing before fix)
+- [ ] **diagnose Step 2 includes all 7 scripts:** `grep -A 10 'HOOK_SCRIPTS=(' scripts/diagnose-hooks.sh` shows all 7: stop, notification-idle, notification-permission, session-end, pre-compact, pre-tool-use, post-tool-use
+- [ ] **session-end-hook.sh guards fixed:** `grep 'jq.*agent_id' scripts/session-end-hook.sh` shows `2>/dev/null || echo ""` on both jq calls
+- [ ] **echo→printf migration complete:** `grep -n "echo \"\$" scripts/*.sh | grep '| jq'` returns zero matches across all 7 hook scripts
+- [ ] **Context pressure sentinel documented:** After any context pressure unification, JSONL records for pre-compact events still show expected pressure values (not "unknown" where 0% was previously reported)
 
 ---
 
@@ -356,13 +454,15 @@ When pitfalls occur despite prevention, how to recover.
 
 | Pitfall | Recovery Cost | Recovery Steps |
 |---------|---------------|----------------|
-| Corrupted JSONL record from bad escaping | LOW | 1. Find corrupt line: `jq -c '.' SESSION.log 2>&1 \| grep error` 2. Remove corrupt line: `grep -v 'corrupt_pattern' SESSION.log > SESSION.log.fixed && mv SESSION.log.fixed SESSION.log` 3. Fix jsonl_log() to use --arg 4. Redeploy (requires session restart) |
-| Interleaved concurrent writes | LOW-MEDIUM | 1. Identify corrupt lines 2. Delete SESSION.log (lose that session's history) 3. Add flock to jsonl_log() 4. Redeploy |
-| Broken correlation (empty correlation_id in response) | LOW | 1. Recheck deliver_async_with_logging signature 2. Ensure correlation_id is explicit parameter 3. Redeploy |
-| Split correlation pairs across files | LOW | 1. Merge hooks.log + SESSION.log for the session: `cat hooks.log SESSION.log \| jq -s 'sort_by(.ts)'` 2. Fix log file routing to pass explicit path 3. Redeploy |
-| Hook latency spike from jq overhead | LOW | 1. Remove JSONL events from guard exits 2. Reduce jq calls to one per logging event 3. Redeploy (no session restart required for lib-only change if hooks re-source on next fire) |
-| Async response capture hangs | MEDIUM | 1. Kill hung openclaw subprocesses: `pkill -f "openclaw agent"` 2. Add `</dev/null` to delivery wrapper 3. Redeploy |
-| lib sourcing too late (command not found) | LOW | 1. Move source line to top of affected hook script 2. Redeploy |
+| HOOK_SCRIPT_NAME wrong (shows preamble.sh) | LOW | 1. Change preamble to use `BASH_SOURCE[1]` 2. Redeploy (session restart required for hooks to reload) |
+| GSD_HOOK_LOG overwritten by preamble | LOW | 1. Make preamble assignment conditional: `${GSD_HOOK_LOG:-...}` 2. Verify Phase 2 redirect works 3. Redeploy |
+| Double-source confusion | LOW | 1. Delete old source block from hook scripts 2. Verify with grep 3. No session restart required (functions redefine identically) |
+| Pre-compact state silent behavior change | MEDIUM | 1. Identify which state detection pattern was incorrectly applied 2. Restore pre-compact to its original patterns (or add variant parameter) 3. Redeploy 4. Check JSONL logs for `state=working` where `state=menu` was expected |
+| Notification hook [CONTENT] migration includes transcript extraction | LOW | 1. Remove extract_last_assistant_response call from notification hooks 2. Keep only label rename 3. Redeploy |
+| diagnose Step 7 fix breaks Step 3 | LOW | 1. Revert Step 7 to use AGENT_ID from Step 3 correctly 2. Apply prefix-match only to Step 7, not Step 3 |
+| exit in preamble terminates hook silently | LOW-MEDIUM | 1. Check which condition causes preamble exit 2. Move guard to hook script if appropriate 3. Add plain printf log before exit so failure is visible |
+| Partial echo→printf migration leaves some hooks unchanged | LOW | 1. Run `grep -n "echo \"\$" scripts/*.sh | grep '| jq'` to find remaining occurrences 2. Apply printf '%s' replacement to each hit 3. Re-verify with grep |
+| Context pressure sentinel changed silently | LOW-MEDIUM | 1. Check JSONL logs for pre-compact events 2. Compare `context_pressure` values before and after 3. Restore pre-compact to its original sentinel if downstream consumers are affected |
 
 ---
 
@@ -372,63 +472,49 @@ How roadmap phases should address these pitfalls.
 
 | Pitfall | Prevention Phase | Verification |
 |---------|------------------|--------------|
-| JSON escaping with raw string interpolation | Phase 1: `jsonl_log()` implementation — use `--arg` for all fields | `grep -n 'jq.*"\$' lib/hook-utils.sh` returns zero matches |
-| Concurrent write interleaving > 4KB | Phase 1: `jsonl_log()` implementation — flock on every append | Run 20 concurrent Stop+Notification hook pairs, `jq -c '.' SESSION.log` reports zero errors |
-| Correlation ID lost in async subprocess | Phase 1: `deliver_async_with_logging()` signature — explicit parameter | `jq '.correlation_id' SESSION.log \| sort \| uniq -c` shows all IDs appear exactly twice |
-| Correlation pairs split across log files | Phase 1: delivery wrapper design — explicit log_file parameter captured post-redirect | Check no response events appear in hooks.log for managed sessions |
-| jq overhead on guard exits | Phase 1: JSONL logging policy — only lifecycle events get JSONL | Time unmanaged session hook exit: `time bash stop-hook.sh < /dev/null` < 10ms |
-| Async stdin inheritance causing hang | Phase 1: `deliver_async_with_logging()` — explicit `</dev/null` | Run delivery wrapper with simulated openclaw that reads stdin; verify no hang |
-| lib sourcing before first log call | Phase 1: hook script refactoring — move source to top of all 6 scripts | `grep -n 'source.*hook-utils\|jsonl_log' scripts/stop-hook.sh` shows source before any jsonl_log call |
+| BASH_SOURCE[0] wrong in preamble (SKILL_LOG_DIR, HOOK_SCRIPT_NAME) | Phase creating hook-preamble.sh | Fire live hook, check log prefix is hook name not preamble name |
+| exit propagation from preamble | Phase creating hook-preamble.sh | Code review: count exit statements in preamble (should be 1 max) |
+| Preamble unconditional assignment overwrites hook vars | Phase creating hook-preamble.sh | Set GSD_HOOK_LOG before source, verify it survives to debug_log |
+| Double-source of hook-utils.sh | Phase migrating hook scripts | `grep -rn 'source.*hook-utils.sh' scripts/` returns zero |
+| Pre-compact state detection changed silently | Phase extracting shared state detection | JSONL logs: pre-compact `state` field values unchanged |
+| [CONTENT] migration adds transcript extraction to notification hooks | Phase doing [CONTENT] migration | `grep -rn 'extract_last_assistant_response' scripts/notification-*.sh` returns zero |
+| diagnose Step 7 fix changes Step 3 | Phase fixing diagnose-hooks.sh | Run diagnose with exact and -2 suffix sessions; verify Step 3 exact, Step 7 prefix |
+| session-end-hook.sh missing jq guards | Phase migrating session-end-hook.sh | `grep 'jq.*agent_id' scripts/session-end-hook.sh` shows `2>/dev/null || echo ""` |
+| diagnose Step 2 missing pre-tool-use and post-tool-use | Phase fixing diagnose-hooks.sh | `grep -c 'hook.sh' <(grep -A 20 'HOOK_SCRIPTS=(' scripts/diagnose-hooks.sh)` returns 7 |
+| echo→printf incomplete migration | Phase applying echo→printf sweep | `grep -n "echo \"\$" scripts/*.sh | grep '| jq'` returns zero matches |
+| Context pressure sentinel change | Phase unifying context pressure extraction | Fire pre-compact event after change; verify JSONL `context_pressure` field unchanged |
 
 ---
 
 ## Sources
 
-### Linux Write Atomicity
-- [Are Files Appends Really Atomic? — Not The Wizard (2014)](https://www.notthewizard.com/2014/06/17/are-files-appends-really-atomic/) — empirical PIPE_BUF limits by OS: Debian ext4 safe to ~1,008 bytes, CentOS safe to 4,096 bytes; confirms bash `>>` is not guaranteed atomic above PIPE_BUF (MEDIUM confidence — empirical, pre-2025)
-- [Appending to a File from Multiple Processes — nullprogram (2016)](https://nullprogram.com/blog/2016/08/03/) — POSIX O_APPEND atomicity guarantees and limits; explicit warning that PIPE_BUF atomicity for files is "not correct" per POSIX spec (HIGH confidence — references POSIX spec directly)
-- [Appending to a log: an introduction to the Linux dark arts — Paul Khuong (2021)](https://pvk.ca/Blog/2021/01/22/appending-to-a-log-an-introduction-to-the-linux-dark-arts/) — buffered I/O risk and flushing policy concerns for concurrent log writes (HIGH confidence)
+### Empirically Tested (HIGH confidence — bash 5.2.21 on production host)
 
-### jq JSON Escaping
-- [How to Resolve JSON Parse Error: Control Characters U+0000–U+001F — codestudy.net](https://www.codestudy.net/blog/parse-error-when-text-is-split-on-multi-lines-control-characters-from-u-0000-through-u-001f-must-be-escaped/) — control character escaping requirement in JSON strings (MEDIUM confidence)
-- [How to Escape Characters in Bash for JSON — tutorialpedia.org](https://www.tutorialpedia.org/blog/escaping-characters-in-bash-for-json/) — `--arg` flag as the correct escaping mechanism; `jq -Rsa .` for multiline strings (MEDIUM confidence)
-- [Build a JSON String With Bash Variables — Baeldung on Linux](https://www.baeldung.com/linux/bash-variables-create-json-string) — `jq -n --arg` pattern for safe variable injection (HIGH confidence)
-- [jq 1.8 Manual — jqlang.org](https://jqlang.org/manual/) — `--arg`, `--rawfile`, `@json` format filter documentation (HIGH confidence — official)
+- BASH_SOURCE behavior in sourced files: `BASH_SOURCE[0]` = sourced file path; `BASH_SOURCE[1]` = calling script path — confirmed via direct testing
+- `exit` in sourced file exits calling process — confirmed: `source preamble.sh` with `exit 0` in preamble terminates caller
+- Variable scope in sourced files: all top-level assignments are global in calling shell — confirmed
+- GSD_HOOK_LOG update after source: `debug_log()` reads `$GSD_HOOK_LOG` at call time, not at define time — confirmed (Phase 2 redirect works correctly)
+- Double-source is harmless for pure-function libraries: functions redefine without error — confirmed
+- Preamble direct assignment overwrites hook pre-set values — confirmed: preamble runs after hook, clobbers hook's value if not conditional
+- Flock prevents concurrent write corruption even at >4KB — confirmed: 5 concurrent writers produce 5 valid JSON records
 
-### flock and File Locking
-- [flock(1) — Linux Manual Page](https://man7.org/linux/man-pages/man1/flock.1.html) — `-x` exclusive lock, `-w` timeout, fd-based lock file pattern (HIGH confidence — official)
-- [Mastering Flock Bash — bashcommands.com](https://bashcommands.com/flock-bash) — practical flock patterns for critical sections (MEDIUM confidence)
-- [Introduction to File Locking in Linux — Baeldung](https://www.baeldung.com/linux/file-locking) — advisory vs mandatory locking; kernel manages release on process death (HIGH confidence)
+### Codebase Analysis (HIGH confidence — direct reading)
 
-### Structured Logging and Correlation IDs
-- [JSONL for Log Processing — JSONL.help](https://jsonl.help/use-cases/log-processing/) — JSONL design rationale for log streaming; append-friendly properties (MEDIUM confidence)
-- [Structured Logging Best Practices — Uptrace](https://uptrace.dev/glossary/structured-logging) — essential fields: timestamp, level, correlation_id, component, message (MEDIUM confidence)
-- [IBM MCP Context Forge Issue #300 — GitHub](https://github.com/IBM/mcp-context-forge/issues/300) — real-world 2025 example of structured JSON logging with correlation ID schema design (MEDIUM confidence)
+- `pre-compact-hook.sh` state detection differences: case-sensitive vs insensitive, different patterns, different fallback states — confirmed via code reading and grep equivalence testing
+- `notification-idle-hook.sh`, `notification-permission-hook.sh` stdin schema: no `transcript_path` field — implicit from hook type (Notification vs Stop events); `transcript_path` documented as Stop-event-specific by Claude Code hook spec
+- `diagnose-hooks.sh` Step 7 exact match vs hook prefix match: confirmed discrepancy via direct jq execution — `warden-main-2` fails Step 7 but hooks find agent correctly
+- `session-end-hook.sh` missing guards: confirmed at lines 71-72 per v3.0 retrospective item 6
+- echo vs printf usage split: `post-tool-use-hook.sh` and `pre-tool-use-hook.sh` use `printf '%s'` correctly; `stop-hook.sh`, `notification-idle-hook.sh`, `notification-permission-hook.sh`, `session-end-hook.sh`, `pre-compact-hook.sh` use `echo` — confirmed via direct code reading
+- Context pressure extraction pattern split: stop/notification hooks use `grep -oE '[0-9]{1,3}%'` with "unknown" sentinel; pre-compact uses `grep -oP '\d+(?=% of context)'` with numeric 0 sentinel — confirmed via direct code reading
 
-### Bash Subprocess Environment
-- [Command Execution Environment — Bash Reference Manual](https://www.gnu.org/software/bash/manual/html_node/Command-Execution-Environment.html) — background (`&`) subshells inherit parent environment; changes in child do not propagate to parent (HIGH confidence — official)
+### v3.0 Retrospective (HIGH confidence — first-party analysis)
 
----
-
-## Prior Milestone Pitfalls (Already Solved — v2.0)
-
-The following pitfalls were fully documented in the v2.0 PITFALLS.md (researched 2026-02-17) and are not re-litigated here. All prevention measures are implemented in the shipped v2.0 codebase:
-
-- Transcript content[0].text positional indexing failure (use type-filtered content[]?)
-- Partial JSONL transcript read during active write (2>/dev/null fallback)
-- Full transcript file read latency (tail -20 enforced)
-- AskUserQuestion result stripping bug (fixed in Claude Code 2.0.76; production is 2.1.45)
-- Wide PreToolUse matcher firing on all tools (matcher scoped to "AskUserQuestion")
-- PreToolUse blocking openclaw call (backgrounded with </dev/null >/dev/null 2>&1 &)
-- Stale pane delta temp files from dead sessions (age check + session-end cleanup)
-- Race condition on pane delta temp files (flock on gsd-pane-lock-SESSION)
-- Deduplication over-suppression without minimum context (10-line minimum enforced)
-- Wake message v2 format breaking orchestrator (wake_message_version field added)
-- transcript_path file not found (existence check before read)
+- `docs/v3-retrospective.md` — 8 identified improvements; pitfalls 1-9 address items 1-8; pitfalls 10-11 address the "Patterns to Reconsider" section (echo→printf and context pressure patterns)
+- `.planning/STATE.md` Quick-9 note: "Incomplete v2.0 wake message migration — [CONTENT] applied only to stop-hook.sh; notification-idle, notification-permission, and pre-compact still use [PANE CONTENT]. Diagnose Step 7 uses exact match vs hook prefix-match — fix needed for v4.0."
 
 ---
 
-*Pitfalls research for: v3.0 Structured JSONL Hook Observability — Adding to existing v2.0 production hook system*
+*Pitfalls research for: v3.1 Hook Refactoring and Migration Completion*
 *Researched: 2026-02-18*
 *Researcher: GSD Project Researcher*
-*Confidence: HIGH — Linux kernel documentation, empirical write-atomicity research, analysis of v2.0 codebase, confirmed bash+jq behavior*
+*Confidence: HIGH — empirical bash testing, direct codebase analysis, v3.0 retrospective*

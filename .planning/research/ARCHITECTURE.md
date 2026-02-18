@@ -1,140 +1,152 @@
-# Architecture Research: v3.0 Structured Hook Observability
+# Architecture Research: v3.1 Hook Refactoring & Migration Completion
 
-**Domain:** Hook-driven OpenClaw agent control — structured JSONL event logging integration
+**Domain:** Shell hook refactoring — shared preamble extraction, settings unification, wake format migration
 **Researched:** 2026-02-18
-**Confidence:** HIGH
+**Confidence:** HIGH (all 7 hook scripts, lib/hook-utils.sh, and docs/v3-retrospective.md read in full)
 
-## System Overview
+---
 
-### Current Architecture (v2.0 — shipping state)
+## Current Architecture (v3.0 — shipped state)
 
 ```
 Claude Code Session (tmux pane)
          |
          | hook event fires
          v
-┌──────────────────────────────────────────────────────────┐
-│              6 Hook Entry Points (SRP, one per event)    │
-│                                                          │
-│  stop-hook.sh              (Stop event)                  │
-│  pre-tool-use-hook.sh      (PreToolUse/AskUserQuestion)  │
-│  notification-idle-hook.sh (Notification/idle)           │
-│  notification-permission-hook.sh (Notification/perm)     │
-│  session-end-hook.sh       (SessionEnd)                  │
-│  pre-compact-hook.sh       (PreCompact)                  │
-│                                                          │
-│  Each script: inline debug_log() → plain-text line       │
-│  Format: [ISO8601] [script-name] message text            │
-│  Target: $GSD_HOOK_LOG (hooks.log → SESSION.log)         │
-└──────────────┬───────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────┐
+│              7 Hook Entry Points                             │
+│                                                             │
+│  stop-hook.sh              (Stop event)                     │
+│  pre-tool-use-hook.sh      (PreToolUse/AskUserQuestion)     │
+│  post-tool-use-hook.sh     (PostToolUse/AskUserQuestion)    │
+│  notification-idle-hook.sh (Notification/idle_prompt)       │
+│  notification-permission-hook.sh (Notification/permission)  │
+│  session-end-hook.sh       (SessionEnd)                     │
+│  pre-compact-hook.sh       (PreCompact)                     │
+│                                                             │
+│  PROBLEM: Lines 1-27 copy-pasted 7x (preamble block)       │
+│  PROBLEM: Lines 92-104 copy-pasted 4x (settings block)     │
+│  PROBLEM: [PANE CONTENT] vs [CONTENT] inconsistency 3 hooks │
+└──────────────┬──────────────────────────────────────────────┘
                |
-               | source lib/hook-utils.sh (stop + pre-tool-use only)
+               | source lib/hook-utils.sh (all 7 hooks, at top)
                v
-┌──────────────────────────────────────────────────────────┐
-│    lib/hook-utils.sh — 4 shared extraction functions     │
-│                                                          │
-│  lookup_agent_in_registry()                              │
-│  extract_last_assistant_response()                       │
-│  extract_pane_diff()                                     │
-│  format_ask_user_questions()                             │
-└──────────────┬───────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────┐
+│    lib/hook-utils.sh — 6 shared functions                   │
+│                                                             │
+│  lookup_agent_in_registry()         — registry prefix match │
+│  extract_last_assistant_response()  — transcript JSONL read │
+│  extract_pane_diff()                — flock-protected diff  │
+│  format_ask_user_questions()        — AskUserQuestion fmt   │
+│  write_hook_event_record()          — atomic JSONL append   │
+│  deliver_async_with_logging()       — async delivery wrap   │
+│                                                             │
+│  MISSING: extract_hook_settings() — not yet extracted       │
+└──────────────┬──────────────────────────────────────────────┘
                |
                | openclaw agent --session-id UUID --message MSG
-               |   async (background &) — response dumps to log as raw text
-               |   bidirectional (foreground) — response parsed for decision
                v
-┌──────────────────────────────────────────────────────────┐
-│    logs/ directory (skill-local)                         │
-│                                                          │
-│  hooks.log              — pre-session plain-text lines   │
-│  {SESSION_NAME}.log     — per-session plain-text lines   │
-│  gsd-pane-prev-{SESSION}.txt  — pane state file          │
-│  gsd-pane-lock-{SESSION}      — flock coordination file  │
-└──────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────┐
+│    logs/ directory (skill-local)                            │
+│                                                             │
+│  hooks.log                    — shared pre-session log      │
+│  {SESSION_NAME}.log           — per-session plain-text      │
+│  {SESSION_NAME}.jsonl         — per-session JSONL records   │
+│  gsd-pane-prev-{SESSION}.txt  — pane diff state file        │
+│  gsd-pane-lock-{SESSION}      — flock coordination file     │
+└──────────────────────────────────────────────────────────────┘
 ```
 
-**Current problem:** `openclaw agent` async responses dump as raw unlabeled text into the log
-file. Plain-text debug_log lines are not machine-parseable. No way to correlate which response
-belongs to which hook invocation. No way to reconstruct the full lifecycle of a hook interaction
-programmatically.
+---
 
-### Target Architecture (v3.0)
+## Target Architecture (v3.1 — after refactoring)
 
 ```
 Claude Code Session (tmux pane)
          |
          | hook event fires
          v
-┌──────────────────────────────────────────────────────────┐
-│              6 Hook Entry Points (unchanged structure)   │
-│                                                          │
-│  stop-hook.sh              (Stop event)    MODIFIED      │
-│  pre-tool-use-hook.sh      (PreToolUse)    MODIFIED      │
-│  notification-idle-hook.sh                MODIFIED       │
-│  notification-permission-hook.sh          MODIFIED       │
-│  session-end-hook.sh                      MODIFIED       │
-│  pre-compact-hook.sh                      MODIFIED       │
-│                                                          │
-│  Replace: debug_log() inline function                    │
-│  With: source lib/hook-utils.sh + jsonl_log() calls      │
-└──────────────┬───────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────┐
+│              7 Hook Scripts — REFACTORED (thinner)          │
+│                                                             │
+│  stop-hook.sh              MODIFIED: preamble → source      │
+│  pre-tool-use-hook.sh      MODIFIED: preamble → source      │
+│  post-tool-use-hook.sh     MODIFIED: preamble → source      │
+│  notification-idle-hook.sh MODIFIED: preamble + settings    │
+│                             + [CONTENT] migration           │
+│  notification-permission-hook.sh  MODIFIED: same as idle    │
+│  session-end-hook.sh       MODIFIED: preamble → source      │
+│                             + 2>/dev/null guards added      │
+│  pre-compact-hook.sh       MODIFIED: preamble + settings    │
+│                             + [CONTENT] migration           │
+│                                                             │
+│  Hook body = guard chain + content + wake msg + delivery    │
+│  NO preamble code, NO settings extraction inline            │
+└──────────────┬──────────────────────────────────────────────┘
                |
-               | source lib/hook-utils.sh (ALL 6 hooks now)
+               | source lib/hook-preamble.sh
                v
-┌──────────────────────────────────────────────────────────┐
-│    lib/hook-utils.sh — EXTENDED (new functions added)    │
-│                                                          │
-│  [Existing, unchanged]                                   │
-│  lookup_agent_in_registry()                              │
-│  extract_last_assistant_response()                       │
-│  extract_pane_diff()                                     │
-│  format_ask_user_questions()                             │
-│                                                          │
-│  [New in v3.0]                                           │
-│  generate_correlation_id()    — printf '%s' "$(date...)" │
-│  jsonl_log()                  — write one JSONL event    │
-│  log_hook_request()           — request event wrapper    │
-│  log_hook_response()          — response event wrapper   │
-│  deliver_async_with_logging() — wrap openclaw + capture  │
-└──────────────┬───────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────┐
+│    lib/hook-preamble.sh — NEW (27 lines → 1 source call)   │
+│                                                             │
+│  Sets: SKILL_LOG_DIR (resolved via BASH_SOURCE)            │
+│  Sets: GSD_HOOK_LOG (with ${GSD_HOOK_LOG:-} fallback)      │
+│  Sets: HOOK_SCRIPT_NAME (basename of caller)               │
+│  Sets: SCRIPT_DIR (resolved via BASH_SOURCE)               │
+│  Defines: debug_log() function                             │
+│  Emits:   "FIRED — PID=$$ TMUX=..." debug_log call         │
+│  Sources: lib/hook-utils.sh (with file-missing guard)      │
+│  Emits:   "sourced lib/hook-utils.sh" on success           │
+│                                                             │
+│  DESIGN RULE: No set -euo pipefail here (caller sets it)   │
+│  DESIGN RULE: No side effects beyond variable assignment    │
+│               and function definition + the two log calls  │
+└──────────────┬──────────────────────────────────────────────┘
                |
-               | openclaw captured via deliver_async_with_logging()
+               | source lib/hook-utils.sh (via preamble)
                v
-┌──────────────────────────────────────────────────────────┐
-│    logs/ directory (skill-local)                         │
-│                                                          │
-│  hooks.log              — JSONL events pre-session       │
-│  {SESSION_NAME}.log     — JSONL events per-session       │
-│  gsd-pane-prev-{SESSION}.txt  — unchanged (pane state)   │
-│  gsd-pane-lock-{SESSION}      — unchanged (flock)        │
-└──────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────┐
+│    lib/hook-utils.sh — EXTENDED (+1 function)               │
+│                                                             │
+│  [Existing — unchanged]                                     │
+│  lookup_agent_in_registry()                                 │
+│  extract_last_assistant_response()                          │
+│  extract_pane_diff()                                        │
+│  format_ask_user_questions()                                │
+│  write_hook_event_record()                                  │
+│  deliver_async_with_logging()                               │
+│                                                             │
+│  [New in v3.1]                                              │
+│  extract_hook_settings()   — three-tier jq fallback        │
+│    args: registry_path, agent_data_json                     │
+│    sets: PANE_CAPTURE_LINES, CONTEXT_PRESSURE_THRESHOLD,    │
+│          HOOK_MODE (in caller's scope via printf+eval OR    │
+│          outputs JSON for caller to parse)                  │
+└──────────────────────────────────────────────────────────────┘
 ```
 
 ---
 
 ## Component Boundaries
 
-### New Components (v3.0 additions to lib/hook-utils.sh)
+### New Components
 
-| Function | Responsibility | Notes |
-|----------|----------------|-------|
-| `generate_correlation_id()` | Produce a unique ID linking request + response events for one hook invocation | Called once per hook script execution, stored in local variable |
-| `jsonl_log()` | Serialize a JSONL event record to the log file atomically | Receives field values, calls `jq -n` to build valid JSON, appends one line |
-| `log_hook_request()` | Emit a `hook.request` event — the wake message and metadata being sent to OpenClaw | Called immediately before the `openclaw` call |
-| `log_hook_response()` | Emit a `hook.response` event — the raw response from OpenClaw and outcome | Called from inside the async wrapper after OpenClaw returns |
-| `deliver_async_with_logging()` | Replace the bare `openclaw ... &` pattern with a wrapper that captures response and logs it | Called instead of bare `openclaw agent ... >> $GSD_HOOK_LOG 2>&1 &` |
+| Component | Location | Responsibility | What It Replaces |
+|-----------|----------|----------------|------------------|
+| `hook-preamble.sh` | `lib/hook-preamble.sh` | Sets up SKILL_LOG_DIR, GSD_HOOK_LOG, HOOK_SCRIPT_NAME, SCRIPT_DIR, debug_log(), fires FIRED log, sources hook-utils.sh | Lines 1-27 copy-pasted in all 7 hooks |
+| `extract_hook_settings()` | `lib/hook-utils.sh` | Three-tier jq fallback for pane_capture_lines, context_pressure_threshold, hook_mode | 12-line block copy-pasted in 4 hooks |
 
 ### Modified Components
 
-| Component | Current State | v3.0 Change |
-|-----------|--------------|-------------|
-| `lib/hook-utils.sh` | 4 extraction functions, 150 lines | Add 5 new functions for JSONL logging |
-| `stop-hook.sh` | Inline `debug_log()`, bare `openclaw &` | Remove inline `debug_log`, source lib earlier, call `jsonl_log` at key steps, use `deliver_async_with_logging` |
-| `pre-tool-use-hook.sh` | Inline `debug_log()`, bare `openclaw &` | Same as stop-hook.sh pattern |
-| `notification-idle-hook.sh` | Inline `debug_log()`, bare `openclaw &` | Same pattern — lib sourced before registry lookup (earlier than v2.0) |
-| `notification-permission-hook.sh` | Same as idle hook | Same pattern |
-| `session-end-hook.sh` | Inline `debug_log()`, bare `openclaw &` | Same pattern |
-| `pre-compact-hook.sh` | Inline `debug_log()`, bare `openclaw &` | Same pattern |
+| Component | v3.0 State | v3.1 Change |
+|-----------|-----------|-------------|
+| All 7 hook scripts | 27-line preamble inline | Replace lines 1-27 with: `source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../lib/hook-preamble.sh"` |
+| `notification-idle-hook.sh` | `[PANE CONTENT]` section header | Migrate to `[CONTENT]` header (v2.0 format completion) |
+| `notification-permission-hook.sh` | `[PANE CONTENT]` section header | Same migration |
+| `pre-compact-hook.sh` | `[PANE CONTENT]` section header + settings block inline | `[CONTENT]` migration + `extract_hook_settings()` call |
+| `stop-hook.sh` | Settings block inline | Replace with `extract_hook_settings()` call |
+| `session-end-hook.sh` | jq calls without `2>/dev/null || echo ""` guards | Add guards (lines 71-72 pattern fix) |
+| `lib/hook-utils.sh` | 6 functions | Add `extract_hook_settings()` as 7th function |
 
 ### Unchanged Components
 
@@ -143,288 +155,269 @@ Claude Code Session (tmux pane)
 | `lookup_agent_in_registry()` | No change to registry lookup logic |
 | `extract_last_assistant_response()` | No change to extraction logic |
 | `extract_pane_diff()` | No change to diff logic |
-| `format_ask_user_questions()` | No change to formatting logic |
-| `spawn.sh`, `menu-driver.sh` | Not hook scripts — no debug_log involvement |
-| `register-hooks.sh` | Hook registration unchanged |
+| `format_ask_user_questions()` | No change to formatting |
+| `write_hook_event_record()` | No change to JSONL writing |
+| `deliver_async_with_logging()` | No change to async delivery |
 | `config/recovery-registry.json` | Schema unchanged |
-| `logs/` pane state files | gsd-pane-prev-*, gsd-pane-lock-* unchanged |
+| `logs/` directory and file paths | Unchanged |
+| `spawn.sh`, `menu-driver.sh`, `register-hooks.sh`, etc. | Not hook scripts |
 
 ---
 
-## Recommended File Structure After v3.0
+## Source Chain
+
+### Current Source Chain (v3.0)
+
+Each hook does this inline at lines 1-27:
+
+```
+hook-script.sh
+  ├── set -euo pipefail                         (line 2)
+  ├── SKILL_LOG_DIR="..." mkdir -p ...          (lines 4-5)
+  ├── GSD_HOOK_LOG="${GSD_HOOK_LOG:-...}"        (line 8)
+  ├── HOOK_SCRIPT_NAME="$(basename ...)"         (line 9)
+  ├── debug_log() { printf ... }                (lines 11-13)
+  ├── debug_log "FIRED ..."                     (line 15)
+  ├── SCRIPT_DIR="$(cd ... && pwd)"             (line 18)
+  ├── LIB_PATH="${SCRIPT_DIR}/../lib/hook-utils.sh"  (line 19)
+  └── if [ -f "$LIB_PATH" ]; then source; else exit 0; fi  (lines 20-26)
+         └── lib/hook-utils.sh (6 functions)
+```
+
+### Target Source Chain (v3.1)
+
+Each hook does this at line 4:
+
+```
+hook-script.sh
+  ├── set -euo pipefail                         (line 2)
+  └── source ".../lib/hook-preamble.sh"         (line 4)
+         ├── SKILL_LOG_DIR="..." mkdir -p ...
+         ├── GSD_HOOK_LOG="${GSD_HOOK_LOG:-...}"
+         ├── HOOK_SCRIPT_NAME="$(basename "${BASH_SOURCE[1]}")"  ← caller's name
+         ├── debug_log() { printf ... }
+         ├── debug_log "FIRED ..."
+         ├── SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[1]}")" && pwd)"  ← caller's dir
+         ├── LIB_PATH="${SCRIPT_DIR}/../lib/hook-utils.sh"
+         └── if [ -f "$LIB_PATH" ]; then source; else ... exit 0; fi
+                └── lib/hook-utils.sh (7 functions, including extract_hook_settings)
+```
+
+### Critical Design Constraint for hook-preamble.sh
+
+`BASH_SOURCE[0]` inside `hook-preamble.sh` resolves to `hook-preamble.sh` itself. To get the calling hook's path, use `BASH_SOURCE[1]`. This is the key difference from inline code where `BASH_SOURCE[0]` was always the hook script.
+
+Verified bash behavior: when script A sources script B, inside B `BASH_SOURCE[0]` is B and `BASH_SOURCE[1]` is A. This is HIGH confidence — standard bash documented behavior.
+
+The preamble must use `BASH_SOURCE[1]` for both `HOOK_SCRIPT_NAME` and `SCRIPT_DIR` resolution. All other code is identical to the inline version.
+
+---
+
+## File Structure After v3.1
 
 ```
 gsd-code-skill/
 ├── scripts/
-│   ├── stop-hook.sh                  MODIFIED: remove inline debug_log, use lib
-│   ├── pre-tool-use-hook.sh          MODIFIED: same
-│   ├── notification-idle-hook.sh     MODIFIED: same
-│   ├── notification-permission-hook.sh  MODIFIED: same
-│   ├── session-end-hook.sh           MODIFIED: same
-│   ├── pre-compact-hook.sh           MODIFIED: same
-│   ├── register-hooks.sh             unchanged
-│   ├── spawn.sh                      unchanged
-│   ├── menu-driver.sh                unchanged
-│   ├── recover-openclaw-agents.sh    unchanged
+│   ├── stop-hook.sh                      MODIFIED: preamble → source, settings → extract_hook_settings()
+│   ├── pre-tool-use-hook.sh              MODIFIED: preamble → source
+│   ├── post-tool-use-hook.sh             MODIFIED: preamble → source
+│   ├── notification-idle-hook.sh         MODIFIED: preamble → source, [PANE CONTENT] → [CONTENT]
+│   ├── notification-permission-hook.sh   MODIFIED: preamble → source, [PANE CONTENT] → [CONTENT]
+│   ├── session-end-hook.sh               MODIFIED: preamble → source, add 2>/dev/null guards
+│   ├── pre-compact-hook.sh               MODIFIED: preamble → source, settings → extract_hook_settings(), [PANE CONTENT] → [CONTENT]
+│   ├── register-hooks.sh                 unchanged
+│   ├── spawn.sh                          unchanged
+│   ├── menu-driver.sh                    unchanged
+│   ├── recover-openclaw-agents.sh        unchanged
 │   ├── sync-recovery-registry-session-ids.sh  unchanged
-│   └── diagnose-hooks.sh             unchanged (may warrant update)
+│   ├── diagnose-hooks.sh                 MODIFIED (separate scope): fix Step 7 prefix-match + Step 2 script list
+│   └── install.sh                        unchanged
 ├── lib/
-│   └── hook-utils.sh                 MODIFIED: +5 new JSONL logging functions
+│   ├── hook-utils.sh                     MODIFIED: +extract_hook_settings() as 7th function
+│   └── hook-preamble.sh                  NEW: extracted 27-line preamble block
 ├── config/
-│   ├── recovery-registry.json        unchanged
-│   ├── recovery-registry.example.json  unchanged
-│   └── default-system-prompt.txt     unchanged
+│   └── ...                               unchanged
 └── logs/
-    ├── hooks.log                     now JSONL (one JSON object per line)
-    ├── {SESSION_NAME}.log            now JSONL (one JSON object per line)
-    ├── gsd-pane-prev-{SESSION}.txt   unchanged
-    └── gsd-pane-lock-{SESSION}       unchanged
+    └── ...                               unchanged
 ```
-
-**Structure rationale:**
-
-- **lib/hook-utils.sh extension:** All new JSONL logic lives in the single shared library. Six hook scripts all source it — no duplication. Single fix point for any JSONL serialization bug.
-- **No new files:** v3.0 adds functions to an existing file, not new lib files. The logging concern is small enough that a separate `lib/jsonl-log.sh` would be over-engineering. One shared library with clear function namespacing is sufficient.
-- **logs/ format change:** The log files transition from plain-text to JSONL. Same file paths, same two-phase routing. Consumers (humans, future dashboard) can parse with `jq` per line.
-
----
-
-## JSONL Event Schema
-
-Every log entry is one JSON object on one line (standard JSONL). Two event types cover the full hook lifecycle.
-
-### Event Type: `hook.request`
-
-Emitted immediately before the `openclaw agent` call. Captures everything that was sent.
-
-```json
-{
-  "event": "hook.request",
-  "ts": "2026-02-18T14:22:01Z",
-  "correlation_id": "warden-main-3_stop-hook_1708262521_42761",
-  "hook": "stop-hook.sh",
-  "session": "warden-main-3",
-  "agent_id": "warden",
-  "openclaw_session_id": "d52a3453-3ac6-464b-9533-681560695394",
-  "trigger": "response_complete",
-  "mode": "async",
-  "wake_message": "[SESSION IDENTITY]\nagent_id: warden\n..."
-}
-```
-
-### Event Type: `hook.response`
-
-Emitted from inside the async wrapper after `openclaw` returns. Captures the raw response and outcome classification.
-
-```json
-{
-  "event": "hook.response",
-  "ts": "2026-02-18T14:22:03Z",
-  "correlation_id": "warden-main-3_stop-hook_1708262521_42761",
-  "hook": "stop-hook.sh",
-  "session": "warden-main-3",
-  "openclaw_session_id": "d52a3453-3ac6-464b-9533-681560695394",
-  "exit_code": 0,
-  "raw_response": "OK message queued",
-  "outcome": "delivered"
-}
-```
-
-### Field Reference
-
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `event` | string | yes | `"hook.request"` or `"hook.response"` |
-| `ts` | ISO8601 | yes | UTC timestamp at event emission time |
-| `correlation_id` | string | yes | Links request + response for one hook invocation |
-| `hook` | string | yes | Script filename (`stop-hook.sh`, etc.) |
-| `session` | string | yes | tmux session name; empty string if not yet known |
-| `agent_id` | string | request only | Agent identifier from registry |
-| `openclaw_session_id` | string | yes | OpenClaw session UUID |
-| `trigger` | string | request only | Hook trigger type (matches `[TRIGGER] type:` value) |
-| `mode` | string | request only | `"async"` or `"bidirectional"` |
-| `wake_message` | string | request only | Full wake message body sent to OpenClaw |
-| `exit_code` | integer | response only | Exit code of `openclaw` command |
-| `raw_response` | string | response only | Raw stdout+stderr from `openclaw` (trimmed) |
-| `outcome` | string | response only | `"delivered"`, `"error"`, `"blocked"` |
 
 ---
 
 ## Architectural Patterns
 
-### Pattern 1: Separate Library for JSONL Logic — Not Extending Inline
+### Pattern 1: Sourced Preamble via BASH_SOURCE[1]
 
-**What:** All JSONL serialization and logging functions live in `lib/hook-utils.sh`, not inline in each hook script. Hook scripts call `jsonl_log()` or higher-level wrappers.
+**What:** A shared setup file (`lib/hook-preamble.sh`) sources into each hook as its first executable line. The preamble uses `BASH_SOURCE[1]` (not `BASH_SOURCE[0]`) to resolve the caller's script name and directory.
 
-**When to use:** Any logging behavior that 2+ scripts need.
+**When to use:** Any hook that needs SKILL_LOG_DIR, GSD_HOOK_LOG, HOOK_SCRIPT_NAME, SCRIPT_DIR, debug_log, and lib/hook-utils.sh. That is every hook.
 
 **Trade-offs:**
-- Pro: Single fix point — fix `jsonl_log()` once, all 6 scripts benefit
-- Pro: Hook scripts stay thin (SRP preserved)
-- Pro: `jq -n` inside the lib function handles all JSON escaping — no inline jq in hooks
-- Con: All 6 scripts now source lib (v2.0 was stop + pre-tool-use only). Sourcing adds ~1ms overhead. Acceptable — hooks run in the 5-100ms range.
+- Pro: Single preamble definition — a fix in hook-preamble.sh propagates to all 7 hooks
+- Pro: New hooks get correct setup for free
+- Pro: Hook scripts shrink from ~27 lines of boilerplate to 1 source line
+- Con: `BASH_SOURCE[1]` is less familiar than `BASH_SOURCE[0]` — must be documented
+- Con: If preamble is missing, all 7 hooks fail identically — but the file-missing guard handles this with a plain printf + exit 0
 
-**Why not a separate `lib/jsonl-log.sh`:** The logging concern does not warrant a second lib file. hook-utils.sh grows from ~150 lines to ~220 lines — still a single-responsibility shared utility file. A separate file adds path management without benefit.
-
-**Example (in hook script):**
+**Example (in each hook, line 4):**
 
 ```bash
-# At top of hook, after SKILL_LOG_DIR + GSD_HOOK_LOG setup:
-LIB_PATH="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../lib/hook-utils.sh"
-source "$LIB_PATH"
+#!/usr/bin/env bash
+set -euo pipefail
+# shellcheck source=../lib/hook-preamble.sh
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../lib/hook-preamble.sh"
 
-# Generate once per invocation:
-CORRELATION_ID=$(generate_correlation_id "$SESSION_NAME" "$HOOK_SCRIPT_NAME")
-
-# Before delivery:
-log_hook_request "$CORRELATION_ID" "$HOOK_SCRIPT_NAME" "$SESSION_NAME" \
-  "$AGENT_ID" "$OPENCLAW_SESSION_ID" "$TRIGGER_TYPE" "$HOOK_MODE" "$WAKE_MESSAGE"
-
-# Delivery (replaces bare openclaw & call):
-deliver_async_with_logging "$CORRELATION_ID" "$HOOK_SCRIPT_NAME" \
-  "$SESSION_NAME" "$OPENCLAW_SESSION_ID" "$WAKE_MESSAGE"
+# [guard chain + hook-specific logic follows]
 ```
 
-### Pattern 2: correlation_id Generation — Timestamp Plus PID
-
-**What:** `generate_correlation_id()` produces a string combining session name, script name, Unix timestamp in seconds, and shell PID.
-
-**Why timestamp + PID:** No UUID generator is guaranteed available in bash without external tools. `date +%s` is standard. `$$` (PID) is unique per process invocation. Together they produce a collision-resistant identifier within the scope of a single host and session.
-
-**Why not just PID alone:** PIDs recycle. Two hook fires with the same PID (reuse across session lifetime) would collide.
-
-**Why not `uuidgen`:** Not guaranteed installed. `date +%s%N` (nanoseconds) + `$$` is sufficient and universally available.
-
-**Implementation:**
+**Example (hook-preamble.sh itself):**
 
 ```bash
-generate_correlation_id() {
-  local session_name="$1"
-  local hook_script_name="$2"
-  printf '%s_%s_%s_%s' \
-    "${session_name:-unknown}" \
-    "${hook_script_name%.sh}" \
-    "$(date -u +'%s')" \
-    "$$"
-}
-```
+#!/usr/bin/env bash
+# lib/hook-preamble.sh — Shared preamble for all GSD hook scripts.
+# Sourced as the first action of every hook. Sets up logging, SCRIPT_DIR, and sources hook-utils.sh.
+# Uses BASH_SOURCE[1] throughout — the caller's path, not this file's path.
+# No set -euo pipefail here — caller sets shell options before sourcing this.
 
-**Example output:** `warden-main-3_stop-hook_1708262521_42761`
+SKILL_LOG_DIR="$(cd "$(dirname "${BASH_SOURCE[1]}")/.." && pwd)/logs"
+mkdir -p "$SKILL_LOG_DIR"
 
-**Confidence:** HIGH. Collision-free within realistic operating parameters (one session, multiple hook invocations per minute, PID reuse unlikely within a single tmux session lifetime).
+GSD_HOOK_LOG="${GSD_HOOK_LOG:-${SKILL_LOG_DIR}/hooks.log}"
+HOOK_SCRIPT_NAME="$(basename "${BASH_SOURCE[1]}")"
 
-### Pattern 3: Async Response Capture via Background Subshell with Temp File
-
-**What:** The async delivery path (`openclaw ... &`) currently dumps to the log via `>> $GSD_HOOK_LOG 2>&1 &`. This is unstructured. To capture the response and write a structured `hook.response` event, a wrapper function runs in background: it captures stdout+stderr to a temp variable, then calls `log_hook_response()`.
-
-**Why temp file approach is NOT needed:** The response can be captured inside a background subshell via command substitution. The subshell then calls `log_hook_response()` which calls `jsonl_log()` which appends to the log. No intermediary temp file required.
-
-**Why stdout capture works here:** `openclaw agent --session-id UUID --message MSG` returns a short confirmation string (e.g., `"OK message queued"` or an error). This is not multi-megabyte output. Command substitution is safe.
-
-**Implementation:**
-
-```bash
-deliver_async_with_logging() {
-  local correlation_id="$1"
-  local hook_script_name="$2"
-  local session_name="$3"
-  local openclaw_session_id="$4"
-  local wake_message="$5"
-
-  # Run in background — hook exits immediately, subshell handles capture + logging
-  (
-    local raw_response
-    local exit_code
-    raw_response=$(openclaw agent \
-      --session-id "$openclaw_session_id" \
-      --message "$wake_message" 2>&1) && exit_code=0 || exit_code=$?
-
-    local outcome
-    if [ "$exit_code" -eq 0 ]; then
-      outcome="delivered"
-    else
-      outcome="error"
-    fi
-
-    log_hook_response \
-      "$correlation_id" \
-      "$hook_script_name" \
-      "$session_name" \
-      "$openclaw_session_id" \
-      "$exit_code" \
-      "$raw_response" \
-      "$outcome"
-  ) &
-}
-```
-
-**Critical constraint:** The background subshell must not inherit `set -e` from the caller in a way that causes it to exit on non-zero `openclaw` exit code before capturing `exit_code`. The `&& exit_code=0 || exit_code=$?` pattern handles this correctly.
-
-### Pattern 4: jsonl_log() Uses jq -n for Safe JSON Serialization
-
-**What:** All JSONL event serialization goes through `jq -n` with `--arg` for string fields. Never string-interpolate JSON manually.
-
-**Why:** Wake messages contain newlines, quotes, backslashes, and Unicode. Manual string interpolation produces malformed JSON. `jq -n --arg field "$value"` handles all escaping correctly.
-
-**Why not `printf '%s\n' "$json"` with manually built JSON:** A wake message like `"What can I help\nyou with?"` would break a manually assembled JSON string immediately. `jq` is already a hard dependency of all hook scripts.
-
-**Implementation:**
-
-```bash
-jsonl_log() {
-  local log_file="$1"
-  local event_type="$2"
-  local correlation_id="$3"
-  local hook_script_name="$4"
-  local session_name="$5"
-  # Additional fields passed as name=value pairs via remaining args
-  # OR: use a single pre-built jq expression per event type
-
-  # Simpler: each event type has its own dedicated function that builds
-  # the correct jq expression. jsonl_log() is just the atomic append primitive.
-  jq -cn "$@" >> "$log_file" 2>/dev/null || true
-}
-```
-
-**Preferred approach — dedicated builder per event type:**
-
-```bash
-log_hook_request() {
-  local correlation_id="$1"
-  local hook_script_name="$2"
-  local session_name="$3"
-  local agent_id="$4"
-  local openclaw_session_id="$5"
-  local trigger_type="$6"
-  local hook_mode="$7"
-  local wake_message="$8"
-
-  jq -cn \
-    --arg event "hook.request" \
-    --arg ts "$(date -u +'%Y-%m-%dT%H:%M:%SZ')" \
-    --arg correlation_id "$correlation_id" \
-    --arg hook "$hook_script_name" \
-    --arg session "$session_name" \
-    --arg agent_id "$agent_id" \
-    --arg openclaw_session_id "$openclaw_session_id" \
-    --arg trigger "$trigger_type" \
-    --arg mode "$hook_mode" \
-    --arg wake_message "$wake_message" \
-    '{event: $event, ts: $ts, correlation_id: $correlation_id,
-      hook: $hook, session: $session, agent_id: $agent_id,
-      openclaw_session_id: $openclaw_session_id, trigger: $trigger,
-      mode: $mode, wake_message: $wake_message}' \
+debug_log() {
+  printf '[%s] [%s] %s\n' "$(date -u +'%Y-%m-%dT%H:%M:%SZ')" "$HOOK_SCRIPT_NAME" "$*" \
     >> "$GSD_HOOK_LOG" 2>/dev/null || true
 }
+
+debug_log "FIRED — PID=$$ TMUX=${TMUX:-<unset>}"
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[1]}")" && pwd)"
+LIB_PATH="${SCRIPT_DIR}/../lib/hook-utils.sh"
+if [ -f "$LIB_PATH" ]; then
+  source "$LIB_PATH"
+  debug_log "sourced lib/hook-utils.sh"
+else
+  printf '[%s] [%s] FATAL: hook-utils.sh not found at %s\n' \
+    "$(date -u +'%Y-%m-%dT%H:%M:%SZ')" "$HOOK_SCRIPT_NAME" "$LIB_PATH" \
+    >> "$GSD_HOOK_LOG" 2>/dev/null || true
+  exit 0
+fi
 ```
 
-**The `|| true` is mandatory:** Log failures must never propagate. Hooks must always exit 0 for Claude Code. A full disk or permission error on the log file should not break the session.
+### Pattern 2: extract_hook_settings() — Variable-Setting Function
+
+**What:** A function in `lib/hook-utils.sh` that accepts `registry_path` and `agent_data_json` and sets `PANE_CAPTURE_LINES`, `CONTEXT_PRESSURE_THRESHOLD`, and `HOOK_MODE` in the caller's scope via `printf` + `eval` OR via direct assignment using `declare -g`.
+
+**Recommended approach — direct `declare` (bash 4.2+):** The function uses `declare -g` to set variables in the calling scope. This is cleaner than eval and avoids subshell traps.
+
+**Alternative approach — output JSON + caller parses:** The function echoes a JSON object; the caller parses it with three jq calls. This is pure (no eval, no declare -g) but requires the caller to have three parse lines instead of one function call.
+
+**Recommended approach for this codebase:** Use named output variables with `printf '%s' VAR=VALUE` format (same pattern as bash return-by-reference idioms in lib functions). Given the codebase already uses `2>/dev/null || echo "default"` defensive patterns, `declare -g` with fallbacks is the cleanest fit.
+
+**Implementation:**
+
+```bash
+# ==========================================================================
+# extract_hook_settings
+# ==========================================================================
+# Extracts hook_settings fields from registry with three-tier fallback:
+#   1. Per-agent hook_settings (agent_data .hook_settings.field)
+#   2. Global hook_settings (registry root .hook_settings.field)
+#   3. Hardcoded defaults (100, 50, "async")
+#
+# Arguments:
+#   $1 - registry_path: path to recovery-registry.json
+#   $2 - agent_data_json: JSON string of matched agent from registry
+# Sets in caller scope (via declare -g):
+#   PANE_CAPTURE_LINES, CONTEXT_PRESSURE_THRESHOLD, HOOK_MODE
+# Returns:
+#   0 always (never fails — falls back to hardcoded defaults on jq error)
+# ==========================================================================
+extract_hook_settings() {
+  local registry_path="$1"
+  local agent_data_json="$2"
+
+  local global_settings
+  global_settings=$(jq -r '.hook_settings // {}' "$registry_path" 2>/dev/null || printf '{}')
+
+  declare -g PANE_CAPTURE_LINES
+  PANE_CAPTURE_LINES=$(printf '%s' "$agent_data_json" | jq -r \
+    --argjson global "$global_settings" \
+    '(.hook_settings.pane_capture_lines // $global.pane_capture_lines // 100)' \
+    2>/dev/null || printf '100')
+
+  declare -g CONTEXT_PRESSURE_THRESHOLD
+  CONTEXT_PRESSURE_THRESHOLD=$(printf '%s' "$agent_data_json" | jq -r \
+    --argjson global "$global_settings" \
+    '(.hook_settings.context_pressure_threshold // $global.context_pressure_threshold // 50)' \
+    2>/dev/null || printf '50')
+
+  declare -g HOOK_MODE
+  HOOK_MODE=$(printf '%s' "$agent_data_json" | jq -r \
+    --argjson global "$global_settings" \
+    '(.hook_settings.hook_mode // $global.hook_mode // "async")' \
+    2>/dev/null || printf 'async')
+}
+```
+
+**Caller site (before → after):**
+
+```bash
+# BEFORE (12 lines inline, 4 copies):
+GLOBAL_SETTINGS=$(jq -r '.hook_settings // {}' "$REGISTRY_PATH" 2>/dev/null || echo "{}")
+PANE_CAPTURE_LINES=$(echo "$AGENT_DATA" | jq -r \
+  --argjson global "$GLOBAL_SETTINGS" \
+  '(.hook_settings.pane_capture_lines // $global.pane_capture_lines // 100)' 2>/dev/null || echo "100")
+CONTEXT_PRESSURE_THRESHOLD=$(echo "$AGENT_DATA" | jq -r \
+  --argjson global "$GLOBAL_SETTINGS" \
+  '(.hook_settings.context_pressure_threshold // $global.context_pressure_threshold // 50)' 2>/dev/null || echo "50")
+HOOK_MODE=$(echo "$AGENT_DATA" | jq -r \
+  --argjson global "$GLOBAL_SETTINGS" \
+  '(.hook_settings.hook_mode // $global.hook_mode // "async")' 2>/dev/null || echo "async")
+
+# AFTER (1 line):
+extract_hook_settings "$REGISTRY_PATH" "$AGENT_DATA"
+```
+
+**Trade-offs:**
+- Pro: One function, zero duplication — the three-tier fallback logic is auditable in one place
+- Pro: Adding a new setting requires editing one function, not 4 hook scripts
+- Con: `declare -g` requires bash 4.2+ — Ubuntu 24 ships bash 5.2, HIGH confidence this is fine
+- Con: Variable setting side effects are less explicit than inline code — mitigated by clear function docstring
+
+### Pattern 3: Wake Message Format Migration ([PANE CONTENT] → [CONTENT])
+
+**What:** Three hooks (`notification-idle-hook.sh`, `notification-permission-hook.sh`, `pre-compact-hook.sh`) use the v1.0/pre-v2.0 `[PANE CONTENT]` section header. The v2.0 format uses `[CONTENT]` with the understanding that content source varies (pane vs transcript). Completing the migration makes all wake messages consistent.
+
+**Migration decision — raw pane vs extracted content:**
+
+For notification hooks (idle_prompt, permission_prompt), the Stop hook fires after Claude finishes responding, so transcript extraction makes sense there. Notification hooks fire on Claude's TUI state changes where there may be no new transcript entry to extract. Raw pane content is therefore correct for notification hooks — the section header change is purely cosmetic (rename `[PANE CONTENT]` → `[CONTENT]`), and `CONTENT_SOURCE` in the JSONL record already distinguishes the source.
+
+For `pre-compact-hook.sh`, same reasoning applies — pane content is the right source, header rename only.
+
+**Example migration:**
+
+```bash
+# BEFORE:
+WAKE_MESSAGE="...
+[PANE CONTENT]
+${PANE_CONTENT}
+..."
+
+# AFTER:
+WAKE_MESSAGE="...
+[CONTENT]
+${PANE_CONTENT}
+..."
+```
+
+No functional change — only the header label changes. JSONL `content_source` field (`"pane"`) continues to document the actual source.
 
 ---
 
 ## Data Flow
 
-### Full Hook Lifecycle (async mode)
+### Hook Invocation Flow (after v3.1)
 
 ```
 Claude Code fires hook event
@@ -432,249 +425,255 @@ Claude Code fires hook event
          v
 hook-script.sh starts (PID = $$)
 
-1. SKILL_LOG_DIR + GSD_HOOK_LOG set (Phase 1: hooks.log)
-2. source lib/hook-utils.sh
-3. CORRELATION_ID = generate_correlation_id(SESSION_NAME, HOOK_SCRIPT_NAME)
-4. stdin consumed (STDIN_JSON = cat)
-5. Guards: stop_hook_active, TMUX env, SESSION_NAME extraction
-6. Phase 2: GSD_HOOK_LOG = logs/{SESSION_NAME}.log
-7. Registry lookup: AGENT_DATA, AGENT_ID, OPENCLAW_SESSION_ID
-8. hook_settings extraction (pane_capture_lines, hook_mode, etc.)
-9. Content extraction (pane capture, transcript, diff — per hook type)
-10. State detection, context pressure
-11. WAKE_MESSAGE assembled
-         |
-12. log_hook_request(CORRELATION_ID, ..., WAKE_MESSAGE)
-    → jq -cn ... >> GSD_HOOK_LOG      [hook.request event written]
-         |
-13. deliver_async_with_logging(CORRELATION_ID, ..., WAKE_MESSAGE)
-    → background subshell launched (&)
-         |
-14. hook script exits 0                [Claude Code proceeds immediately]
-         |
-         | (in background, after hook exits)
-         v
-    subshell: openclaw agent --session-id UUID --message MSG
-    raw_response = captured stdout+stderr
-    exit_code captured
-         |
-    log_hook_response(CORRELATION_ID, ..., raw_response, outcome)
-    → jq -cn ... >> GSD_HOOK_LOG      [hook.response event written]
-    subshell exits
+1. set -euo pipefail
+2. source lib/hook-preamble.sh
+   ├── SKILL_LOG_DIR set, logs/ created
+   ├── GSD_HOOK_LOG set (initial: hooks.log)
+   ├── HOOK_SCRIPT_NAME set (basename of caller via BASH_SOURCE[1])
+   ├── debug_log() defined
+   ├── debug_log "FIRED — PID=$$ TMUX=..."  ← written to hooks.log
+   ├── SCRIPT_DIR set (caller's scripts/ dir via BASH_SOURCE[1])
+   └── lib/hook-utils.sh sourced (all 7 functions available)
+
+3. STDIN_JSON=$(cat); HOOK_ENTRY_MS=$(date +%s%3N)
+4. Guards: stop_hook_active (stop only), TMUX env, session name
+5. GSD_HOOK_LOG redirected to {SESSION_NAME}.log; JSONL_FILE set
+6. Registry lookup via lookup_agent_in_registry()
+7. extract_hook_settings "$REGISTRY_PATH" "$AGENT_DATA"
+   └── sets PANE_CAPTURE_LINES, CONTEXT_PRESSURE_THRESHOLD, HOOK_MODE
+8. Hook-specific content extraction + state detection
+9. WAKE_MESSAGE assembled with [CONTENT] header (consistent across all hooks)
+10. deliver_async_with_logging() or bidirectional openclaw call
+    → JSONL record written to {SESSION_NAME}.jsonl
+11. exit 0
 ```
 
-### Full Hook Lifecycle (bidirectional mode)
+### Source Chain Dependency Graph
 
 ```
-[Steps 1-11 identical to async]
-         |
-12. log_hook_request(CORRELATION_ID, ..., WAKE_MESSAGE)
-    → jq -cn ... >> GSD_HOOK_LOG      [hook.request event written]
-         |
-13. RESPONSE = openclaw agent --session-id UUID --message MSG --json
-    (synchronous — hook blocks here until OpenClaw responds)
-    exit_code captured
-         |
-14. DECISION = jq -r '.decision' <<< "$RESPONSE"
-    if DECISION == "block": echo JSON to stdout (Claude Code sees it)
-         |
-15. log_hook_response(CORRELATION_ID, ..., RESPONSE, outcome)
-    → jq -cn ... >> GSD_HOOK_LOG      [hook.response event written]
-         |
-16. hook script exits 0
+hook-script.sh
+  └──source──► lib/hook-preamble.sh
+                 └──source──► lib/hook-utils.sh
+                                ├── lookup_agent_in_registry()
+                                ├── extract_last_assistant_response()
+                                ├── extract_pane_diff()
+                                ├── format_ask_user_questions()
+                                ├── write_hook_event_record()
+                                ├── deliver_async_with_logging()
+                                └── extract_hook_settings()  [NEW]
 ```
 
-### Correlation ID Lifetime
+**Dependency rule:** hook-preamble.sh MUST be in lib/ (not scripts/) because it sources hook-utils.sh using a relative path from its own location. If preamble is in scripts/, the relative path `../lib/hook-utils.sh` still resolves correctly — but lib/ is the better semantic home since preamble is a library component, not an executable entry point.
+
+---
+
+## Build Order
+
+The refactoring has a strict dependency: hook-preamble.sh and extract_hook_settings() must exist before any hook script is simplified to use them. Within each phase, scripts can be modified in parallel.
 
 ```
-Hook invocation starts
-  CORRELATION_ID generated (local variable in hook script)
-       |
-  hook.request event written (CORRELATION_ID embedded)
-       |
-  Background subshell inherits CORRELATION_ID via closure
-       |
-  hook.response event written (same CORRELATION_ID)
+Phase A — Foundation (must complete before any hook is simplified)
+  A1. Create lib/hook-preamble.sh
+      - No dependencies
+      - Test: source it from a test script, verify all 5 variables set correctly,
+              verify lib/hook-utils.sh is sourced (check that lookup_agent_in_registry
+              is defined after the source)
+      - BASH_SOURCE[1] behavior is the critical correctness point to test
 
-Result: grep correlation_id logs/warden-main-3.log | jq -r '.correlation_id'
-        produces matched pairs linkable with jq select()
+  A2. Add extract_hook_settings() to lib/hook-utils.sh
+      - No external dependencies (self-contained jq function)
+      - Test: call with a mock registry path and agent_data JSON string,
+              verify PANE_CAPTURE_LINES/CONTEXT_PRESSURE_THRESHOLD/HOOK_MODE
+              are set in calling scope with correct values
+
+Phase B — Hook Script Refactoring (all depend on Phase A; can parallel within B)
+  B1. Refactor stop-hook.sh
+      - Replace lines 1-27 with source hook-preamble.sh
+      - Replace settings extraction block with extract_hook_settings()
+      - Verify: still fires correctly in managed tmux session, JSONL record written
+
+  B2. Refactor notification-idle-hook.sh
+      - Replace preamble
+      - Replace settings extraction block with extract_hook_settings()
+      - Migrate [PANE CONTENT] → [CONTENT]
+
+  B3. Refactor notification-permission-hook.sh
+      - Same as B2
+
+  B4. Refactor pre-compact-hook.sh
+      - Replace preamble
+      - Replace settings extraction block with extract_hook_settings()
+      - Migrate [PANE CONTENT] → [CONTENT]
+      - Note: pre-compact-hook.sh settings block (lines 81-93) omits 2>/dev/null
+              guards that others have — extract_hook_settings() adds them back
+
+  B5. Refactor session-end-hook.sh
+      - Replace preamble
+      - Add 2>/dev/null || echo "" to AGENT_ID and OPENCLAW_SESSION_ID extraction
+        (lines 71-72) — this hook has no settings block (no pane capture)
+
+  B6. Refactor pre-tool-use-hook.sh
+      - Replace preamble only — no settings block in this hook
+      - Hook already uses printf '%s' correctly
+
+  B7. Refactor post-tool-use-hook.sh
+      - Replace preamble only — no settings block in this hook
+      - Hook already uses printf '%s' correctly
+
+Phase C — Diagnostic Fixes (independent of Phase B; can run in parallel with B)
+  C1. Fix diagnose-hooks.sh Step 7 prefix-match
+      - Replace exact tmux_session_name == match with startswith() prefix logic
+        (same as lookup_agent_in_registry uses)
+      - Alternatively, call lookup_agent_in_registry directly in Step 7
+
+  C2. Fix diagnose-hooks.sh Step 2 script list
+      - Add pre-tool-use-hook.sh and post-tool-use-hook.sh to HOOK_SCRIPTS array
+
+Phase D — Documentation Update
+  D1. Update docs/hooks.md
+      - Document hook-preamble.sh in "Architecture" section
+      - Document extract_hook_settings() in "Shared Library" section
+      - Note [CONTENT] now consistent across all 7 hooks
+
+  D2. Update SKILL.md and README.md if materially impacted
 ```
+
+**Parallelization note:** Phases A1 and A2 can be done in one task (both are modifications to lib/ files). Phases B1-B7 can all be done in one task once Phase A is complete — they are independent of each other. Phase C can be done in the same task as Phase B since it touches a different file. Phase D completes last.
+
+**Recommended task split for Warden:**
+- Task 1: Phase A (foundation) — create hook-preamble.sh + add extract_hook_settings()
+- Task 2: Phase B + C (all hook refactoring + diagnose fixes) — depends on Task 1
+- Task 3: Phase D (documentation) — depends on Task 2
 
 ---
 
 ## Integration Points
 
-### What Changes in Each Hook Script
+### What Each Hook Loses and What It Gains
 
-All 6 hooks follow the same modification pattern. The changes are mechanical (find-and-replace pattern).
+| Hook | Lines Removed | Lines Added | Net Change |
+|------|---------------|-------------|------------|
+| stop-hook.sh | 27 (preamble) + 12 (settings) = 39 | 1 (source preamble) + 1 (extract_hook_settings call) = 2 | -37 lines |
+| notification-idle-hook.sh | 27 + 12 = 39 | 2 | -37 lines |
+| notification-permission-hook.sh | 27 + 12 = 39 | 2 | -37 lines |
+| pre-compact-hook.sh | 27 + 12 = 39 | 2 | -37 lines |
+| session-end-hook.sh | 27 | 1 + 2 (guards) = 3 | -24 lines |
+| pre-tool-use-hook.sh | 27 | 1 | -26 lines |
+| post-tool-use-hook.sh | 27 | 1 | -26 lines |
 
-| Hook Script | Remove | Add | Notes |
-|-------------|--------|-----|-------|
-| All 6 | Inline `debug_log()` function definition (4 lines) | `source lib/hook-utils.sh` moved earlier (before stdin consume) | lib sourced once, provides both old extraction functions and new logging functions |
-| All 6 | `debug_log "..."` calls | `jsonl_log` / inline `jq -cn` calls at key milestones | Replace plain-text diagnostic with JSONL event at meaningful lifecycle points |
-| All 6 | Bare `openclaw ... >> $GSD_HOOK_LOG 2>&1 &` | `log_hook_request(...)` then `deliver_async_with_logging(...)` | The two-step replaces the single bare call |
-| stop-hook.sh only | Bare bidirectional `openclaw ... --json` call | `log_hook_request(...)` then synchronous openclaw then `log_hook_response(...)` | Bidirectional needs inline response capture, not `deliver_async_with_logging` |
-| pre-tool-use-hook.sh | Always async, no `--json` mode | Same async pattern as notification hooks | pre-tool-use always exits 0 immediately |
+Total reduction: approximately 224 lines across 7 hook scripts, centralized into 27 lines in hook-preamble.sh + 20 lines in hook-utils.sh.
 
-### Where lib/hook-utils.sh Is Sourced (Before vs After)
+### hook-preamble.sh vs hook-utils.sh Separation
 
-**Before (v2.0):** lib sourced after guards (after TMUX check, after session extraction, after registry path check) — line 60-68 in most scripts.
+The key distinction between what goes in hook-preamble.sh and what goes in hook-utils.sh:
 
-**After (v3.0):** lib sourced at top of script, before stdin consume. Reason: `generate_correlation_id()` and `jsonl_log()` must be available for pre-guard logging (e.g., logging the "FIRED" event with the correlation_id attached from the start).
+| Concern | Where | Reason |
+|---------|-------|--------|
+| SKILL_LOG_DIR, GSD_HOOK_LOG setup | hook-preamble.sh | Must run before debug_log is usable — bootstrap concern |
+| HOOK_SCRIPT_NAME, SCRIPT_DIR | hook-preamble.sh | Depends on BASH_SOURCE[1] (the caller) — only valid in preamble context |
+| debug_log() definition | hook-preamble.sh | Used before lib is sourced (for the "FIRED" log line) |
+| Sourcing lib/hook-utils.sh | hook-preamble.sh | preamble bootstraps the library chain |
+| extract_hook_settings() | hook-utils.sh | Pure function, no BASH_SOURCE dependency, testable in isolation |
+| All existing functions | hook-utils.sh | Unchanged location |
 
-**Impact:** The lib sourcing failure path (`debug_log "EXIT: hook-utils.sh not found"`) must itself use `jsonl_log` if lib loaded, or fall back to plain printf if lib not found. The `|| true` pattern in all lib functions makes this safe.
+**Why not put extract_hook_settings() in hook-preamble.sh:** Preamble is a bootstrap script with side effects (sets variables, creates directories, sources lib). hook-utils.sh is a pure function library with no side effects. Mixing the two concerns would violate the existing design invariant documented in lib/hook-utils.sh line 4: "Contains ONLY function definitions - no side effects on source." extract_hook_settings() belongs in hook-utils.sh because it is a pure function.
 
-### Log File Format Change
+### Behavioral Equivalence Verification
 
-The two log files (`hooks.log`, `{SESSION_NAME}.log`) transition from plain-text to JSONL. This is a breaking change in file format. Consumers:
+After refactoring, each hook must behave identically to its v3.0 version. Verification checklist per hook:
 
-- `diagnose-hooks.sh` — reads these files; may need updating to parse JSONL
-- Human operators tailing the log — `tail -f logs/warden-main-3.log | jq .` is the new idiom
-- Future dashboard — benefits from JSONL directly (no parsing layer needed)
+1. `debug_log "FIRED"` still appears in hooks.log with correct HOOK_SCRIPT_NAME
+2. SKILL_LOG_DIR points to the correct skill-local logs/ directory
+3. SCRIPT_DIR resolves to the hook's scripts/ directory (needed for REGISTRY_PATH)
+4. lib/hook-utils.sh functions are available (lookup_agent_in_registry etc.)
+5. JSONL record is written to logs/{SESSION_NAME}.jsonl after hook completes
+6. Guard exits (no TMUX, no registry match) still exit 0 without JSONL emission
 
-### New Hook Script Boilerplate (v3.0 pattern)
-
-```bash
-#!/usr/bin/env bash
-set -euo pipefail
-
-SKILL_LOG_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/logs"
-mkdir -p "$SKILL_LOG_DIR"
-GSD_HOOK_LOG="${GSD_HOOK_LOG:-${SKILL_LOG_DIR}/hooks.log}"
-HOOK_SCRIPT_NAME="$(basename "${BASH_SOURCE[0]}")"
-
-# Source lib early — provides jsonl_log, generate_correlation_id, and all extraction functions
-LIB_PATH="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../lib/hook-utils.sh"
-if [ -f "$LIB_PATH" ]; then
-  source "$LIB_PATH"
-else
-  # Fallback: lib missing, plain-text log and exit
-  printf '[%s] [%s] EXIT: lib/hook-utils.sh not found\n' \
-    "$(date -u +'%Y-%m-%dT%H:%M:%SZ')" "$HOOK_SCRIPT_NAME" >> "$GSD_HOOK_LOG" 2>/dev/null || true
-  exit 0
-fi
-
-CORRELATION_ID=$(generate_correlation_id "${SESSION_NAME:-unknown}" "$HOOK_SCRIPT_NAME")
-jsonl_log_fired "$CORRELATION_ID" "$HOOK_SCRIPT_NAME" "${SESSION_NAME:-unknown}"
-
-# [rest of existing guard + extraction + delivery logic]
-```
-
----
-
-## Build Order and Dependencies
-
-```
-Step 1: Extend lib/hook-utils.sh (MODIFIED)
-  - No external dependencies
-  - Add: generate_correlation_id, jsonl_log, log_hook_request,
-         log_hook_response, deliver_async_with_logging
-  - Keep: all 4 existing functions unchanged
-  - Test: source in bash, call each function, verify JSONL output with jq
-
-Step 2: Modify stop-hook.sh (MODIFIED)
-  - Depends on: Step 1 (lib extended)
-  - Changes: source lib earlier, add CORRELATION_ID, replace debug_log,
-             replace bare openclaw calls with logging wrappers
-  - Test: run in managed tmux session, tail logs/{session}.log | jq .
-
-Step 3: Modify pre-tool-use-hook.sh (MODIFIED)
-  - Depends on: Step 1
-  - Changes: same pattern as stop-hook
-  - Can parallel with Step 2 (different file)
-
-Step 4: Modify notification-idle-hook.sh (MODIFIED)
-  - Depends on: Step 1
-  - Changes: same pattern
-  - Can parallel with Steps 2-3
-
-Step 5: Modify notification-permission-hook.sh (MODIFIED)
-  - Depends on: Step 1
-  - Changes: same pattern
-  - Can parallel with Steps 2-4
-
-Step 6: Modify session-end-hook.sh (MODIFIED)
-  - Depends on: Step 1
-  - Changes: same pattern (always async, no bidirectional branch)
-  - Can parallel with Steps 2-5
-
-Step 7: Modify pre-compact-hook.sh (MODIFIED)
-  - Depends on: Step 1
-  - Changes: same pattern
-  - Can parallel with Steps 2-6
-
-Step 8: Update diagnose-hooks.sh (MODIFIED, if applicable)
-  - Depends on: Steps 2-7 (log format changed)
-  - Changes: update any plain-text log parsing to jq parsing
-```
-
-**Parallelization:** Steps 2-7 are all independent of each other. They only depend on Step 1. A Warden session can implement all 6 hook script changes in a single task after lib is extended.
-
-**Migration safety:** The `|| true` pattern in `jsonl_log` means any failure to write JSONL degrades silently. The hook continues, Claude Code is unaffected.
+The only way SCRIPT_DIR can be wrong is if BASH_SOURCE[1] is empty or wrong. This happens if hook-preamble.sh is sourced from a context where BASH_SOURCE has fewer than 2 entries. Testing the preamble from a sourced script (not directly executed) is the critical test case.
 
 ---
 
 ## Anti-Patterns to Avoid
 
-### Anti-Pattern 1: Building JSON via String Interpolation
+### Anti-Pattern 1: Using BASH_SOURCE[0] in hook-preamble.sh
 
-**What people do:** `echo "{\"event\": \"hook.request\", \"session\": \"${SESSION_NAME}\", ...}"` to build JSON.
+**What people do:** Copy the existing inline preamble into hook-preamble.sh without changing `BASH_SOURCE[0]` to `BASH_SOURCE[1]`.
 
-**Why it's wrong:** Session names, wake messages, and agent responses contain quotes, newlines, and backslashes. String interpolation produces invalid JSON on first special character encountered.
+**Why it's wrong:** Inside hook-preamble.sh, `BASH_SOURCE[0]` is `hook-preamble.sh` itself, not the calling hook. `HOOK_SCRIPT_NAME` would be `hook-preamble.sh`, `SCRIPT_DIR` would be `lib/`, and the registry path `${SCRIPT_DIR}/../config/` would resolve to the skill root's config/ — which is actually correct by accident, but `HOOK_SCRIPT_NAME` in logs would show `hook-preamble.sh` instead of `stop-hook.sh`.
 
-**Do this instead:** Use `jq -cn --arg field "$value" ...` for all JSONL serialization. `jq` handles all escaping. This is not negotiable.
+**Do this instead:** Use `BASH_SOURCE[1]` for `HOOK_SCRIPT_NAME`, `SKILL_LOG_DIR`, and `SCRIPT_DIR`. Write a test that verifies the hook script name appears correctly in debug output after refactoring.
 
-### Anti-Pattern 2: Capturing Response Outside Background Subshell
+### Anti-Pattern 2: Putting hook-preamble.sh in scripts/
 
-**What people do:** `openclaw agent ... >> $GSD_HOOK_LOG 2>&1 &` and try to read the log file afterward to find the response.
+**What people do:** Place hook-preamble.sh next to the hook scripts in scripts/ for locality.
 
-**Why it's wrong:** The background process appends to the log asynchronously. The hook script exits before the response arrives. There is no reliable way to read back just that response from the shared log file.
+**Why it's wrong:** hook-preamble.sh is not an executable entry point — it has no meaningful behavior when run directly. It is a sourced library component. Placing it in scripts/ mixes two concerns and would require updating `source` paths in all hooks to `source "${SCRIPT_DIR}/hook-preamble.sh"` rather than `source "${SCRIPT_DIR}/../lib/hook-preamble.sh"`. More importantly, it would be included in the diagnose-hooks.sh Step 2 executable script list check, causing false failures.
 
-**Do this instead:** Capture the response inside the background subshell itself via command substitution. The subshell has the `CORRELATION_ID` in scope and can write the paired `hook.response` event directly.
+**Do this instead:** Place hook-preamble.sh in lib/ alongside hook-utils.sh. The source path from hooks is `$(dirname "${BASH_SOURCE[0]}")/../lib/hook-preamble.sh` — same relative structure as the existing lib/hook-utils.sh source pattern.
 
-### Anti-Pattern 3: Sourcing lib After Guards in v3.0
+### Anti-Pattern 3: extract_hook_settings() Using Subshell Return
 
-**What people do:** Keep the lib source at line 60 (after TMUX guard, after session extraction) to match the v2.0 placement.
+**What people do:** Have `extract_hook_settings()` echo a JSON object and require the caller to parse it with three separate jq calls.
 
-**Why it's wrong:** `generate_correlation_id()` and `jsonl_log_fired()` must be called at script start (line ~15) to log the "FIRED" event with a correlation_id attached from the beginning. If lib sources after guards, the early lifecycle is unobservable.
+**Why it's wrong:** It defeats the purpose of the function — the caller still has to write parsing code. The call site becomes two lines instead of twelve, but three of those lines are still jq parsing. The total reduction is less than using direct variable assignment.
 
-**Do this instead:** Source lib at the top of the script, after only `SKILL_LOG_DIR`, `GSD_HOOK_LOG`, and `HOOK_SCRIPT_NAME` are set. Add a fallback plain-text log + exit if lib is missing.
+**Do this instead:** Use `declare -g` to set PANE_CAPTURE_LINES, CONTEXT_PRESSURE_THRESHOLD, and HOOK_MODE directly in the caller's scope. Document this clearly in the function header. The calling hook site becomes a single `extract_hook_settings "$REGISTRY_PATH" "$AGENT_DATA"` line.
 
-### Anti-Pattern 4: One JSONL Event Per Hook Script (Not Per Lifecycle Stage)
+### Anti-Pattern 4: Changing hook-utils.sh Side-Effect Contract
 
-**What people do:** Write a single JSONL event at hook exit summarizing everything that happened.
+**What people do:** Add initialization code (mkdir -p, variable assignments) to hook-utils.sh when adding extract_hook_settings().
 
-**Why it's wrong:** If the hook crashes, times out, or is killed, the exit event never writes. No observability into what the hook was doing when it failed.
+**Why it's wrong:** lib/hook-utils.sh line 4 documents its invariant: "Contains ONLY function definitions - no side effects on source." This is why it can be safely sourced before guards in all 7 hooks. Violating this invariant means sourcing hook-utils.sh could fail partway through (e.g., mkdir fails), leaving functions only partially defined.
 
-**Do this instead:** Write events at meaningful lifecycle points: script start ("fired"), request sent ("hook.request"), response received ("hook.response"). Three events per successful hook invocation is sufficient. Each event is independently observable even if later events are missing.
+**Do this instead:** extract_hook_settings() is a pure function with no side effects. The `declare -g` inside the function body is not a side effect of sourcing the library — it only executes when the function is called. This is compliant with the no-side-effects contract.
 
-### Anti-Pattern 5: Blocking the Hook on Response Logging
+### Anti-Pattern 5: Migrating [PANE CONTENT] Without Verifying Downstream Consumers
 
-**What people do:** Wait for the response logging subshell to complete before exiting the hook.
+**What people do:** Rename `[PANE CONTENT]` to `[CONTENT]` in wake messages without checking whether Gideon's prompt or parsing logic depends on the exact header text.
 
-**Why it's wrong:** The async delivery pattern exists precisely because `openclaw agent` takes 100ms-2000ms to return. The hook must exit immediately to avoid blocking Claude Code's event loop.
+**Why it is low risk here (but worth verifying):** STATE.md documents that Gideon consumes wake messages as free-text via LLM — there is no hardcoded parser. The v2.0 format change was confirmed non-breaking for the same reason. However, if any downstream scripts (not agents) grep for `[PANE CONTENT]`, they would break.
 
-**Do this instead:** Use `deliver_async_with_logging()` which backgrounds the entire capture-and-log cycle. The hook script exits 0 immediately. The background subshell handles response capture and JSONL logging independently.
+**Do this instead:** Search the codebase for literal `[PANE CONTENT]` references before renaming. Confirmed safe to change based on the v2.0 precedent documented in STATE.md.
+
+---
+
+## Scaling Considerations
+
+This is not a user-scale system. The relevant scaling axis is: how many hook scripts fire concurrently across managed sessions.
+
+| Scale | Current behavior | Risk |
+|-------|-----------------|------|
+| 1 session, 1 hook type | Fully working | None |
+| 2-3 sessions, concurrent Stop fires | flock serializes JSONL writes | Handled by existing flock in write_hook_event_record |
+| 7 hooks + 3 sessions simultaneously | 21 concurrent processes, all sourcing hook-preamble.sh | Sourcing a 25-line file is effectively zero overhead |
+| hook-preamble.sh missing | All 7 hooks fail their preamble check | Same failure mode as hook-utils.sh missing — degrades to plain printf + exit 0 |
+
+The refactoring does not change any concurrent access patterns. The flock guards in extract_pane_diff() and write_hook_event_record() are unchanged.
 
 ---
 
 ## Sources
 
-**HIGH confidence (direct source inspection):**
-- `lib/hook-utils.sh` — exact function signatures, 150 lines read in full
-- `stop-hook.sh` — exact inline debug_log pattern, bare openclaw delivery call, bidirectional branch
-- `pre-tool-use-hook.sh`, `notification-idle-hook.sh`, `notification-permission-hook.sh`, `session-end-hook.sh`, `pre-compact-hook.sh` — all read in full, confirmed identical debug_log and delivery patterns
-- `PROJECT.md` — v3.0 goal: "paired request/response events linked by correlation_id", "full wake message body captured in request events", "OpenClaw response captured in response events"
-- `REQUIREMENTS.md` — confirmed v3.0 scope, existing v2.0 LIB-01/LIB-02 constraints (DRY, SRP)
-- `STATE.md` — "lib/hook-utils.sh is the DRY anchor", "fd-based flock with command group for atomic pane diff"
-- `config/recovery-registry.example.json` — confirmed `hook_mode: async` default, `bidirectional` per-agent option
+**HIGH confidence (direct source inspection — all files read in full):**
+- `lib/hook-utils.sh` — 6 functions, design contract at line 4, exact signatures
+- `scripts/stop-hook.sh` — full preamble block, settings block, bidirectional branch
+- `scripts/notification-idle-hook.sh` — [PANE CONTENT] header confirmed, settings block identical to stop-hook
+- `scripts/notification-permission-hook.sh` — same as idle hook
+- `scripts/session-end-hook.sh` — missing 2>/dev/null guards at lines 71-72 confirmed
+- `scripts/pre-compact-hook.sh` — [PANE CONTENT] confirmed, settings block without 2>/dev/null confirmed
+- `scripts/pre-tool-use-hook.sh` — no settings block, uses printf '%s' correctly
+- `scripts/post-tool-use-hook.sh` — no settings block, uses printf '%s' correctly
+- `docs/v3-retrospective.md` — 8 improvement items with exact file:line citations that validated all findings above
+- `STATE.md` — phase decisions, wake message parsing is LLM not hardcoded parser (migration safety)
+- `ROADMAP.md` — v3.0 confirmed shipped, v3.1 scope established
 
-**MEDIUM confidence (architectural reasoning, no external source needed):**
-- `generate_correlation_id()` design — date +%s + $$ is universally available, collision-resistant for this use case
-- `jq -cn --arg` pattern for JSONL serialization — standard jq idiom, verified against jq documentation in training data
-- Background subshell response capture — bash subshell semantics for variable inheritance
+**HIGH confidence (bash language semantics):**
+- `BASH_SOURCE[0]` vs `BASH_SOURCE[1]` in sourced scripts — documented bash behavior, standard usage in all shell scripting references
+- `declare -g` available in bash 4.2+, Ubuntu 24 ships bash 5.2 — HIGH confidence
+- `set -euo pipefail` in caller does not propagate to lib source behavior — confirmed by existing hook-utils.sh design (no set -e in library)
 
 ---
-*Architecture research for: gsd-code-skill v3.0 Structured Hook Observability*
+
+*Architecture research for: gsd-code-skill v3.1 Hook Refactoring & Migration Completion*
 *Researched: 2026-02-18*
-*Confidence: HIGH — all source files read in full, integration points mapped to exact functions and patterns, build order validated against dependency graph*
+*Confidence: HIGH — all 7 hook scripts and lib files read in full, integration points mapped to exact line numbers, source chain validated against bash BASH_SOURCE semantics*
