@@ -75,21 +75,21 @@ Requirements for milestone v2.0: Smart Hook Delivery. Replaces noisy 120-line ra
 
 ### Content Extraction
 
-- [ ] **EXTRACT-01**: Stop hook extracts last assistant response from transcript_path JSONL using type-filtered content parsing (`content[]? | select(.type == "text")`)
-- [ ] **EXTRACT-02**: When transcript extraction fails (file missing, empty, parse error), fall back to pane diff (only new/added lines from last 40 pane lines)
+- [x] **EXTRACT-01**: Stop hook extracts last assistant response from transcript_path JSONL using type-filtered content parsing (`content[]? | select(.type == "text")`)
+- [x] **EXTRACT-02**: When transcript extraction fails (file missing, empty, parse error), fall back to pane diff (only new/added lines from last 40 pane lines)
 - [x] **EXTRACT-03**: Per-session previous pane state stored in /tmp for diff fallback calculation
 
 ### AskUserQuestion Forwarding
 
-- [ ] **ASK-01**: PreToolUse hook fires on AskUserQuestion tool calls only (matcher: `"AskUserQuestion"`)
-- [ ] **ASK-02**: PreToolUse hook extracts structured question data (questions, options, header, multiSelect) from tool_input in stdin
-- [ ] **ASK-03**: PreToolUse hook sends question data to OpenClaw agent asynchronously (background, never blocks Claude Code UI)
+- [x] **ASK-01**: PreToolUse hook fires on AskUserQuestion tool calls only (matcher: `"AskUserQuestion"`)
+- [x] **ASK-02**: PreToolUse hook extracts structured question data (questions, options, header, multiSelect) from tool_input in stdin
+- [x] **ASK-03**: PreToolUse hook sends question data to OpenClaw agent asynchronously (background, never blocks Claude Code UI)
 
 ### Wake Format
 
-- [ ] **WAKE-07**: Wake messages use v2 structured format: [SESSION IDENTITY], [TRIGGER], [CONTENT] (transcript or pane diff), [STATE HINT], [CONTEXT PRESSURE], [AVAILABLE ACTIONS]
-- [ ] **WAKE-08**: v1 wake format code removed entirely — clean break, no backward compatibility layer
-- [ ] **WAKE-09**: AskUserQuestion forwarding uses dedicated [ASK USER QUESTION] section with structured question/options data
+- [x] **WAKE-07**: Wake messages use v2 structured format: [SESSION IDENTITY], [TRIGGER], [CONTENT] (transcript or pane diff), [STATE HINT], [CONTEXT PRESSURE], [AVAILABLE ACTIONS]
+- [x] **WAKE-08**: v1 wake format code removed entirely — clean break, no backward compatibility layer
+- [x] **WAKE-09**: AskUserQuestion forwarding uses dedicated [ASK USER QUESTION] section with structured question/options data
 
 ### Shared Library
 
@@ -167,15 +167,15 @@ Which phases cover which requirements. Updated during roadmap creation.
 |-------------|-------|--------|
 | LIB-01 | Phase 6 | Complete |
 | LIB-02 | Phase 6 | Complete |
-| EXTRACT-01 | Phase 6 | Pending |
-| EXTRACT-02 | Phase 6 | Pending |
+| EXTRACT-01 | Phase 6 | Complete |
+| EXTRACT-02 | Phase 6 | Complete |
 | EXTRACT-03 | Phase 6 | Complete |
-| ASK-01 | Phase 6 | Pending |
-| ASK-02 | Phase 6 | Pending |
-| ASK-03 | Phase 6 | Pending |
-| WAKE-07 | Phase 6 | Pending |
-| WAKE-08 | Phase 6 | Pending |
-| WAKE-09 | Phase 6 | Pending |
+| ASK-01 | Phase 6 | Complete |
+| ASK-02 | Phase 6 | Complete |
+| ASK-03 | Phase 6 | Complete |
+| WAKE-07 | Phase 6 | Complete |
+| WAKE-08 | Phase 6 | Complete |
+| WAKE-09 | Phase 6 | Complete |
 | REG-01 | Phase 7 | Pending |
 | REG-02 | Phase 7 | Pending |
 | DOCS-03 | Phase 7 | Pending |
