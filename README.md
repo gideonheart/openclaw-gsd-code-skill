@@ -105,23 +105,7 @@ sudo systemctl enable --now recover-openclaw-agents.timer
 
 The timer runs the recovery service 45 seconds after each boot.
 
-### 4. Install logrotate (recommended)
-
-Install log rotation to prevent unbounded disk growth from hook JSONL and debug logs:
-
-```bash
-scripts/install-logrotate.sh
-```
-
-This installs `config/logrotate.conf` to `/etc/logrotate.d/gsd-code-skill` (requires sudo). Uses `copytruncate` for safe rotation while hook scripts hold open file descriptors. Daily rotation with 7-day retention.
-
-Verify installation:
-
-```bash
-cat /etc/logrotate.d/gsd-code-skill
-```
-
-### 5. Verify daemon
+### 4. Verify daemon
 
 Check timer status:
 
@@ -139,7 +123,7 @@ systemctl status recover-openclaw-agents.service
 
 After first boot trigger, you should see successful execution logs.
 
-### 6. Test spawn
+### 5. Test spawn
 
 Spawn a test agent to verify the full stack:
 
@@ -533,7 +517,6 @@ journalctl -u recover-openclaw-agents.service -n 50 --no-pager
 | `scripts/pre-tool-use-hook.sh` | Hook: fires when agent calls AskUserQuestion (forwards question data). |
 | `scripts/post-tool-use-hook.sh` | Hook: fires after AskUserQuestion completes (logs selected answer). |
 | `scripts/diagnose-hooks.sh` | End-to-end 11-step hook chain diagnostic with JSONL analysis. |
-| `scripts/install-logrotate.sh` | Install logrotate config for hook log rotation (requires sudo). |
 | `scripts/menu-driver.sh` | TUI helper for tmux pane inspection and resume menu navigation. |
 
 ### Config Files
@@ -543,7 +526,6 @@ journalctl -u recover-openclaw-agents.service -n 50 --no-pager
 | `config/recovery-registry.json` | Live registry (gitignored, contains session UUIDs). |
 | `config/recovery-registry.example.json` | Template registry with annotated schema. |
 | `config/default-system-prompt.txt` | Default system prompt for all agents. Minimal GSD workflow guidance. |
-| `config/logrotate.conf` | Logrotate template for hook logs. Install via `install-logrotate.sh`. |
 
 ### Shared Libraries
 

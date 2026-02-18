@@ -141,14 +141,6 @@ scripts/diagnose-hooks.sh <agent-name> [--send-test-wake]
 
 Tests 11 steps: hook registration, script permissions, registry entry, tmux session, TMUX propagation, session name resolution, registry lookup, openclaw binary, debug logs, JSONL log analysis, and optional test wake.
 
-**install-logrotate.sh** - Install logrotate config for hook log rotation
-
-```bash
-scripts/install-logrotate.sh
-```
-
-Installs `config/logrotate.conf` to `/etc/logrotate.d/gsd-code-skill` via sudo tee. Uses copytruncate for safe rotation while hook scripts hold open file descriptors. Daily rotation, 7-day retention, compress with delaycompress.
-
 **register-hooks.sh** - Idempotent hook registration in ~/.claude/settings.json
 
 ```bash
@@ -174,10 +166,6 @@ Replacement model: per-agent `system_prompt` in registry replaces default entire
 
 **Hooks:** Registered in `~/.claude/settings.json` via `scripts/register-hooks.sh`
 
-**Logrotate:** `config/logrotate.conf`
-
-Template for log rotation. Install via `scripts/install-logrotate.sh` (requires sudo). Uses copytruncate to safely rotate while hook scripts hold open file descriptors.
-
 ## v2.0 Changes
 
 **Wake message format (breaking):** `[PANE CONTENT]` replaced by `[CONTENT]` section. Content is now extracted from Claude's transcript JSONL (primary) or pane diff (fallback) instead of raw pane dump. Downstream parsers expecting `[PANE CONTENT]` must update to `[CONTENT]`.
@@ -193,8 +181,6 @@ Template for log rotation. Install via `scripts/install-logrotate.sh` (requires 
 **Structured JSONL logging:** All 7 hooks emit per-session JSONL records (`logs/{session}.jsonl`) with timestamp, hook_script, trigger, outcome, duration_ms, and hook-specific extra fields. Plain-text debug logs (`logs/{session}.log`) are preserved in parallel.
 
 **PostToolUse hook (new):** Fires after AskUserQuestion completes. Logs `answer_selected` and `tool_use_id` for lifecycle correlation with the PreToolUse record. Always async, always notification-only.
-
-**Logrotate:** `config/logrotate.conf` with copytruncate handles both `*.jsonl` and `*.log` files. Install via `scripts/install-logrotate.sh`.
 
 **Diagnostics:** `scripts/diagnose-hooks.sh` now includes JSONL log analysis (Step 10) showing recent events, outcome distribution, hook script distribution, non-delivered event detection, and duration stats.
 

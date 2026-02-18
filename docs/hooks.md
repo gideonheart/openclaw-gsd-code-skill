@@ -388,8 +388,6 @@ Pane diff state files in `logs/`:
 - `gsd-pane-prev-{session}.txt` -- last pane capture (written by `extract_pane_diff`)
 - `gsd-pane-lock-{session}` -- flock file for atomic diff operations
 
-Log rotation handled by `config/logrotate.conf` (installed via `scripts/install-logrotate.sh`). Uses `copytruncate` for safe rotation while hooks hold open `>>` file descriptors.
-
 ---
 
 # v3.0 Structured JSONL Logging
