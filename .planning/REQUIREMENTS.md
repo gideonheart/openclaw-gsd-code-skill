@@ -105,44 +105,70 @@ Requirements for milestone v2.0: Smart Hook Delivery. Replaces noisy 120-line ra
 
 - [x] **DOCS-03**: SKILL.md updated with v2.0 architecture (lib, pre-tool-use-hook.sh, v2 wake format)
 
-## v3 Requirements
+## v3 Requirements (Shipped)
 
-Requirements for milestone v3.0: Structured Hook Observability. Replaces plain-text debug_log with structured JSONL event logging — one complete record per hook invocation with full lifecycle data.
-
-**Design decision:** Single-record-per-invocation approach — accumulate all lifecycle data (trigger, state, content, wake message, response, outcome, duration) during hook execution and write one JSONL record at the end. No correlation_id needed; no paired events to link. Background subshell writes the record after async response arrives.
+Requirements for milestone v3.0: Structured Hook Observability. Shipped 2026-02-18.
 
 ### JSONL Foundation
 
-- [ ] **JSONL-01**: Single complete JSONL record per hook invocation containing all accumulated lifecycle data (trigger, state, content source, wake message, response, outcome, duration)
-- [ ] **JSONL-02**: Per-session `.jsonl` log files at `logs/{SESSION_NAME}.jsonl` alongside existing `.log` files
-- [ ] **JSONL-03**: All string fields safely escaped via `jq --arg` — wake messages containing newlines, quotes, ANSI codes, embedded JSON produce valid JSONL
-- [ ] **JSONL-04**: All JSONL appends use `flock` for atomic writes under concurrent hook fires (records >4KB exceed POSIX O_APPEND guarantee)
-- [ ] **JSONL-05**: Shared `write_hook_event_record()` function in `lib/hook-utils.sh` — DRY foundation all six hooks source; single write point, single fix point
+- [x] **JSONL-01**: Single complete JSONL record per hook invocation containing all accumulated lifecycle data
+- [x] **JSONL-02**: Per-session `.jsonl` log files at `logs/{SESSION_NAME}.jsonl`
+- [x] **JSONL-03**: All string fields safely escaped via `jq --arg`
+- [x] **JSONL-04**: All JSONL appends use `flock` for atomic writes under concurrent hook fires
+- [x] **JSONL-05**: Shared `write_hook_event_record()` function in `lib/hook-utils.sh`
 
 ### Hook Migration
 
-- [ ] **HOOK-12**: stop-hook.sh emits structured JSONL record replacing plain-text debug_log — includes full wake message body and OpenClaw response
-- [ ] **HOOK-13**: pre-tool-use-hook.sh emits structured JSONL record replacing plain-text debug_log — includes AskUserQuestion data forwarded
-- [ ] **HOOK-14**: notification-idle-hook.sh emits structured JSONL record replacing plain-text debug_log
-- [ ] **HOOK-15**: notification-permission-hook.sh emits structured JSONL record replacing plain-text debug_log
-- [ ] **HOOK-16**: session-end-hook.sh emits structured JSONL record replacing plain-text debug_log
-- [ ] **HOOK-17**: pre-compact-hook.sh emits structured JSONL record replacing plain-text debug_log
+- [x] **HOOK-12**: stop-hook.sh emits structured JSONL record
+- [x] **HOOK-13**: pre-tool-use-hook.sh emits structured JSONL record
+- [x] **HOOK-14**: notification-idle-hook.sh emits structured JSONL record
+- [x] **HOOK-15**: notification-permission-hook.sh emits structured JSONL record
+- [x] **HOOK-16**: session-end-hook.sh emits structured JSONL record
+- [x] **HOOK-17**: pre-compact-hook.sh emits structured JSONL record
 
 ### AskUserQuestion Lifecycle
 
-- [ ] **ASK-04**: PreToolUse JSONL record includes `questions_forwarded` field showing what questions, options, and headers were sent to OpenClaw agent
-- [x] **ASK-05**: PostToolUse hook (`post-tool-use-hook.sh`) emits JSONL record showing which answer OpenClaw agent selected and how TUI was controlled to achieve that decision
-- [x] **ASK-06**: PreToolUse and PostToolUse records share `tool_use_id` field enabling question-to-answer lifecycle linking
+- [x] **ASK-04**: PreToolUse JSONL record includes `questions_forwarded` field
+- [x] **ASK-05**: PostToolUse hook emits JSONL record with answer selection
+- [x] **ASK-06**: PreToolUse and PostToolUse records share `tool_use_id` field
 
 ### Operational
 
-- [ ] **OPS-01**: Every JSONL record includes `duration_ms` field — time from hook entry to record write
-- [ ] **OPS-02**: logrotate config at `/etc/logrotate.d/gsd-code-skill` prevents unbounded disk growth with `copytruncate` (safe for open `>>` file descriptors)
-- [ ] **OPS-03**: `diagnose-hooks.sh` parses JSONL log files with `jq` for meaningful diagnostic output
+- [x] **OPS-01**: Every JSONL record includes `duration_ms` field
+- [x] **OPS-02**: logrotate config (removed in quick-8 — user-space skill should not require sudo)
+- [x] **OPS-03**: `diagnose-hooks.sh` parses JSONL log files with `jq`
+
+## v3.1 Requirements
+
+Requirements for milestone v3.1: Hook Refactoring & Migration Completion. Extracts shared code from duplicated hook preambles, unifies divergent patterns, and completes the v2.0 [CONTENT] migration left incomplete in v3.0.
+
+### Refactoring
+
+- [ ] **REFAC-01**: lib/hook-preamble.sh extracts the 27-line bootstrap block with BASH_SOURCE[1] caller identity, debug_log(), and hook-utils.sh sourcing
+- [ ] **REFAC-02**: hook-preamble.sh includes source guard preventing double-sourcing and direct execution
+- [ ] **REFAC-03**: All 7 hooks source hook-preamble.sh as single entry point (no direct hook-utils.sh source)
+- [ ] **REFAC-04**: extract_hook_settings() in lib/hook-utils.sh replaces 4x duplicated 12-line settings extraction with three-tier fallback and error guards
+- [ ] **REFAC-05**: detect_session_state() in lib/hook-utils.sh unifies state detection with consistent state names and case-insensitive extended regex patterns
+
+### Migration
+
+- [ ] **MIGR-01**: notification-idle-hook.sh wake message uses [CONTENT] instead of [PANE CONTENT] (label rename only)
+- [ ] **MIGR-02**: notification-permission-hook.sh wake message uses [CONTENT] instead of [PANE CONTENT] (label rename only)
+- [ ] **MIGR-03**: pre-compact-hook.sh wake message uses [CONTENT] instead of [PANE CONTENT] (label rename only)
+
+### Diagnostic Fixes
+
+- [ ] **FIX-01**: diagnose-hooks.sh Step 7 uses prefix-match (startswith) matching actual hook lookup behavior
+- [ ] **FIX-02**: diagnose-hooks.sh Step 2 checks all 7 hook scripts (adds pre-tool-use-hook.sh and post-tool-use-hook.sh)
+- [ ] **FIX-03**: session-end-hook.sh jq calls have 2>/dev/null || echo "" error guards
+
+### Code Quality
+
+- [ ] **QUAL-01**: All jq piping across all 7 hooks uses printf '%s' instead of echo for escape sequence safety
 
 ## Future Requirements
 
-Deferred beyond v3.0. Tracked but not in current roadmap.
+Deferred beyond v3.1. Tracked but not in current roadmap.
 
 ### Resilience
 
@@ -214,24 +240,42 @@ Which phases cover which requirements. Updated during roadmap creation.
 | REG-02 | Phase 7 | Done |
 | DOCS-03 | Phase 7 | Done |
 
-### v3.0 (Active)
+### v3.0 (Shipped)
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| JSONL-01 through JSONL-05 | Phase 8 | Pending |
-| HOOK-12 through HOOK-17 | Phase 9 | Pending |
-| ASK-04 | Phase 9 | Pending |
-| ASK-05, ASK-06 | Phase 10 | Pending |
-| OPS-01 | Phase 8 | Pending |
-| OPS-02, OPS-03 | Phase 11 | Pending |
+| JSONL-01 through JSONL-05 | Phase 8 | Done |
+| HOOK-12 through HOOK-17 | Phase 9 | Done |
+| ASK-04 | Phase 9 | Done |
+| ASK-05, ASK-06 | Phase 10 | Done |
+| OPS-01 | Phase 8 | Done |
+| OPS-02, OPS-03 | Phase 11 | Done |
+
+### v3.1 (Active)
+
+| Requirement | Phase | Status |
+|-------------|-------|--------|
+| REFAC-01 | — | Pending |
+| REFAC-02 | — | Pending |
+| REFAC-03 | — | Pending |
+| REFAC-04 | — | Pending |
+| REFAC-05 | — | Pending |
+| MIGR-01 | — | Pending |
+| MIGR-02 | — | Pending |
+| MIGR-03 | — | Pending |
+| FIX-01 | — | Pending |
+| FIX-02 | — | Pending |
+| FIX-03 | — | Pending |
+| QUAL-01 | — | Pending |
 
 **Coverage:**
 - v1 requirements: 38 total, all done
 - v2 requirements: 14 total, all done
-- v3 requirements: 17 total, all pending
-- Mapped to phases: 17 (Phase 8: 6, Phase 9: 7, Phase 10: 2, Phase 11: 2)
-- Unmapped: 0
+- v3 requirements: 17 total, all done
+- v3.1 requirements: 12 total, all pending
+- Mapped to phases: 0
+- Unmapped: 12 (roadmap pending)
 
 ---
 *Requirements defined: 2026-02-17*
-*Last updated: 2026-02-18 — v3.0 requirements added*
+*Last updated: 2026-02-18 — v3.1 requirements added, v3.0 marked shipped*
