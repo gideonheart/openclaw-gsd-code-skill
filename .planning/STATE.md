@@ -94,13 +94,16 @@ None.
 | # | Description | Date | Commit | Directory |
 |---|-------------|------|--------|-----------|
 | 5 | Move GSD hook logs from /tmp to skill-local logs/ with per-session files | 2026-02-18 | c9b74c3 | [5-move-gsd-hook-logs-from-tmp-to-skill-loc](./quick/5-move-gsd-hook-logs-from-tmp-to-skill-loc/) |
+| 6 | Update SKILL.md, README.md, docs/hooks.md for Phase 10-11 additions | 2026-02-18 | 9cb9b76 | [6-update-docs-skill-md-readme-md-docs-hook](./quick/6-update-docs-skill-md-readme-md-docs-hook/) |
 
 ### Quick Task Decisions
 
 Quick-5 (2026-02-18): Two-phase logging — hooks.log shared until SESSION_NAME known, then redirect to {SESSION_NAME}.log per-session. SKILL_LOG_DIR computed via BASH_SOURCE at script top, separate from SCRIPT_DIR used for registry/lib lookups.
 
+Quick-6 (2026-02-18): Fixed stale /tmp reference in docs/hooks.md pane diff fallback description that was missed by Quick-5 migration.
+
 ## Session Continuity
 
 Last session: 2026-02-18
-Stopped at: Completed Phase 11 (Operational Hardening) — v3.0 milestone complete
+Stopped at: Completed Quick Task 6 (Update documentation for Phase 10-11 additions)
 Resume file: None
