@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # lib/hook-utils.sh - Shared utility functions for GSD hook scripts
-# Sourced by all 6 hook scripts (registry lookup, extraction, formatting).
+# Sourced by all hook scripts (registry lookup, extraction, formatting).
 # Contains ONLY function definitions - no side effects on source.
 # No set -euo pipefail here - the caller sets shell options.
 
@@ -322,4 +322,86 @@ deliver_async_with_logging() {
       "$content_source" "$wake_message" "$response" "$outcome" \
       "$extra_fields_json"
   ) </dev/null &
+}
+
+# ==========================================================================
+# extract_hook_settings
+# ==========================================================================
+# Extracts hook_settings fields from registry with three-tier fallback:
+#   1. Per-agent hook_settings (agent_data .hook_settings.field)
+#   2. Registry-level global hook_settings (.hook_settings.field at root)
+#   3. Hardcoded defaults (pane_capture_lines=100, threshold=50, mode=async)
+#
+# Replaces the 12-line settings extraction block duplicated in stop-hook.sh,
+# notification-idle-hook.sh, notification-permission-hook.sh, and
+# pre-compact-hook.sh.
+#
+# Arguments:
+#   $1 - registry_path:    path to recovery-registry.json
+#   $2 - agent_data_json:  JSON string from lookup_agent_in_registry()
+# Returns:
+#   Compact JSON on stdout:
+#   {"pane_capture_lines":100,"context_pressure_threshold":50,"hook_mode":"async"}
+#   On any jq failure, returns the hardcoded defaults JSON string.
+#   Never exits non-zero. Never crashes the calling hook.
+# ==========================================================================
+extract_hook_settings() {
+  local registry_path="$1"
+  local agent_data_json="$2"
+
+  local global_settings
+  global_settings=$(jq -r '.hook_settings // {}' "$registry_path" 2>/dev/null \
+    || printf '{}')
+
+  printf '%s' "$agent_data_json" | jq -c \
+    --argjson global "$global_settings" \
+    '{
+      pane_capture_lines:           (.hook_settings.pane_capture_lines           // $global.pane_capture_lines           // 100),
+      context_pressure_threshold:   (.hook_settings.context_pressure_threshold   // $global.context_pressure_threshold   // 50),
+      hook_mode:                    (.hook_settings.hook_mode                    // $global.hook_mode                    // "async")
+    }' 2>/dev/null \
+    || printf '{"pane_capture_lines":100,"context_pressure_threshold":50,"hook_mode":"async"}'
+}
+
+# ==========================================================================
+# detect_session_state
+# ==========================================================================
+# Detects the current session state from tmux pane content using
+# case-insensitive extended regex patterns. Returns a consistent state name
+# across all hook event types that use standard pane pattern matching.
+#
+# State names (in detection priority order):
+#   menu             — Claude Code option selection screen
+#   permission_prompt — permission or allow dialog
+#   idle             — Claude waiting for user input
+#   error            — error/failure detected in pane
+#   working          — default (no specific pattern matched)
+#
+# Arguments:
+#   $1 - pane_content: string of current tmux pane capture
+# Returns:
+#   State name string on stdout. Always returns a non-empty string.
+#   Never exits non-zero. Never crashes the calling hook.
+#
+# Note: pre-compact-hook.sh uses different patterns and state names
+# (case-sensitive grep, "Choose an option:", "Continue this conversation",
+# "active" fallback). Until pre-compact TUI text is empirically verified,
+# that hook may retain its own inline detection rather than calling this
+# function. See Phase 12 research for details.
+# ==========================================================================
+detect_session_state() {
+  local pane_content="$1"
+
+  if printf '%s\n' "$pane_content" | grep -Eiq 'Enter to select|numbered.*option' 2>/dev/null; then
+    printf 'menu'
+  elif printf '%s\n' "$pane_content" | grep -Eiq 'permission|allow|dangerous' 2>/dev/null; then
+    printf 'permission_prompt'
+  elif printf '%s\n' "$pane_content" | grep -Eiq 'What can I help|waiting for' 2>/dev/null; then
+    printf 'idle'
+  elif printf '%s\n' "$pane_content" | grep -Ei 'error|failed|exception' 2>/dev/null \
+    | grep -v 'error handling' >/dev/null 2>&1; then
+    printf 'error'
+  else
+    printf 'working'
+  fi
 }
