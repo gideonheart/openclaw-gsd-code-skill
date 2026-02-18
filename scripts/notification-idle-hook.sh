@@ -132,38 +132,6 @@ menu-driver.sh ${SESSION_NAME} snapshot"
 # ============================================================================
 # 10. HYBRID MODE DELIVERY
 # ============================================================================
-TRIGGER="idle_prompt"
-CONTENT_SOURCE="pane"
-debug_log "DELIVERING: mode=$HOOK_MODE session_id=$OPENCLAW_SESSION_ID"
-
-if [ "$HOOK_MODE" = "bidirectional" ]; then
-  # Synchronous mode: wait for OpenClaw response
-  debug_log "DELIVERING: bidirectional, waiting for response..."
-  RESPONSE=$(openclaw agent --session-id "$OPENCLAW_SESSION_ID" --message "$WAKE_MESSAGE" --json 2>&1 || echo "")
-  debug_log "RESPONSE: ${RESPONSE:0:200}"
-
-  write_hook_event_record \
-    "$JSONL_FILE" "$HOOK_ENTRY_MS" "$HOOK_SCRIPT_NAME" "$SESSION_NAME" \
-    "$AGENT_ID" "$OPENCLAW_SESSION_ID" "$TRIGGER" "$STATE" \
-    "$CONTENT_SOURCE" "$WAKE_MESSAGE" "$RESPONSE" "sync_delivered"
-
-  # Parse response for decision injection
-  if [ -n "$RESPONSE" ]; then
-    DECISION=$(printf '%s' "$RESPONSE" | jq -r '.decision // ""' 2>/dev/null || echo "")
-    REASON=$(printf '%s' "$RESPONSE" | jq -r '.reason // ""' 2>/dev/null || echo "")
-
-    if [ "$DECISION" = "block" ] && [ -n "$REASON" ]; then
-      # Return decision to Claude Code
-      echo "{\"decision\": \"block\", \"reason\": \"$REASON\"}"
-    fi
-  fi
-  exit 0
-else
-  # Async mode (default): background call with JSONL logging
-  deliver_async_with_logging \
-    "$OPENCLAW_SESSION_ID" "$WAKE_MESSAGE" "$JSONL_FILE" "$HOOK_ENTRY_MS" \
-    "$HOOK_SCRIPT_NAME" "$SESSION_NAME" "$AGENT_ID" \
-    "$TRIGGER" "$STATE" "$CONTENT_SOURCE"
-  debug_log "DELIVERED (async with JSONL logging)"
-  exit 0
-fi
+deliver_with_mode "$HOOK_MODE" "$OPENCLAW_SESSION_ID" "$WAKE_MESSAGE" \
+  "$JSONL_FILE" "$HOOK_ENTRY_MS" "$HOOK_SCRIPT_NAME" "$SESSION_NAME" \
+  "$AGENT_ID" "idle_prompt" "$STATE" "pane"

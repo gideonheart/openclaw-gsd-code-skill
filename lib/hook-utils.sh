@@ -325,6 +325,84 @@ deliver_async_with_logging() {
 }
 
 # ==========================================================================
+# deliver_with_mode
+# ==========================================================================
+# Encapsulates bidirectional-vs-async delivery logic shared by stop-hook.sh,
+# notification-idle-hook.sh, and notification-permission-hook.sh.
+#
+# In bidirectional mode: calls openclaw synchronously, writes a JSONL record,
+# parses the response for a decision/reason, and emits safe JSON output for
+# Claude Code using jq (not string interpolation). Then exits 0.
+#
+# In async mode: delegates to deliver_async_with_logging() and exits 0.
+#
+# Arguments:
+#   $1  - hook_mode:             "bidirectional" or "async"
+#   $2  - openclaw_session_id:   OpenClaw session ID for the agent
+#   $3  - wake_message:          full wake message body to deliver
+#   $4  - jsonl_file:            path to per-session .jsonl log file
+#   $5  - hook_entry_ms:         millisecond timestamp from hook start
+#   $6  - hook_script_name:      basename of calling hook script
+#   $7  - session_name:          tmux session name
+#   $8  - agent_id:              agent identifier
+#   $9  - trigger:               event trigger type
+#   $10 - state:                 detected session state
+#   $11 - content_source:        how content was obtained
+# Returns:
+#   In bidirectional mode: may print JSON to stdout for Claude Code decision
+#   injection, then exits 0.
+#   In async mode: backgrounds delivery subshell, exits 0.
+#   Never exits non-zero. Never crashes the calling hook.
+# ==========================================================================
+deliver_with_mode() {
+  local hook_mode="$1"
+  local openclaw_session_id="$2"
+  local wake_message="$3"
+  local jsonl_file="$4"
+  local hook_entry_ms="$5"
+  local hook_script_name="$6"
+  local session_name="$7"
+  local agent_id="$8"
+  local trigger="$9"
+  local state="${10}"
+  local content_source="${11}"
+
+  debug_log "DELIVERING: mode=$hook_mode session_id=$openclaw_session_id"
+
+  if [ "$hook_mode" = "bidirectional" ]; then
+    debug_log "DELIVERING: bidirectional, waiting for response..."
+    local response
+    response=$(openclaw agent --session-id "$openclaw_session_id" \
+      --message "$wake_message" --json 2>&1 || echo "")
+    debug_log "RESPONSE: ${response:0:200}"
+
+    write_hook_event_record \
+      "$jsonl_file" "$hook_entry_ms" "$hook_script_name" "$session_name" \
+      "$agent_id" "$openclaw_session_id" "$trigger" "$state" \
+      "$content_source" "$wake_message" "$response" "sync_delivered"
+
+    if [ -n "$response" ]; then
+      local decision
+      decision=$(printf '%s' "$response" | jq -r '.decision // ""' 2>/dev/null || echo "")
+      local reason
+      reason=$(printf '%s' "$response" | jq -r '.reason // ""' 2>/dev/null || echo "")
+
+      if [ "$decision" = "block" ] && [ -n "$reason" ]; then
+        jq -cn --arg reason "$reason" '{"decision": "block", "reason": $reason}'
+      fi
+    fi
+    exit 0
+  else
+    deliver_async_with_logging \
+      "$openclaw_session_id" "$wake_message" "$jsonl_file" "$hook_entry_ms" \
+      "$hook_script_name" "$session_name" "$agent_id" \
+      "$trigger" "$state" "$content_source"
+    debug_log "DELIVERED (async with JSONL logging)"
+    exit 0
+  fi
+}
+
+# ==========================================================================
 # extract_hook_settings
 # ==========================================================================
 # Extracts hook_settings fields from registry with three-tier fallback:
