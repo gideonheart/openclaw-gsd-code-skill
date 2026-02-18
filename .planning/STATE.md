@@ -121,6 +121,7 @@ None.
 | 10 | Review v3.1 refactoring — code quality and retrospective | 2026-02-18 | dd96fb0 | [10-review-v3-1-refactoring-code-quality-and](./quick/10-review-v3-1-refactoring-code-quality-and/) |
 | 11 | Verify Quick Task 10 retrospective claims against actual code | 2026-02-18 | 29392e5 | [11-verify-quick-task-10-retrospective-claim](./quick/11-verify-quick-task-10-retrospective-claim/) |
 | 12 | Fix 4 remaining v3.1 retrospective issues: delivery triplication, JSON injection, jq duplication, stale comment | 2026-02-18 | 741e48c | [12-fix-4-remaining-v3-1-retrospective-issue](./quick/12-fix-4-remaining-v3-1-retrospective-issue/) |
+| 13 | Update SKILL.md, README.md, docs/hooks.md for Quick-12 additions (9 functions, deliver_with_mode specs) | 2026-02-18 | 92452d7 | [13-update-skill-md-readme-md-and-docs-hooks](./quick/13-update-skill-md-readme-md-and-docs-hooks/) |
 
 ### Quick Task Decisions
 
@@ -140,8 +141,10 @@ Quick-11 (2026-02-18): All 10 Quick-10 retrospective claims independently verifi
 
 Quick-12 (2026-02-18): deliver_with_mode() takes hook_mode as first parameter — function handles both bidirectional and async branches, hook scripts pass all parameters and rely on deliver_with_mode() to exit 0. extra_args bash array pattern for conditional jq --argjson avoids if/else duplication. Stale pre-compact comment deleted entirely — no replacement needed since Phase 13 fully migrated that hook.
 
+Quick-13 (2026-02-18): Documentation-only update. No architectural decisions — plan executed exactly as written.
+
 ## Session Continuity
 
 Last session: 2026-02-18
-Stopped at: Quick Task 12 complete — fixed 4 remaining v3.1 retrospective issues
+Stopped at: Quick Task 13 complete — updated SKILL.md, README.md, docs/hooks.md for Quick-12 additions
 Resume file: None
