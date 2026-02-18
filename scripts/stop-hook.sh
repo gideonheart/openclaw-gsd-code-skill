@@ -96,9 +96,31 @@ HOOK_MODE=$(echo "$AGENT_DATA" | jq -r \
   '(.hook_settings.hook_mode // $global.hook_mode // "async")' 2>/dev/null || echo "async")
 
 # ============================================================================
+# 6b. SOURCE SHARED LIBRARY
+# ============================================================================
+LIB_PATH="${SCRIPT_DIR}/../lib/hook-utils.sh"
+if [ -f "$LIB_PATH" ]; then
+  source "$LIB_PATH"
+  debug_log "sourced lib/hook-utils.sh"
+else
+  debug_log "WARNING: lib/hook-utils.sh not found at $LIB_PATH — transcript extraction disabled"
+fi
+
+# ============================================================================
 # 7. CAPTURE PANE CONTENT
 # ============================================================================
 PANE_CONTENT=$(tmux capture-pane -pt "${SESSION_NAME}:0.0" -S "-${PANE_CAPTURE_LINES}" 2>/dev/null || echo "")
+
+# ============================================================================
+# 7b. EXTRACT TRANSCRIPT CONTENT (primary source)
+# ============================================================================
+TRANSCRIPT_PATH=$(printf '%s' "$STDIN_JSON" | jq -r '.transcript_path // ""' 2>/dev/null || echo "")
+EXTRACTED_RESPONSE=""
+
+if type extract_last_assistant_response &>/dev/null; then
+  EXTRACTED_RESPONSE=$(extract_last_assistant_response "$TRANSCRIPT_PATH")
+  debug_log "transcript extraction: path=${TRANSCRIPT_PATH:-<empty>} result_length=${#EXTRACTED_RESPONSE}"
+fi
 
 # ============================================================================
 # 8. DETECT STATE (pattern matching)
@@ -135,7 +157,26 @@ else
 fi
 
 # ============================================================================
-# 10. BUILD STRUCTURED WAKE MESSAGE
+# 9b. DETERMINE CONTENT: transcript (primary) or pane diff (fallback)
+# ============================================================================
+if [ -n "$EXTRACTED_RESPONSE" ]; then
+  CONTENT_SECTION="$EXTRACTED_RESPONSE"
+  debug_log "content source: transcript"
+else
+  # Fallback: pane diff from last 40 lines
+  PANE_FOR_DIFF=$(printf '%s\n' "$PANE_CONTENT" | tail -40)
+  if type extract_pane_diff &>/dev/null; then
+    CONTENT_SECTION=$(extract_pane_diff "$SESSION_NAME" "$PANE_FOR_DIFF")
+    debug_log "content source: pane_diff (delta_length=${#CONTENT_SECTION})"
+  else
+    # Ultimate fallback if lib not loaded: use raw pane tail
+    CONTENT_SECTION=$(printf '%s\n' "$PANE_CONTENT" | tail -40)
+    debug_log "content source: raw_pane_tail (lib not available)"
+  fi
+fi
+
+# ============================================================================
+# 10. BUILD STRUCTURED WAKE MESSAGE (v2 format)
 # ============================================================================
 TIMESTAMP=$(date -u +'%Y-%m-%dT%H:%M:%SZ')
 
@@ -147,11 +188,11 @@ timestamp: ${TIMESTAMP}
 [TRIGGER]
 type: response_complete
 
+[CONTENT]
+${CONTENT_SECTION}
+
 [STATE HINT]
 state: ${STATE}
-
-[PANE CONTENT]
-${PANE_CONTENT}
 
 [CONTEXT PRESSURE]
 ${CONTEXT_PRESSURE}
