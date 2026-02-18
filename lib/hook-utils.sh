@@ -198,65 +198,42 @@ write_hook_event_record() {
   hook_exit_ms=$(date +%s%3N)
   local duration_ms=$((hook_exit_ms - hook_entry_ms))
 
-  local record
+  local extra_args=()
+  local extra_merge=""
   if [ -n "$extra_fields_json" ]; then
-    record=$(jq -cn \
-      --arg timestamp "$(date -u +'%Y-%m-%dT%H:%M:%SZ')" \
-      --arg hook_script "$hook_script" \
-      --arg session_name "$session_name" \
-      --arg agent_id "$agent_id" \
-      --arg openclaw_session_id "$openclaw_session_id" \
-      --arg trigger "$trigger" \
-      --arg state "$state" \
-      --arg content_source "$content_source" \
-      --arg wake_message "$wake_message" \
-      --arg response "$response" \
-      --arg outcome "$outcome" \
-      --argjson duration_ms "$duration_ms" \
-      --argjson extra_fields "$extra_fields_json" \
-      '{
-        timestamp: $timestamp,
-        hook_script: $hook_script,
-        session_name: $session_name,
-        agent_id: $agent_id,
-        openclaw_session_id: $openclaw_session_id,
-        trigger: $trigger,
-        state: $state,
-        content_source: $content_source,
-        wake_message: $wake_message,
-        response: $response,
-        outcome: $outcome,
-        duration_ms: $duration_ms
-      } + $extra_fields' 2>/dev/null) || return 0
-  else
-    record=$(jq -cn \
-      --arg timestamp "$(date -u +'%Y-%m-%dT%H:%M:%SZ')" \
-      --arg hook_script "$hook_script" \
-      --arg session_name "$session_name" \
-      --arg agent_id "$agent_id" \
-      --arg openclaw_session_id "$openclaw_session_id" \
-      --arg trigger "$trigger" \
-      --arg state "$state" \
-      --arg content_source "$content_source" \
-      --arg wake_message "$wake_message" \
-      --arg response "$response" \
-      --arg outcome "$outcome" \
-      --argjson duration_ms "$duration_ms" \
-      '{
-        timestamp: $timestamp,
-        hook_script: $hook_script,
-        session_name: $session_name,
-        agent_id: $agent_id,
-        openclaw_session_id: $openclaw_session_id,
-        trigger: $trigger,
-        state: $state,
-        content_source: $content_source,
-        wake_message: $wake_message,
-        response: $response,
-        outcome: $outcome,
-        duration_ms: $duration_ms
-      }' 2>/dev/null) || return 0
+    extra_args=(--argjson extra_fields "$extra_fields_json")
+    extra_merge='+ $extra_fields'
   fi
+
+  local record
+  record=$(jq -cn \
+    --arg timestamp "$(date -u +'%Y-%m-%dT%H:%M:%SZ')" \
+    --arg hook_script "$hook_script" \
+    --arg session_name "$session_name" \
+    --arg agent_id "$agent_id" \
+    --arg openclaw_session_id "$openclaw_session_id" \
+    --arg trigger "$trigger" \
+    --arg state "$state" \
+    --arg content_source "$content_source" \
+    --arg wake_message "$wake_message" \
+    --arg response "$response" \
+    --arg outcome "$outcome" \
+    --argjson duration_ms "$duration_ms" \
+    "${extra_args[@]}" \
+    "{
+      timestamp: \$timestamp,
+      hook_script: \$hook_script,
+      session_name: \$session_name,
+      agent_id: \$agent_id,
+      openclaw_session_id: \$openclaw_session_id,
+      trigger: \$trigger,
+      state: \$state,
+      content_source: \$content_source,
+      wake_message: \$wake_message,
+      response: \$response,
+      outcome: \$outcome,
+      duration_ms: \$duration_ms
+    } ${extra_merge}" 2>/dev/null) || return 0
 
   if [ -z "$record" ]; then
     return 0
@@ -460,12 +437,6 @@ extract_hook_settings() {
 # Returns:
 #   State name string on stdout. Always returns a non-empty string.
 #   Never exits non-zero. Never crashes the calling hook.
-#
-# Note: pre-compact-hook.sh uses different patterns and state names
-# (case-sensitive grep, "Choose an option:", "Continue this conversation",
-# "active" fallback). Until pre-compact TUI text is empirically verified,
-# that hook may retain its own inline detection rather than calling this
-# function. See Phase 12 research for details.
 # ==========================================================================
 detect_session_state() {
   local pane_content="$1"
