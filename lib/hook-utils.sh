@@ -234,3 +234,56 @@ write_hook_event_record() {
     printf '%s\n' "$record" >> "$jsonl_file"
   ) 200>"${jsonl_file}.lock" 2>/dev/null || true
 }
+
+# ==========================================================================
+# deliver_async_with_logging
+# ==========================================================================
+# Replaces bare `openclaw agent --session-id ... &` calls in all async
+# hook delivery paths. Spawns a background subshell that:
+#   1. Calls openclaw and captures the response
+#   2. Determines outcome (delivered / no_response)
+#   3. Writes a complete JSONL record via write_hook_event_record()
+#
+# The calling hook exits immediately after this function returns — it does
+# NOT wait for the background subshell. The subshell uses explicit
+# </dev/null to prevent stdin inheritance from Claude Code's pipe.
+#
+# Arguments (10 explicit positional parameters):
+#   $1  - openclaw_session_id:  OpenClaw session ID for the agent
+#   $2  - wake_message:         full wake message body to deliver
+#   $3  - jsonl_file:           path to per-session .jsonl log file
+#   $4  - hook_entry_ms:        millisecond timestamp from hook start
+#   $5  - hook_script:          basename of calling hook script
+#   $6  - session_name:         tmux session name
+#   $7  - agent_id:             agent identifier
+#   $8  - trigger:              event trigger type
+#   $9  - state:                detected state
+#   $10 - content_source:       how content was obtained
+# Returns:
+#   Nothing. Backgrounds a subshell and returns immediately.
+# ==========================================================================
+deliver_async_with_logging() {
+  local openclaw_session_id="$1"
+  local wake_message="$2"
+  local jsonl_file="$3"
+  local hook_entry_ms="$4"
+  local hook_script="$5"
+  local session_name="$6"
+  local agent_id="$7"
+  local trigger="$8"
+  local state="$9"
+  local content_source="${10}"
+
+  (
+    local response
+    response=$(openclaw agent --session-id "$openclaw_session_id" \
+      --message "$wake_message" 2>&1) || true
+    local outcome="delivered"
+    [ -z "$response" ] && outcome="no_response"
+
+    write_hook_event_record \
+      "$jsonl_file" "$hook_entry_ms" "$hook_script" "$session_name" \
+      "$agent_id" "$openclaw_session_id" "$trigger" "$state" \
+      "$content_source" "$wake_message" "$response" "$outcome"
+  ) </dev/null &
+}
