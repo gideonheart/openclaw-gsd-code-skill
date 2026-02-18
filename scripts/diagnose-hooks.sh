@@ -45,7 +45,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SKILL_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 REGISTRY_PATH="${SKILL_ROOT}/config/recovery-registry.json"
 SETTINGS_FILE="$HOME/.claude/settings.json"
-HOOK_LOG="/tmp/gsd-hooks.log"
+HOOK_LOG="${SKILL_ROOT}/logs"
 TOTAL_CHECKS=0
 PASSED_CHECKS=0
 
@@ -294,21 +294,29 @@ fi
 echo ""
 
 # ------------------------------------------------------------------
-# 9. Hook log file
+# 9. Hook log directory
 # ------------------------------------------------------------------
-echo "--- Step 9: Hook Debug Log ---"
+echo "--- Step 9: Hook Debug Logs ---"
 
 TOTAL_CHECKS=$((TOTAL_CHECKS + 1))
-if [ -f "$HOOK_LOG" ]; then
-  HOOK_LOG_LINES=$(wc -l < "$HOOK_LOG")
-  LAST_ENTRY=$(tail -1 "$HOOK_LOG" 2>/dev/null || echo "")
-  pass "Hook log exists: $HOOK_LOG ($HOOK_LOG_LINES lines)"
+if [ -d "$HOOK_LOG" ]; then
+  LOG_FILE_COUNT=$(ls -1 "$HOOK_LOG"/*.log 2>/dev/null | wc -l || echo "0")
+  pass "Log directory exists: $HOOK_LOG ($LOG_FILE_COUNT log files)"
   PASSED_CHECKS=$((PASSED_CHECKS + 1))
-  info "Last entry: $LAST_ENTRY"
+  # Show session-specific log if it exists
+  SESSION_LOG_FILE="${HOOK_LOG}/${TMUX_SESSION_NAME}.log"
+  if [ -f "$SESSION_LOG_FILE" ]; then
+    SESSION_LOG_LINES=$(wc -l < "$SESSION_LOG_FILE")
+    LAST_ENTRY=$(tail -1 "$SESSION_LOG_FILE" 2>/dev/null || echo "")
+    info "Session log: $SESSION_LOG_FILE ($SESSION_LOG_LINES lines)"
+    info "Last entry: $LAST_ENTRY"
+  else
+    info "No session-specific log yet for $TMUX_SESSION_NAME"
+  fi
 else
-  info "Hook log does not exist yet: $HOOK_LOG"
-  info "It will be created when hooks fire after debug logging is added"
-  PASSED_CHECKS=$((PASSED_CHECKS + 1))  # Not a failure, just not created yet
+  info "Log directory does not exist yet: $HOOK_LOG"
+  info "It will be created when hooks fire"
+  PASSED_CHECKS=$((PASSED_CHECKS + 1))  # Not a failure
 fi
 
 echo ""
@@ -360,7 +368,7 @@ echo ""
 if [ "$PASSED_CHECKS" -eq "$TOTAL_CHECKS" ]; then
   echo "All checks passed. If hooks still aren't working:"
   echo "  1. Restart the Claude Code session (hooks snapshot at startup)"
-  echo "  2. Run: tail -f $HOOK_LOG"
+  echo "  2. Run: tail -f ${HOOK_LOG}/${TMUX_SESSION_NAME}.log"
   echo "  3. Trigger a Stop event (send a message to the Claude session)"
   echo "  4. Check the log for the exact failure point"
 else

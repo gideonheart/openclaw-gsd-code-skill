@@ -54,8 +54,10 @@ extract_last_assistant_response() {
 extract_pane_diff() {
   local session_name="$1"
   local current_pane="$2"
-  local previous_file="/tmp/gsd-pane-prev-${session_name}.txt"
-  local lock_file="/tmp/gsd-pane-lock-${session_name}"
+  # SKILL_LOG_DIR is set by the calling hook script before sourcing this library
+  local log_directory="${SKILL_LOG_DIR:-/tmp}"
+  local previous_file="${log_directory}/gsd-pane-prev-${session_name}.txt"
+  local lock_file="${log_directory}/gsd-pane-lock-${session_name}"
 
   local pane_delta
   pane_delta=$(
