@@ -35,7 +35,7 @@ The session starts in tmux with GSD system prompt, auto-detects the first comman
 
 Sessions follow this flow: **spawn** -> **hooks control session** -> **crash/reboot** -> **systemd timer** -> **recovery** -> **agents resume**.
 
-Hooks fire on Claude Code events (Stop, Notification, SessionEnd, PreCompact) and send structured wake messages to the OpenClaw agent. The agent inspects session state, decides next action, and drives the TUI using `menu-driver.sh`.
+Hooks fire on Claude Code events (Stop, Notification, SessionEnd, PreCompact, PreToolUse) and send structured wake messages to the OpenClaw agent. The agent inspects session state, decides next action, and drives the TUI using `menu-driver.sh`.
 
 After reboot or OOM, the systemd timer runs recovery, which restores tmux sessions, relaunches Claude Code, wakes OpenClaw agents, and resumes work automatically.
 
@@ -97,10 +97,18 @@ All hooks fire automatically on Claude Code events. For behavior specs, configur
 
 **pre-compact-hook.sh** - Fires before Claude Code compacts context window
 
+**pre-tool-use-hook.sh** - Fires when Claude calls AskUserQuestion (forwards structured question data to OpenClaw)
+
 All hooks:
 - Exit in <5ms for non-managed sessions
-- Support async (default) or bidirectional mode via `hook_settings.hook_mode`
+- Support async (default) or bidirectional mode via `hook_settings.hook_mode` (PreToolUse is async-only)
 - Use three-tier fallback for configuration: per-agent > global > hardcoded defaults
+
+### Shared Libraries
+
+**lib/hook-utils.sh** - Shared extraction functions sourced by stop-hook.sh and pre-tool-use-hook.sh
+
+Contains: `extract_last_assistant_response`, `extract_pane_diff`, `format_ask_user_questions`. No side effects on source.
 
 ### Utilities
 
@@ -128,7 +136,7 @@ Use `--help` for full action list.
 scripts/register-hooks.sh
 ```
 
-Registers all 5 hook events (Stop, Notification [idle_prompt + permission_prompt], SessionEnd, PreCompact) and removes obsolete `gsd-session-hook.sh` from SessionStart. Creates backup before modifying settings. Restart all Claude Code sessions after registration to activate new hooks.
+Registers all 6 hook events (Stop, Notification [idle_prompt + permission_prompt], SessionEnd, PreCompact, PreToolUse [AskUserQuestion]) and removes obsolete `gsd-session-hook.sh` from SessionStart. Creates backup before modifying settings. Restart all Claude Code sessions after registration to activate new hooks.
 
 ## Configuration
 
@@ -146,6 +154,16 @@ See README.md for full registry schema (agent fields, hook_settings fields, sess
 Replacement model: per-agent `system_prompt` in registry replaces default entirely (not appends). CLI `--system-prompt` override takes precedence over both.
 
 **Hooks:** Registered in `~/.claude/settings.json` via `scripts/register-hooks.sh`
+
+## v2.0 Changes
+
+**Wake message format (breaking):** `[PANE CONTENT]` replaced by `[CONTENT]` section. Content is now extracted from Claude's transcript JSONL (primary) or pane diff (fallback) instead of raw pane dump. Downstream parsers expecting `[PANE CONTENT]` must update to `[CONTENT]`.
+
+**Content extraction chain:** transcript text (from `transcript_path` JSONL) -> pane diff (only new lines) -> raw pane tail (last 10 lines). First successful extraction wins.
+
+**AskUserQuestion forwarding:** When Claude calls AskUserQuestion, a PreToolUse hook sends structured question data to OpenClaw before the TUI renders. This is async and never blocks.
+
+**Minimum Claude Code version:** >= 2.0.76 (PreToolUse hook support and AskUserQuestion bug fix).
 
 ## Notes
 
