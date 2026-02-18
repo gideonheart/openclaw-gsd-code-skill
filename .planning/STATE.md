@@ -57,11 +57,15 @@ None.
 
 ### Blockers/Concerns
 
-- Gideon's wake message parsing must be updated to handle v2 [CONTENT] format (was [PANE CONTENT])
-- Session name sanitization: if future sessions use spaces or slashes in names, /tmp file naming breaks — low severity, document when encountered
+- ~~Gideon's wake message parsing must be updated to handle v2 [CONTENT] format~~ — RESOLVED: no hardcoded parser exists. Wake messages are free-text consumed by LLM agents. Format change is transparent.
+- ~~Session name sanitization: if future sessions use spaces or slashes in names, /tmp file naming breaks~~ — RESOLVED: pane state files now live in logs/ using SESSION_NAME in filename; same constraint but logs/ is persistent and skill-local.
+
+### Quick Task Decisions
+
+Quick-5 (2026-02-18): Two-phase logging — hooks.log shared until SESSION_NAME known, then redirect to {SESSION_NAME}.log per-session. SKILL_LOG_DIR computed via BASH_SOURCE at script top, separate from SCRIPT_DIR used for registry/lib lookups.
 
 ## Session Continuity
 
 Last session: 2026-02-18
-Stopped at: v2.0 milestone complete. All phases executed and verified.
+Stopped at: Quick task 5 complete — hook logs moved from /tmp to skill-local logs/.
 Resume file: None
