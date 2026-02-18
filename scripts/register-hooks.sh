@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # register-hooks.sh - Idempotent hook registration script for Claude Code
-# Registers all 6 hook events in ~/.claude/settings.json and removes gsd-session-hook.sh from SessionStart
+# Registers all 7 hook events (Stop, Notification idle, Notification permission, SessionEnd, PreCompact, PreToolUse, PostToolUse) in ~/.claude/settings.json and removes gsd-session-hook.sh from SessionStart
 # Usage: bash scripts/register-hooks.sh
 
 # ============================================================================
@@ -42,7 +42,7 @@ if [ ! -f "$SETTINGS_FILE" ]; then
   echo '{}' > "$SETTINGS_FILE"
 fi
 
-# Verify all 5 hook scripts exist
+# Verify all hook scripts exist
 HOOK_SCRIPTS=(
   "stop-hook.sh"
   "notification-idle-hook.sh"
@@ -50,6 +50,7 @@ HOOK_SCRIPTS=(
   "session-end-hook.sh"
   "pre-compact-hook.sh"
   "pre-tool-use-hook.sh"
+  "post-tool-use-hook.sh"
 )
 
 for script in "${HOOK_SCRIPTS[@]}"; do
@@ -142,6 +143,18 @@ HOOKS_CONFIG=$(cat <<EOF
         }
       ]
     }
+  ],
+  "PostToolUse": [
+    {
+      "matcher": "AskUserQuestion",
+      "hooks": [
+        {
+          "type": "command",
+          "command": "${SKILL_ROOT}/scripts/post-tool-use-hook.sh",
+          "timeout": 10
+        }
+      ]
+    }
   ]
 }
 EOF
@@ -165,6 +178,7 @@ jq --argjson new "$HOOKS_CONFIG" '
   .hooks.SessionEnd = $new.SessionEnd |
   .hooks.PreCompact = $new.PreCompact |
   .hooks.PreToolUse = $new.PreToolUse |
+  .hooks.PostToolUse = $new.PostToolUse |
 
   # Clean up SessionStart: remove gsd-session-hook.sh, keep others
   .hooks.SessionStart = (
@@ -227,6 +241,10 @@ log_message "PreCompact hook: $PRE_COMPACT"
 # PreToolUse hook (AskUserQuestion)
 PRE_TOOL_USE=$(jq -r '.hooks.PreToolUse[] | select(.matcher == "AskUserQuestion") | .hooks[0].command // "NOT REGISTERED"' "$SETTINGS_FILE")
 log_message "PreToolUse (AskUserQuestion): $PRE_TOOL_USE"
+
+# PostToolUse hook (AskUserQuestion)
+POST_TOOL_USE=$(jq -r '.hooks.PostToolUse[] | select(.matcher == "AskUserQuestion") | .hooks[0].command // "NOT REGISTERED"' "$SETTINGS_FILE")
+log_message "PostToolUse (AskUserQuestion): $POST_TOOL_USE"
 
 log_message ""
 
