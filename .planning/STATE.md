@@ -5,19 +5,19 @@
 See: .planning/PROJECT.md (updated 2026-02-18)
 
 **Core value:** Reliable, intelligent agent session lifecycle — launch, recover, and respond without human intervention
-**Current focus:** v3.1 Diagnostic Fixes (Phase 14)
+**Current focus:** v3.1 complete — all 12 requirements shipped
 
 ## Current Position
 
-Phase: 14 — Diagnostic Fixes
-Plan: —
-Status: Ready to plan (Phase 13 complete)
-Last activity: 2026-02-18 — Phase 13 executed and verified (3 plans, 320+ lines removed)
+Phase: 14 — Diagnostic Fixes (COMPLETE)
+Plan: 1/1 complete
+Status: Milestone v3.1 complete — all phases finished
+Last activity: 2026-02-18 — Phase 14 executed and verified (1 plan, 2 fixes)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 26 (v1.0 phases 1-5 + v2.0 phases 6-7 + v3.0 phases 8-11 + v3.1 phases 12-13)
+- Total plans completed: 27 (v1.0 phases 1-5 + v2.0 phases 6-7 + v3.0 phases 8-11 + v3.1 phases 12-14)
 - Average duration: —
 - Total execution time: —
 
@@ -34,6 +34,7 @@ Last activity: 2026-02-18 — Phase 13 executed and verified (3 plans, 320+ line
 | 11 (v3.0) | 2 | ~4 min | ~2 min |
 | 12 (v3.1) | 1 | ~4 min | ~4 min |
 | 13 (v3.1) | 3 | ~6 min | ~2 min |
+| 14 (v3.1) | 1 | ~1 min | ~1 min |
 
 *Updated after each plan completion*
 
@@ -87,6 +88,10 @@ Phase 12 decisions (confirmed and shipped):
 - exit 0 only for lib-not-found fatal case in preamble — all other paths use return 0
 - lib/hook-utils.sh now has 8 functions: 6 original + extract_hook_settings + detect_session_state
 
+Phase 14 decisions (confirmed and shipped):
+- Prefix-match pattern in diagnose-hooks.sh Step 7 is identical to lookup_agent_in_registry() in hook-utils.sh
+- HOOK_SCRIPTS array updated to 7 scripts matching register-hooks.sh registration order
+
 Phase 13 decisions (confirmed and shipped):
 - All 7 hooks source hook-preamble.sh as single entry point — zero direct hook-utils.sh sourcing
 - Pre-compact state detection normalized: idle_prompt -> idle, active -> working (using shared detect_session_state())
@@ -129,5 +134,5 @@ Quick-9 (2026-02-18): Incomplete v2.0 wake message migration — [CONTENT] appli
 ## Session Continuity
 
 Last session: 2026-02-18
-Stopped at: Phase 13 complete — Phase 14 planning is next
+Stopped at: Phase 14 complete — Milestone v3.1 complete, all 12 requirements shipped
 Resume file: None

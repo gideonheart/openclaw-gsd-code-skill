@@ -52,12 +52,14 @@ Reliable, intelligent agent session lifecycle — launch, recover, and respond t
 - All jq piping uses printf '%s' across all 7 hooks — escape sequence safety (v3.1, Phase 13)
 - session-end-hook.sh jq error guards prevent crash on malformed registry data (v3.1, Phase 13)
 
+- diagnose-hooks.sh Step 7 prefix-match fix matching actual hook lookup behavior (v3.1, Phase 14)
+- diagnose-hooks.sh Step 2 checks all 7 hook scripts including tool-use hooks (v3.1, Phase 14)
+
 ### Active
 
 <!-- Current scope. Building toward these. -->
 
-- [ ] diagnose-hooks.sh Step 7 prefix-match fix (FIX-01 — Phase 14)
-- [ ] diagnose-hooks.sh Step 2 checks all 7 hook scripts (FIX-02 — Phase 14)
+(None -- v3.1 milestone complete)
 
 ### Out of Scope
 
@@ -107,4 +109,4 @@ Reliable, intelligent agent session lifecycle — launch, recover, and respond t
 | printf '%s' for all jq piping | echo can expand escape sequences (\n, \t) corrupting JSON; printf '%s' is literal | Confirmed |
 
 ---
-*Last updated: 2026-02-18 after Phase 13*
+*Last updated: 2026-02-18 after Phase 14 — v3.1 milestone complete*

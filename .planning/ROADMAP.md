@@ -217,7 +217,7 @@ Plans:
 
 - [x] **Phase 12: Shared Library Foundation** - Create hook-preamble.sh and extend hook-utils.sh with extract_hook_settings() and detect_session_state() (completed 2026-02-18)
 - [x] **Phase 13: Coordinated Hook Migration** - Apply preamble sourcing, settings function, [CONTENT] labels, printf sweep, and session-end guards across all 7 hooks in one pass (completed 2026-02-18)
-- [ ] **Phase 14: Diagnostic Fixes** - Align diagnose-hooks.sh Step 7 (prefix-match) and Step 2 (complete 7-script list) with actual hook behavior
+- [x] **Phase 14: Diagnostic Fixes** - Align diagnose-hooks.sh Step 7 (prefix-match) and Step 2 (complete 7-script list) with actual hook behavior (completed 2026-02-18)
 
 ## Phase Details
 
@@ -294,7 +294,7 @@ Plans:
 **Plans**: 1 plan
 
 Plans:
-- [ ] 14-01-PLAN.md -- Fix Step 7 prefix-match lookup and Step 2 complete 7-script list
+- [x] 14-01-PLAN.md -- Fix Step 7 prefix-match lookup and Step 2 complete 7-script list
 
 ## Progress
 
@@ -317,4 +317,4 @@ Phase 14 depends on Phase 12 (not Phase 13) — can run in parallel with Phase 1
 | 11. Operational Hardening | v3.0 | 2/2 | Complete | 2026-02-18 |
 | 12. Shared Library Foundation | v3.1 | 1/1 | Complete | 2026-02-18 |
 | 13. Coordinated Hook Migration | v3.1 | 3/3 | Complete | 2026-02-18 |
-| 14. Diagnostic Fixes | v3.1 | 0/1 | Planned | - |
+| 14. Diagnostic Fixes | v3.1 | 1/1 | Complete | 2026-02-18 |

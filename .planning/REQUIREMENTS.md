@@ -158,8 +158,8 @@ Requirements for milestone v3.1: Hook Refactoring & Migration Completion. Extrac
 
 ### Diagnostic Fixes
 
-- [ ] **FIX-01**: diagnose-hooks.sh Step 7 uses prefix-match (startswith) matching actual hook lookup behavior
-- [ ] **FIX-02**: diagnose-hooks.sh Step 2 checks all 7 hook scripts (adds pre-tool-use-hook.sh and post-tool-use-hook.sh)
+- [x] **FIX-01**: diagnose-hooks.sh Step 7 uses prefix-match (startswith) matching actual hook lookup behavior
+- [x] **FIX-02**: diagnose-hooks.sh Step 2 checks all 7 hook scripts (adds pre-tool-use-hook.sh and post-tool-use-hook.sh)
 - [x] **FIX-03**: session-end-hook.sh jq calls have 2>/dev/null || echo "" error guards
 
 ### Code Quality
@@ -265,17 +265,17 @@ Which phases cover which requirements. Updated during roadmap creation.
 | MIGR-03 | Phase 13 | Done |
 | FIX-03 | Phase 13 | Done |
 | QUAL-01 | Phase 13 | Done |
-| FIX-01 | Phase 14 | Pending |
-| FIX-02 | Phase 14 | Pending |
+| FIX-01 | Phase 14 | Done |
+| FIX-02 | Phase 14 | Done |
 
 **Coverage:**
 - v1 requirements: 38 total, all done
 - v2 requirements: 14 total, all done
 - v3 requirements: 17 total, all done
-- v3.1 requirements: 12 total, 10 done, 2 pending (FIX-01, FIX-02 in Phase 14)
+- v3.1 requirements: 12 total, 12 done (all complete)
 - Mapped to phases: 12
 - Unmapped: 0
 
 ---
 *Requirements defined: 2026-02-17*
-*Last updated: 2026-02-18 — Phase 13 complete, 6 requirements verified*
+*Last updated: 2026-02-18 — Phase 14 complete, all v3.1 requirements done*
