@@ -147,3 +147,90 @@ format_ask_user_questions() {
     "\n"
   ' 2>/dev/null || printf '%s' "(could not parse questions)"
 }
+
+# ==========================================================================
+# write_hook_event_record
+# ==========================================================================
+# Builds a complete JSONL record from explicit parameters and appends it
+# atomically to the per-session .jsonl log file. This is the single write
+# point for ALL structured JSONL records across all 6 hook scripts.
+#
+# All string fields use jq --arg for safe escaping (newlines, quotes, ANSI
+# codes, embedded JSON). The duration_ms field uses --argjson for integer
+# type. Append uses flock for atomic writes under concurrent hook fires.
+#
+# Silent failure: jq construction error returns 0, flock timeout returns 0.
+# This function NEVER crashes the calling hook.
+#
+# Arguments (12 explicit positional parameters):
+#   $1  - jsonl_file:           path to per-session .jsonl log file
+#   $2  - hook_entry_ms:        millisecond timestamp from hook start
+#   $3  - hook_script:          basename of calling hook script
+#   $4  - session_name:         tmux session name
+#   $5  - agent_id:             agent identifier from registry
+#   $6  - openclaw_session_id:  OpenClaw session ID from registry
+#   $7  - trigger:              event trigger type
+#   $8  - state:                detected state
+#   $9  - content_source:       how content was obtained
+#   $10 - wake_message:         full wake message body
+#   $11 - response:             OpenClaw response text
+#   $12 - outcome:              delivery result
+# Returns:
+#   Nothing on stdout. Appends one JSONL line to jsonl_file.
+# ==========================================================================
+write_hook_event_record() {
+  local jsonl_file="$1"
+  local hook_entry_ms="$2"
+  local hook_script="$3"
+  local session_name="$4"
+  local agent_id="$5"
+  local openclaw_session_id="$6"
+  local trigger="$7"
+  local state="$8"
+  local content_source="$9"
+  local wake_message="${10}"
+  local response="${11}"
+  local outcome="${12}"
+
+  local hook_exit_ms
+  hook_exit_ms=$(date +%s%3N)
+  local duration_ms=$((hook_exit_ms - hook_entry_ms))
+
+  local record
+  record=$(jq -cn \
+    --arg timestamp "$(date -u +'%Y-%m-%dT%H:%M:%SZ')" \
+    --arg hook_script "$hook_script" \
+    --arg session_name "$session_name" \
+    --arg agent_id "$agent_id" \
+    --arg openclaw_session_id "$openclaw_session_id" \
+    --arg trigger "$trigger" \
+    --arg state "$state" \
+    --arg content_source "$content_source" \
+    --arg wake_message "$wake_message" \
+    --arg response "$response" \
+    --arg outcome "$outcome" \
+    --argjson duration_ms "$duration_ms" \
+    '{
+      timestamp: $timestamp,
+      hook_script: $hook_script,
+      session_name: $session_name,
+      agent_id: $agent_id,
+      openclaw_session_id: $openclaw_session_id,
+      trigger: $trigger,
+      state: $state,
+      content_source: $content_source,
+      wake_message: $wake_message,
+      response: $response,
+      outcome: $outcome,
+      duration_ms: $duration_ms
+    }' 2>/dev/null) || return 0
+
+  if [ -z "$record" ]; then
+    return 0
+  fi
+
+  (
+    flock -x -w 2 200 || return 0
+    printf '%s\n' "$record" >> "$jsonl_file"
+  ) 200>"${jsonl_file}.lock" 2>/dev/null || true
+}
