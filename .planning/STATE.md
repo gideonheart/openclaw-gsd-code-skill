@@ -120,6 +120,7 @@ None.
 | 9 | Review v3.0 code and write retrospective | 2026-02-18 | e35296b | [9-review-v3-0-code-and-write-retrospective](./quick/9-review-v3-0-code-and-write-retrospective/) |
 | 10 | Review v3.1 refactoring — code quality and retrospective | 2026-02-18 | dd96fb0 | [10-review-v3-1-refactoring-code-quality-and](./quick/10-review-v3-1-refactoring-code-quality-and/) |
 | 11 | Verify Quick Task 10 retrospective claims against actual code | 2026-02-18 | 29392e5 | [11-verify-quick-task-10-retrospective-claim](./quick/11-verify-quick-task-10-retrospective-claim/) |
+| 12 | Fix 4 remaining v3.1 retrospective issues: delivery triplication, JSON injection, jq duplication, stale comment | 2026-02-18 | 741e48c | [12-fix-4-remaining-v3-1-retrospective-issue](./quick/12-fix-4-remaining-v3-1-retrospective-issue/) |
 
 ### Quick Task Decisions
 
@@ -137,8 +138,10 @@ Quick-10 (2026-02-18): v3.1 scored 7/12 v3.0 issues fixed, 1 partial, 4 unchange
 
 Quick-11 (2026-02-18): All 10 Quick-10 retrospective claims independently verified — 10/10 CONFIRMED. Line number accuracy was 100%; every cited line contained exactly the described code. Retrospective is trustworthy as technical record and basis for v4.0 planning.
 
+Quick-12 (2026-02-18): deliver_with_mode() takes hook_mode as first parameter — function handles both bidirectional and async branches, hook scripts pass all parameters and rely on deliver_with_mode() to exit 0. extra_args bash array pattern for conditional jq --argjson avoids if/else duplication. Stale pre-compact comment deleted entirely — no replacement needed since Phase 13 fully migrated that hook.
+
 ## Session Continuity
 
 Last session: 2026-02-18
-Stopped at: Quick Task 11 complete — retrospective verification report written
+Stopped at: Quick Task 12 complete — fixed 4 remaining v3.1 retrospective issues
 Resume file: None
