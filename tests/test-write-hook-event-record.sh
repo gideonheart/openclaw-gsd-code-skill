@@ -124,7 +124,7 @@ assert_jq "outcome is no_response" '.outcome == "no_response"' "$LAST_RECORD_FIL
 assert_jq "hook_script is session-end-hook.sh" '.hook_script == "session-end-hook.sh"' "$LAST_RECORD_FILE"
 
 # --------------------------------------------------------------------------
-# Test D — All records are valid JSONL (parse entire file)
+# Test D — All records so far are valid JSONL (parse entire file)
 # --------------------------------------------------------------------------
 printf '\n--- Test D: All records are valid JSONL ---\n'
 
@@ -138,9 +138,75 @@ fi
 
 TOTAL_LINES=$(wc -l < "$JSONL_FILE")
 if [ "$TOTAL_LINES" -eq 3 ]; then
-  printf 'PASS: file has exactly 3 records total\n'
+  printf 'PASS: file has exactly 3 records after Test D\n'
 else
   printf 'FAIL: expected 3 records, got %s\n' "$TOTAL_LINES"
+  exit 1
+fi
+
+# --------------------------------------------------------------------------
+# Test E — 13th parameter extra_fields_json with questions_forwarded
+# --------------------------------------------------------------------------
+printf '\n--- Test E: extra_fields_json with questions_forwarded ---\n'
+
+HOOK_ENTRY_MS=$(date +%s%3N)
+QUESTIONS_DATA="Question: What should I do?\nOptions:\n  1. Option A\n  2. Option B"
+
+write_hook_event_record \
+  "$JSONL_FILE" "$HOOK_ENTRY_MS" "pre-tool-use-hook.sh" "test-session" \
+  "test-agent" "test-id-123" "ask_user_question" "awaiting_user_input" \
+  "questions" "wake message with questions" "" "delivered" \
+  "{\"questions_forwarded\":\"$QUESTIONS_DATA\"}"
+
+assert_line_count "exactly 4 lines after Test E" 4 "$JSONL_FILE"
+
+LAST_RECORD_FILE="${TEST_LOG_DIR}/last-record-e.json"
+tail -1 "$JSONL_FILE" > "$LAST_RECORD_FILE"
+
+assert_jq "record has questions_forwarded field" '.questions_forwarded != null' "$LAST_RECORD_FILE"
+assert_jq "questions_forwarded contains question text" '.questions_forwarded | contains("What should I do")' "$LAST_RECORD_FILE"
+assert_jq "trigger is ask_user_question" '.trigger == "ask_user_question"' "$LAST_RECORD_FILE"
+assert_jq "base fields still present" '.hook_script == "pre-tool-use-hook.sh"' "$LAST_RECORD_FILE"
+assert_jq "duration_ms still a number" '.duration_ms | type == "number"' "$LAST_RECORD_FILE"
+
+# --------------------------------------------------------------------------
+# Test F — 12-parameter call backward compatibility (no 13th param)
+# --------------------------------------------------------------------------
+printf '\n--- Test F: 12-parameter backward compatibility ---\n'
+
+HOOK_ENTRY_MS=$(date +%s%3N)
+
+write_hook_event_record \
+  "$JSONL_FILE" "$HOOK_ENTRY_MS" "stop-hook.sh" "test-session" \
+  "test-agent" "test-id-123" "response_complete" "working" \
+  "transcript" "Hello" '{"ok":true}' "delivered"
+
+assert_line_count "exactly 5 lines after Test F" 5 "$JSONL_FILE"
+
+LAST_RECORD_FILE="${TEST_LOG_DIR}/last-record-f.json"
+tail -1 "$JSONL_FILE" > "$LAST_RECORD_FILE"
+
+assert_jq "no extra fields in record" '.questions_forwarded == null' "$LAST_RECORD_FILE"
+assert_jq "base record is valid" '.hook_script == "stop-hook.sh"' "$LAST_RECORD_FILE"
+assert_jq "outcome is delivered" '.outcome == "delivered"' "$LAST_RECORD_FILE"
+
+# --------------------------------------------------------------------------
+# Test G — All records are valid JSONL (final check)
+# --------------------------------------------------------------------------
+printf '\n--- Test G: All records are valid JSONL (final) ---\n'
+
+if jq -e '.' "$JSONL_FILE" > /dev/null 2>&1; then
+  printf 'PASS: entire file is valid JSONL\n'
+else
+  printf 'FAIL: entire file is not valid JSONL\n'
+  exit 1
+fi
+
+TOTAL_LINES=$(wc -l < "$JSONL_FILE")
+if [ "$TOTAL_LINES" -eq 5 ]; then
+  printf 'PASS: file has exactly 5 records total\n'
+else
+  printf 'FAIL: expected 5 records, got %s\n' "$TOTAL_LINES"
   exit 1
 fi
 

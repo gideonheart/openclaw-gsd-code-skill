@@ -162,7 +162,7 @@ format_ask_user_questions() {
 # Silent failure: jq construction error returns 0, flock timeout returns 0.
 # This function NEVER crashes the calling hook.
 #
-# Arguments (12 explicit positional parameters):
+# Arguments (12 explicit positional parameters + 1 optional):
 #   $1  - jsonl_file:           path to per-session .jsonl log file
 #   $2  - hook_entry_ms:        millisecond timestamp from hook start
 #   $3  - hook_script:          basename of calling hook script
@@ -175,6 +175,7 @@ format_ask_user_questions() {
 #   $10 - wake_message:         full wake message body
 #   $11 - response:             OpenClaw response text
 #   $12 - outcome:              delivery result
+#   $13 - extra_fields_json:    (optional) JSON object string to merge into record, e.g. '{"questions_forwarded":"..."}'
 # Returns:
 #   Nothing on stdout. Appends one JSONL line to jsonl_file.
 # ==========================================================================
@@ -191,39 +192,71 @@ write_hook_event_record() {
   local wake_message="${10}"
   local response="${11}"
   local outcome="${12}"
+  local extra_fields_json="${13:-}"
 
   local hook_exit_ms
   hook_exit_ms=$(date +%s%3N)
   local duration_ms=$((hook_exit_ms - hook_entry_ms))
 
   local record
-  record=$(jq -cn \
-    --arg timestamp "$(date -u +'%Y-%m-%dT%H:%M:%SZ')" \
-    --arg hook_script "$hook_script" \
-    --arg session_name "$session_name" \
-    --arg agent_id "$agent_id" \
-    --arg openclaw_session_id "$openclaw_session_id" \
-    --arg trigger "$trigger" \
-    --arg state "$state" \
-    --arg content_source "$content_source" \
-    --arg wake_message "$wake_message" \
-    --arg response "$response" \
-    --arg outcome "$outcome" \
-    --argjson duration_ms "$duration_ms" \
-    '{
-      timestamp: $timestamp,
-      hook_script: $hook_script,
-      session_name: $session_name,
-      agent_id: $agent_id,
-      openclaw_session_id: $openclaw_session_id,
-      trigger: $trigger,
-      state: $state,
-      content_source: $content_source,
-      wake_message: $wake_message,
-      response: $response,
-      outcome: $outcome,
-      duration_ms: $duration_ms
-    }' 2>/dev/null) || return 0
+  if [ -n "$extra_fields_json" ]; then
+    record=$(jq -cn \
+      --arg timestamp "$(date -u +'%Y-%m-%dT%H:%M:%SZ')" \
+      --arg hook_script "$hook_script" \
+      --arg session_name "$session_name" \
+      --arg agent_id "$agent_id" \
+      --arg openclaw_session_id "$openclaw_session_id" \
+      --arg trigger "$trigger" \
+      --arg state "$state" \
+      --arg content_source "$content_source" \
+      --arg wake_message "$wake_message" \
+      --arg response "$response" \
+      --arg outcome "$outcome" \
+      --argjson duration_ms "$duration_ms" \
+      --argjson extra_fields "$extra_fields_json" \
+      '{
+        timestamp: $timestamp,
+        hook_script: $hook_script,
+        session_name: $session_name,
+        agent_id: $agent_id,
+        openclaw_session_id: $openclaw_session_id,
+        trigger: $trigger,
+        state: $state,
+        content_source: $content_source,
+        wake_message: $wake_message,
+        response: $response,
+        outcome: $outcome,
+        duration_ms: $duration_ms
+      } + $extra_fields' 2>/dev/null) || return 0
+  else
+    record=$(jq -cn \
+      --arg timestamp "$(date -u +'%Y-%m-%dT%H:%M:%SZ')" \
+      --arg hook_script "$hook_script" \
+      --arg session_name "$session_name" \
+      --arg agent_id "$agent_id" \
+      --arg openclaw_session_id "$openclaw_session_id" \
+      --arg trigger "$trigger" \
+      --arg state "$state" \
+      --arg content_source "$content_source" \
+      --arg wake_message "$wake_message" \
+      --arg response "$response" \
+      --arg outcome "$outcome" \
+      --argjson duration_ms "$duration_ms" \
+      '{
+        timestamp: $timestamp,
+        hook_script: $hook_script,
+        session_name: $session_name,
+        agent_id: $agent_id,
+        openclaw_session_id: $openclaw_session_id,
+        trigger: $trigger,
+        state: $state,
+        content_source: $content_source,
+        wake_message: $wake_message,
+        response: $response,
+        outcome: $outcome,
+        duration_ms: $duration_ms
+      }' 2>/dev/null) || return 0
+  fi
 
   if [ -z "$record" ]; then
     return 0
@@ -248,7 +281,7 @@ write_hook_event_record() {
 # NOT wait for the background subshell. The subshell uses explicit
 # </dev/null to prevent stdin inheritance from Claude Code's pipe.
 #
-# Arguments (10 explicit positional parameters):
+# Arguments (10 explicit positional parameters + 1 optional):
 #   $1  - openclaw_session_id:  OpenClaw session ID for the agent
 #   $2  - wake_message:         full wake message body to deliver
 #   $3  - jsonl_file:           path to per-session .jsonl log file
@@ -259,6 +292,7 @@ write_hook_event_record() {
 #   $8  - trigger:              event trigger type
 #   $9  - state:                detected state
 #   $10 - content_source:       how content was obtained
+#   $11 - extra_fields_json:    (optional) JSON object string to merge into JSONL record
 # Returns:
 #   Nothing. Backgrounds a subshell and returns immediately.
 # ==========================================================================
@@ -273,6 +307,7 @@ deliver_async_with_logging() {
   local trigger="$8"
   local state="$9"
   local content_source="${10}"
+  local extra_fields_json="${11:-}"
 
   (
     local response
@@ -284,6 +319,7 @@ deliver_async_with_logging() {
     write_hook_event_record \
       "$jsonl_file" "$hook_entry_ms" "$hook_script" "$session_name" \
       "$agent_id" "$openclaw_session_id" "$trigger" "$state" \
-      "$content_source" "$wake_message" "$response" "$outcome"
+      "$content_source" "$wake_message" "$response" "$outcome" \
+      "$extra_fields_json"
   ) </dev/null &
 }
