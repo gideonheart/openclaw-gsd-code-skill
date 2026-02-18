@@ -125,6 +125,41 @@ Same as stop-hook.sh: `pane_capture_lines`, `context_pressure_threshold`, `hook_
 
 ---
 
+## pre-tool-use-hook.sh
+
+**Trigger:** Fires when Claude calls AskUserQuestion (PreToolUse event with `AskUserQuestion` matcher)
+
+**What It Does:**
+
+1. Consume stdin JSON to prevent pipe blocking
+2. Check `$TMUX` environment (exit if not in tmux)
+3. Extract tmux session name via `tmux display-message -p '#S'`
+4. Lookup agent entry in registry by matching `tmux_session_name`
+5. Exit if no match (non-managed session)
+6. Extract `tool_input` from stdin JSON (contains question data)
+7. Source `lib/hook-utils.sh` and call `format_ask_user_questions` to format structured question data
+8. Build wake message with `[ASK USER QUESTION]` section containing formatted questions, options, and multi-select flags
+9. Deliver wake message asynchronously (always backgrounded, never blocks TUI)
+10. Exit 0 (never denies AskUserQuestion -- notification-only)
+
+**Configuration (hook_settings):**
+
+None. PreToolUse hook ignores `hook_mode` (always async, never bidirectional). Timeout: 10s in settings.json.
+
+**Edge Cases:**
+
+- Always exits 0 -- non-zero exit or JSON output to stdout would block AskUserQuestion from rendering in the TUI
+- No `stop_hook_active` check (PreToolUse doesn't recurse)
+- No pane capture (question data comes from `tool_input` in stdin, not from tmux pane)
+- If `lib/hook-utils.sh` is missing, exits 0 with debug log (graceful degradation)
+- No bidirectional mode -- AskUserQuestion forwarding is always notification-only
+
+**Exit Time:** <5ms for non-managed sessions, ~20-50ms for managed sessions
+
+**Related Registry Fields:** `tmux_session_name`, `agent_id`, `openclaw_session_id`
+
+---
+
 # Lifecycle Hooks
 
 These hooks track session state without notifying agents.
@@ -267,6 +302,48 @@ This agent uses bidirectional mode, inherits global `pane_capture_lines` and `co
 ```
 
 Uses hardcoded defaults: 100 lines, threshold=50, async mode.
+
+---
+
+# v2 Content Extraction (stop-hook.sh)
+
+As of v2.0, stop-hook.sh extracts clean content instead of sending raw pane dumps.
+
+## Extraction Chain
+
+The stop hook uses a three-tier fallback to populate the `[CONTENT]` section:
+
+1. **Transcript extraction (primary):** Reads `transcript_path` from stdin JSON, calls `extract_last_assistant_response` from `lib/hook-utils.sh`. Uses `tail -40` of the JSONL file with `jq` type-filtered selection to get Claude's last text response. No ANSI codes, no pane noise.
+
+2. **Pane diff (fallback):** If transcript extraction returns empty (file missing, parse error), calls `extract_pane_diff` from `lib/hook-utils.sh`. Compares current `tail -40` of pane content against previous capture stored in `/tmp/gsd-pane-prev-{session}.txt`. Sends only new/added lines using `diff --new-line-format='%L'`. Uses `flock` on `/tmp/gsd-pane-lock-{session}` for atomic read-write.
+
+3. **Raw pane tail (ultimate fallback):** If lib/hook-utils.sh cannot be sourced, falls back to `tail -40` of raw pane content.
+
+## Shared Library
+
+`lib/hook-utils.sh` contains three functions:
+
+| Function | Used By | Purpose |
+|----------|---------|---------|
+| `extract_last_assistant_response` | stop-hook.sh | JSONL transcript text extraction |
+| `extract_pane_diff` | stop-hook.sh | Per-session pane line delta |
+| `format_ask_user_questions` | pre-tool-use-hook.sh | AskUserQuestion data formatting |
+
+The library is sourced (not executed) -- no side effects, no output on source.
+
+## Wake Format v2
+
+Section order: `[SESSION IDENTITY]`, `[TRIGGER]`, `[CONTENT]`, `[STATE HINT]`, `[CONTEXT PRESSURE]`, `[AVAILABLE ACTIONS]`
+
+**Breaking change:** `[PANE CONTENT]` (v1) replaced by `[CONTENT]` (v2). Downstream parsers must update.
+
+## Temp File Lifecycle
+
+Per-session state files in `/tmp`:
+- `gsd-pane-prev-{session}.txt` -- last pane capture (written by `extract_pane_diff`)
+- `gsd-pane-lock-{session}` -- flock file for atomic diff operations
+
+Files are cleaned up by `session-end-hook.sh` when the Claude Code session terminates. No stale files accumulate across sessions.
 
 ---
 
