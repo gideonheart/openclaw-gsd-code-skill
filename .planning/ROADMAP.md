@@ -215,7 +215,7 @@ Plans:
 
 **Milestone Goal:** Extract shared code from duplicated hook preambles, unify divergent patterns, and complete the v2.0 [CONTENT] migration left incomplete in v3.0. Zero new user-facing behavior — pure maintenance refactoring eliminating copy-paste debt.
 
-- [ ] **Phase 12: Shared Library Foundation** - Create hook-preamble.sh and extend hook-utils.sh with extract_hook_settings() and detect_session_state()
+- [x] **Phase 12: Shared Library Foundation** - Create hook-preamble.sh and extend hook-utils.sh with extract_hook_settings() and detect_session_state() (completed 2026-02-18)
 - [ ] **Phase 13: Coordinated Hook Migration** - Apply preamble sourcing, settings function, [CONTENT] labels, printf sweep, and session-end guards across all 7 hooks in one pass
 - [ ] **Phase 14: Diagnostic Fixes** - Align diagnose-hooks.sh Step 7 (prefix-match) and Step 2 (complete 7-script list) with actual hook behavior
 
@@ -307,6 +307,6 @@ Phase 14 depends on Phase 12 (not Phase 13) — can run in parallel with Phase 1
 | 9. Hook Script Migration | v3.0 | 3/3 | Complete | 2026-02-18 |
 | 10. AskUserQuestion Lifecycle Completion | v3.0 | 1/1 | Complete | 2026-02-18 |
 | 11. Operational Hardening | v3.0 | 2/2 | Complete | 2026-02-18 |
-| 12. Shared Library Foundation | v3.1 | 0/1 | Planned | - |
+| 12. Shared Library Foundation | 1/1 | Complete   | 2026-02-18 | - |
 | 13. Coordinated Hook Migration | v3.1 | 0/TBD | Not started | - |
 | 14. Diagnostic Fixes | v3.1 | 0/TBD | Not started | - |

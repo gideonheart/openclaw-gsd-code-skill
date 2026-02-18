@@ -144,11 +144,11 @@ Requirements for milestone v3.1: Hook Refactoring & Migration Completion. Extrac
 
 ### Refactoring
 
-- [ ] **REFAC-01**: lib/hook-preamble.sh extracts the 27-line bootstrap block with BASH_SOURCE[1] caller identity, debug_log(), and hook-utils.sh sourcing
-- [ ] **REFAC-02**: hook-preamble.sh includes source guard preventing double-sourcing and direct execution
+- [x] **REFAC-01**: lib/hook-preamble.sh extracts the 27-line bootstrap block with BASH_SOURCE[1] caller identity, debug_log(), and hook-utils.sh sourcing
+- [x] **REFAC-02**: hook-preamble.sh includes source guard preventing double-sourcing and direct execution
 - [ ] **REFAC-03**: All 7 hooks source hook-preamble.sh as single entry point (no direct hook-utils.sh source)
-- [ ] **REFAC-04**: extract_hook_settings() in lib/hook-utils.sh replaces 4x duplicated 12-line settings extraction with three-tier fallback and error guards
-- [ ] **REFAC-05**: detect_session_state() in lib/hook-utils.sh unifies state detection with consistent state names and case-insensitive extended regex patterns
+- [x] **REFAC-04**: extract_hook_settings() in lib/hook-utils.sh replaces 4x duplicated 12-line settings extraction with three-tier fallback and error guards
+- [x] **REFAC-05**: detect_session_state() in lib/hook-utils.sh unifies state detection with consistent state names and case-insensitive extended regex patterns
 
 ### Migration
 
@@ -255,10 +255,10 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| REFAC-01 | Phase 12 | Pending |
-| REFAC-02 | Phase 12 | Pending |
-| REFAC-04 | Phase 12 | Pending |
-| REFAC-05 | Phase 12 | Pending |
+| REFAC-01 | Phase 12 | Complete |
+| REFAC-02 | Phase 12 | Complete |
+| REFAC-04 | Phase 12 | Complete |
+| REFAC-05 | Phase 12 | Complete |
 | REFAC-03 | Phase 13 | Pending |
 | MIGR-01 | Phase 13 | Pending |
 | MIGR-02 | Phase 13 | Pending |

@@ -10,14 +10,14 @@ See: .planning/PROJECT.md (updated 2026-02-18)
 ## Current Position
 
 Phase: 12 — Shared Library Foundation
-Plan: —
-Status: Roadmap defined, ready to plan Phase 12
-Last activity: 2026-02-18 — Milestone v3.1 roadmap created (Phases 12-14)
+Plan: 01 (complete — 1/1 plans done)
+Status: Phase 12 complete, ready for Phase 13 planning
+Last activity: 2026-02-18 — Phase 12 executed (1 plan, ~4 min)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 22 (v1.0 phases 1-5 + v2.0 phases 6-7 + v3.0 phases 8-11)
+- Total plans completed: 23 (v1.0 phases 1-5 + v2.0 phases 6-7 + v3.0 phases 8-11 + v3.1 phase 12)
 - Average duration: —
 - Total execution time: —
 
@@ -32,6 +32,7 @@ Last activity: 2026-02-18 — Milestone v3.1 roadmap created (Phases 12-14)
 | 9 (v3.0) | 3 | ~8 min | ~2.7 min |
 | 10 (v3.0) | 1 | ~3 min | ~3 min |
 | 11 (v3.0) | 2 | ~4 min | ~2 min |
+| 12 (v3.1) | 1 | ~4 min | ~4 min |
 
 *Updated after each plan completion*
 
@@ -78,6 +79,13 @@ Phase 11 decisions (confirmed and shipped):
 - JSONL diagnostic as Step 10 in diagnose-hooks.sh — between existing Step 9 (Hook Debug Logs) and optional test-wake (renumbered to Step 11)
 - Missing JSONL file handled as INFO not FAIL — fresh installs have not fired hooks yet
 
+Phase 12 decisions (confirmed and shipped):
+- BASH_SOURCE[1] for caller identity in sourced preamble — automatic, no parameter passing needed
+- JSON return from extract_hook_settings() — immune to injection risk, consistent with existing lib style
+- Stop/notification grep pattern as canonical for detect_session_state() — pre-compact differences deferred to Phase 13
+- exit 0 only for lib-not-found fatal case in preamble — all other paths use return 0
+- lib/hook-utils.sh now has 8 functions: 6 original + extract_hook_settings + detect_session_state
+
 ### Pending Todos
 
 None.
@@ -112,5 +120,5 @@ Quick-9 (2026-02-18): Incomplete v2.0 wake message migration — [CONTENT] appli
 ## Session Continuity
 
 Last session: 2026-02-18
-Stopped at: v3.1 roadmap created — Phase 12 is next
+Stopped at: Phase 12 complete — Phase 13 planning is next
 Resume file: None
