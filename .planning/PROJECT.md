@@ -8,18 +8,17 @@ A multi-agent Claude Code session management skill for OpenClaw. It launches Cla
 
 Reliable, intelligent agent session lifecycle — launch, recover, and respond to Claude Code sessions without human intervention.
 
-## Current Milestone: v3.0 Structured Hook Observability
+## Current Milestone: v3.1 Hook Refactoring & Migration Completion
 
-**Goal:** Replace plain-text hook logs with structured JSONL event logging — each hook interaction produces paired events (request + response) linked by correlation_id, providing full lifecycle visibility into hook interactions.
+**Goal:** Extract shared code from duplicated hook preambles, unify divergent patterns, and complete the v2.0 [CONTENT] migration left incomplete in v3.0.
 
 **Target features:**
-- Structured JSONL event logging replacing plain-text debug_log
-- Single complete record per hook invocation — accumulate all lifecycle data, write once at end
-- Full wake message body captured (what was actually sent to OpenClaw)
-- OpenClaw response captured (what came back, what action was taken, outcome)
-- AskUserQuestion lifecycle — question forwarded + answer selected linked by tool_use_id
-- Per-session JSONL log files in skill logs/ directory
-- duration_ms, logrotate, diagnose-hooks.sh JSONL compat
+- hook-preamble.sh extracted from 27-line preamble duplicated across 7 hooks
+- extract_hook_settings() shared function replacing 4x duplicated hook_settings extraction
+- v2.0 [CONTENT] migration completed for notification-idle, notification-permission, pre-compact hooks
+- State detection unified — pre-compact uses same patterns as other hooks
+- diagnose-hooks.sh Step 7 fixed to use prefix-match (matching actual hook behavior)
+- echo replaced with printf '%s' for all jq piping (escape sequence safety)
 
 ## Requirements
 
@@ -50,10 +49,11 @@ Reliable, intelligent agent session lifecycle — launch, recover, and respond t
 
 <!-- Current scope. Building toward these. -->
 
-- [ ] Shared JSONL logging library in lib/hook-utils.sh (JSONL-01 through JSONL-05)
-- [ ] All 6 hook scripts migrated to JSONL records (HOOK-12 through HOOK-17)
-- [ ] AskUserQuestion full lifecycle: question forwarded + answer selected (ASK-04 through ASK-06)
-- [ ] duration_ms, logrotate, diagnose-hooks.sh JSONL compat (OPS-01 through OPS-03)
+- [ ] hook-preamble.sh shared preamble sourced by all 7 hooks (REFAC-01 through REFAC-03)
+- [ ] extract_hook_settings() shared function in lib/hook-utils.sh (REFAC-04)
+- [ ] v2.0 [CONTENT] migration for notification-idle, notification-permission, pre-compact (MIGR-01 through MIGR-03)
+- [ ] State detection unified across all hooks (UNIFY-01 through UNIFY-02)
+- [ ] diagnose-hooks.sh prefix-match fix and echo-to-printf cleanup (FIX-01 through FIX-02)
 
 ### Out of Scope
 
@@ -99,4 +99,4 @@ Reliable, intelligent agent session lifecycle — launch, recover, and respond t
 | Skill logs/ directory (not OpenClaw sessions/) | Separation of concerns; avoids coupling to OpenClaw internal format and pruning | Confirmed |
 
 ---
-*Last updated: 2026-02-18 after v3.0 milestone start*
+*Last updated: 2026-02-18 after v3.1 milestone start*
