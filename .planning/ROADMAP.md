@@ -5,6 +5,7 @@
 - ✅ **v1.0 Hook-Driven Agent Control** - Phases 1-5 (shipped 2026-02-17)
 - ✅ **v2.0 Smart Hook Delivery** - Phases 6-7 (shipped 2026-02-18)
 - ✅ **v3.0 Structured Hook Observability** - Phases 8-11 (shipped 2026-02-18)
+- **v3.1 Hook Refactoring & Migration Completion** - Phases 12-14 (active)
 
 ## Phases
 
@@ -210,6 +211,14 @@ Plans:
 - [x] 11-01-PLAN.md -- Logrotate config template and install script (copytruncate for open >> fd safety)
 - [x] 11-02-PLAN.md -- diagnose-hooks.sh Step 10: JSONL log analysis with jq diagnostic queries
 
+### v3.1 Hook Refactoring & Migration Completion
+
+**Milestone Goal:** Extract shared code from duplicated hook preambles, unify divergent patterns, and complete the v2.0 [CONTENT] migration left incomplete in v3.0. Zero new user-facing behavior — pure maintenance refactoring eliminating copy-paste debt.
+
+- [ ] **Phase 12: Shared Library Foundation** - Create hook-preamble.sh and extend hook-utils.sh with extract_hook_settings() and detect_session_state()
+- [ ] **Phase 13: Coordinated Hook Migration** - Apply preamble sourcing, settings function, [CONTENT] labels, printf sweep, and session-end guards across all 7 hooks in one pass
+- [ ] **Phase 14: Diagnostic Fixes** - Align diagnose-hooks.sh Step 7 (prefix-match) and Step 2 (complete 7-script list) with actual hook behavior
+
 ## Phase Details
 
 ### Phase 6: Core Extraction and Delivery Engine
@@ -243,10 +252,44 @@ Plans:
 - [x] 07-01-PLAN.md -- Registration and cleanup: PreToolUse hook in register-hooks.sh, /tmp state file cleanup in session-end-hook.sh
 - [x] 07-02-PLAN.md -- Documentation: Update SKILL.md and docs/hooks.md with v2.0 architecture
 
+### Phase 12: Shared Library Foundation
+**Goal**: lib/hook-preamble.sh and two new shared functions in lib/hook-utils.sh exist as stable, tested interfaces before any hook script is modified
+**Depends on**: Phase 11
+**Requirements**: REFAC-01, REFAC-02, REFAC-04, REFAC-05
+**Success Criteria** (what must be TRUE):
+  1. lib/hook-preamble.sh exists and when sourced from a hook script sets HOOK_SCRIPT_NAME to the calling hook's name (not "hook-preamble.sh"), confirming BASH_SOURCE[1] correctness
+  2. lib/hook-preamble.sh includes a source guard that prevents double-sourcing and rejects direct execution with a clear error message
+  3. extract_hook_settings() in lib/hook-utils.sh accepts registry_path and agent_data_json, sets PANE_CAPTURE_LINES, CONTEXT_PRESSURE_THRESHOLD, and HOOK_MODE in caller scope with three-tier fallback (per-agent > global > hardcoded defaults)
+  4. detect_session_state() in lib/hook-utils.sh returns consistent state names across all hook event types using case-insensitive extended regex patterns
+  5. Sourcing lib/hook-preamble.sh from a test caller makes all lib/hook-utils.sh functions callable without any additional source statement
+**Plans**: TBD
+
+### Phase 13: Coordinated Hook Migration
+**Goal**: All 7 hook scripts are thinned and consistent — one source statement replaces the 27-line preamble block, four hooks call extract_hook_settings() instead of duplicating the 12-line settings block, three hooks use [CONTENT] label, all hooks use printf '%s' for jq piping, and session-end jq guards are in place
+**Depends on**: Phase 12
+**Requirements**: REFAC-03, MIGR-01, MIGR-02, MIGR-03, FIX-03, QUAL-01
+**Success Criteria** (what must be TRUE):
+  1. Every hook script contains exactly one source statement for the library chain (source lib/hook-preamble.sh) and zero direct source statements for lib/hook-utils.sh — grep confirms no hook scripts source hook-utils.sh directly
+  2. notification-idle-hook.sh, notification-permission-hook.sh, and pre-compact-hook.sh wake messages contain [CONTENT] section header — no hook wake message contains [PANE CONTENT] anywhere in the codebase
+  3. All jq pipeline inputs across all 7 hooks use printf '%s' "$variable" instead of echo "$variable" — grep confirms zero echo-to-jq patterns remain
+  4. session-end-hook.sh jq calls include 2>/dev/null error guards — session cleanup does not abort on malformed registry data
+  5. A hook fired against a non-managed session still exits in under 5ms — preamble sourcing adds no measurable overhead to the fast-path guard exits
+**Plans**: TBD
+
+### Phase 14: Diagnostic Fixes
+**Goal**: diagnose-hooks.sh accurately reflects production hook behavior — Step 7 uses prefix-match lookup and Step 2 checks all 7 hook scripts
+**Depends on**: Phase 12
+**Requirements**: FIX-01, FIX-02
+**Success Criteria** (what must be TRUE):
+  1. diagnose-hooks.sh Step 7 uses startswith(agent_id + "-") prefix-match — a session named "gideon-2" correctly resolves to agent "gideon" instead of reporting a lookup failure
+  2. diagnose-hooks.sh Step 2 checks all 7 hook scripts including pre-tool-use-hook.sh and post-tool-use-hook.sh — a missing hook script is flagged as FAIL rather than silently ignored
+**Plans**: TBD
+
 ## Progress
 
 **Execution Order:**
-Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 → 9 → 10 → 11
+Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 → 9 → 10 → 11 → 12 → 13 → 14
+Phase 14 depends on Phase 12 (not Phase 13) — can run in parallel with Phase 13 or after.
 
 | Phase | Milestone | Plans Complete | Status | Completed |
 |-------|-----------|----------------|--------|-----------|
@@ -261,3 +304,6 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 9. Hook Script Migration | v3.0 | 3/3 | Complete | 2026-02-18 |
 | 10. AskUserQuestion Lifecycle Completion | v3.0 | 1/1 | Complete | 2026-02-18 |
 | 11. Operational Hardening | v3.0 | 2/2 | Complete | 2026-02-18 |
+| 12. Shared Library Foundation | v3.1 | 0/TBD | Not started | - |
+| 13. Coordinated Hook Migration | v3.1 | 0/TBD | Not started | - |
+| 14. Diagnostic Fixes | v3.1 | 0/TBD | Not started | - |

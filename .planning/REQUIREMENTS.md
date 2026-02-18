@@ -255,27 +255,27 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| REFAC-01 | — | Pending |
-| REFAC-02 | — | Pending |
-| REFAC-03 | — | Pending |
-| REFAC-04 | — | Pending |
-| REFAC-05 | — | Pending |
-| MIGR-01 | — | Pending |
-| MIGR-02 | — | Pending |
-| MIGR-03 | — | Pending |
-| FIX-01 | — | Pending |
-| FIX-02 | — | Pending |
-| FIX-03 | — | Pending |
-| QUAL-01 | — | Pending |
+| REFAC-01 | Phase 12 | Pending |
+| REFAC-02 | Phase 12 | Pending |
+| REFAC-04 | Phase 12 | Pending |
+| REFAC-05 | Phase 12 | Pending |
+| REFAC-03 | Phase 13 | Pending |
+| MIGR-01 | Phase 13 | Pending |
+| MIGR-02 | Phase 13 | Pending |
+| MIGR-03 | Phase 13 | Pending |
+| FIX-03 | Phase 13 | Pending |
+| QUAL-01 | Phase 13 | Pending |
+| FIX-01 | Phase 14 | Pending |
+| FIX-02 | Phase 14 | Pending |
 
 **Coverage:**
 - v1 requirements: 38 total, all done
 - v2 requirements: 14 total, all done
 - v3 requirements: 17 total, all done
 - v3.1 requirements: 12 total, all pending
-- Mapped to phases: 0
-- Unmapped: 12 (roadmap pending)
+- Mapped to phases: 12
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-02-17*
-*Last updated: 2026-02-18 — v3.1 requirements added, v3.0 marked shipped*
+*Last updated: 2026-02-18 — v3.1 roadmap created, all 12 requirements mapped to Phases 12-14*
