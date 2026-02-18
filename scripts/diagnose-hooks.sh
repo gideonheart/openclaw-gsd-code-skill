@@ -26,7 +26,9 @@ if [ -z "$AGENT_NAME" ]; then
   echo "  5. Session name resolution via tmux display-message"
   echo "  6. Registry lookup by session name"
   echo "  7. openclaw binary availability"
-  echo "  8. (Optional) Send a test wake message"
+  echo "  8. Hook debug logs"
+  echo "  9. JSONL log analysis (recent events, error counts, outcome distribution)"
+  echo "  10. (Optional) Send a test wake message"
   echo ""
   echo "Options:"
   echo "  --send-test-wake   Actually send a test wake message via openclaw"
@@ -322,10 +324,69 @@ fi
 echo ""
 
 # ------------------------------------------------------------------
-# 10. Optional: Send test wake message
+# 10. JSONL Log Analysis
+# ------------------------------------------------------------------
+echo "--- Step 10: JSONL Log Analysis ---"
+
+JSONL_LOG_FILE="${HOOK_LOG}/${TMUX_SESSION_NAME}.jsonl"
+TOTAL_CHECKS=$((TOTAL_CHECKS + 1))
+
+if [ ! -f "$JSONL_LOG_FILE" ]; then
+  info "No JSONL log yet for $TMUX_SESSION_NAME (hooks have not fired)"
+  PASSED_CHECKS=$((PASSED_CHECKS + 1))
+else
+  JSONL_RECORD_COUNT=$(wc -l < "$JSONL_LOG_FILE" 2>/dev/null || echo "0")
+  pass "JSONL log exists: $JSONL_LOG_FILE ($JSONL_RECORD_COUNT records)"
+  PASSED_CHECKS=$((PASSED_CHECKS + 1))
+
+  echo ""
+  info "Last 5 events:"
+  jq -r '[.timestamp, .hook_script, .trigger, .outcome] | @tsv' "$JSONL_LOG_FILE" \
+    2>/dev/null | tail -5 | while IFS=$'\t' read -r timestamp hook_script trigger outcome; do
+    info "  $timestamp  $hook_script  $trigger  $outcome"
+  done
+
+  echo ""
+  info "Outcome distribution:"
+  jq -r '.outcome' "$JSONL_LOG_FILE" 2>/dev/null | sort | uniq -c | sort -rn | \
+    while read -r count outcome; do
+    info "  $count $outcome"
+  done
+
+  echo ""
+  info "Hook script distribution:"
+  jq -r '.hook_script' "$JSONL_LOG_FILE" 2>/dev/null | sort | uniq -c | sort -rn | \
+    while read -r count hook_script; do
+    info "  $count $hook_script"
+  done
+
+  echo ""
+  NON_DELIVERED=$(jq -c 'select(.outcome != "delivered")' "$JSONL_LOG_FILE" 2>/dev/null | wc -l)
+  TOTAL_CHECKS=$((TOTAL_CHECKS + 1))
+  if [ "$NON_DELIVERED" -gt 0 ]; then
+    fail "Non-delivered events: $NON_DELIVERED — recent errors:"
+    jq -r 'select(.outcome != "delivered") | [.timestamp, .hook_script, .outcome] | @tsv' \
+      "$JSONL_LOG_FILE" 2>/dev/null | tail -5 | while IFS=$'\t' read -r timestamp hook_script outcome; do
+      info "  $timestamp  $hook_script  $outcome"
+    done
+  else
+    pass "No non-delivered events — all $JSONL_RECORD_COUNT hook invocations delivered"
+    PASSED_CHECKS=$((PASSED_CHECKS + 1))
+  fi
+
+  echo ""
+  info "Duration stats (ms):"
+  jq -s '[.[].duration_ms] | {count: length, min: min, max: max, avg: (add/length | round)}' \
+    "$JSONL_LOG_FILE" 2>/dev/null | jq -r '"  count=\(.count) min=\(.min) max=\(.max) avg=\(.avg)"'
+fi
+
+echo ""
+
+# ------------------------------------------------------------------
+# 11. Optional: Send test wake message
 # ------------------------------------------------------------------
 if [ "$SEND_TEST_WAKE" = true ]; then
-  echo "--- Step 10: Test Wake Message ---"
+  echo "--- Step 11: Test Wake Message ---"
 
   TIMESTAMP=$(date -u +'%Y-%m-%dT%H:%M:%SZ')
   TEST_WAKE_MESSAGE="[SESSION IDENTITY]
