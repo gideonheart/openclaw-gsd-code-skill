@@ -133,7 +133,11 @@ Plans:
   1. Running register-hooks.sh adds the PreToolUse hook with AskUserQuestion matcher to settings.json — new sessions get AskUserQuestion forwarding automatically
   2. When a Claude Code session ends, session-end-hook.sh deletes /tmp pane state files — no stale files accumulate
   3. SKILL.md documents v2.0 architecture: lib/hook-utils.sh, pre-tool-use-hook.sh, v2 wake format, minimum Claude Code version >= 2.0.76
-**Plans**: TBD
+**Plans**: 2 plans
+
+Plans:
+- [ ] 07-01-PLAN.md -- Registration and cleanup: PreToolUse hook in register-hooks.sh, /tmp state file cleanup in session-end-hook.sh
+- [ ] 07-02-PLAN.md -- Documentation: Update SKILL.md and docs/hooks.md with v2.0 architecture
 
 ## Phase Details
 
@@ -162,7 +166,11 @@ Plans:
   1. Running register-hooks.sh adds the PreToolUse hook with AskUserQuestion matcher to settings.json — new sessions get AskUserQuestion forwarding automatically
   2. When a Claude Code session ends, session-end-hook.sh deletes /tmp pane state files — no stale files accumulate
   3. SKILL.md documents v2.0 architecture: lib/hook-utils.sh, pre-tool-use-hook.sh, v2 wake format, minimum Claude Code version >= 2.0.76
-**Plans**: TBD
+**Plans**: 2 plans
+
+Plans:
+- [ ] 07-01-PLAN.md -- Registration and cleanup: PreToolUse hook in register-hooks.sh, /tmp state file cleanup in session-end-hook.sh
+- [ ] 07-02-PLAN.md -- Documentation: Update SKILL.md and docs/hooks.md with v2.0 architecture
 
 ## Progress
 
