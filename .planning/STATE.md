@@ -12,7 +12,7 @@ See: .planning/PROJECT.md (updated 2026-02-18)
 Phase: 14 — Diagnostic Fixes (COMPLETE)
 Plan: 1/1 complete
 Status: Milestone v3.1 complete — all phases finished
-Last activity: 2026-02-18 - Completed quick task 12: Fix 4 remaining v3.1 retrospective issues
+Last activity: 2026-02-18 - Completed quick task 13: Update SKILL.md, README.md, and docs/hooks.md for Quick-12 v3.1 fixes
 
 ## Performance Metrics
 
