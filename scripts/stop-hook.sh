@@ -55,7 +55,7 @@ GSD_HOOK_LOG="${SKILL_LOG_DIR}/${SESSION_NAME}.log"
 debug_log "=== log redirected to per-session file ==="
 
 # ============================================================================
-# 5. REGISTRY LOOKUP (jq, no Python)
+# 5. REGISTRY LOOKUP (prefix match via shared function)
 # ============================================================================
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REGISTRY_PATH="${SCRIPT_DIR}/../config/recovery-registry.json"
@@ -65,14 +65,19 @@ if [ ! -f "$REGISTRY_PATH" ]; then
   exit 0
 fi
 
-AGENT_DATA=$(jq -r \
-  --arg session "$SESSION_NAME" \
-  '.agents[] | select(.tmux_session_name == $session) |
-   {agent_id, openclaw_session_id, hook_settings}' \
-  "$REGISTRY_PATH" 2>/dev/null || echo "")
+LIB_PATH="${SCRIPT_DIR}/../lib/hook-utils.sh"
+if [ -f "$LIB_PATH" ]; then
+  source "$LIB_PATH"
+  debug_log "sourced lib/hook-utils.sh"
+else
+  debug_log "EXIT: hook-utils.sh not found at $LIB_PATH"
+  exit 0
+fi
+
+AGENT_DATA=$(lookup_agent_in_registry "$REGISTRY_PATH" "$SESSION_NAME")
 
 if [ -z "$AGENT_DATA" ] || [ "$AGENT_DATA" = "null" ]; then
-  debug_log "EXIT: no agent matched tmux_session_name=$SESSION_NAME in registry"
+  debug_log "EXIT: no agent matched session=$SESSION_NAME in registry"
   exit 0  # Non-managed session, fast exit
 fi
 
@@ -101,17 +106,6 @@ CONTEXT_PRESSURE_THRESHOLD=$(echo "$AGENT_DATA" | jq -r \
 HOOK_MODE=$(echo "$AGENT_DATA" | jq -r \
   --argjson global "$GLOBAL_SETTINGS" \
   '(.hook_settings.hook_mode // $global.hook_mode // "async")' 2>/dev/null || echo "async")
-
-# ============================================================================
-# 6b. SOURCE SHARED LIBRARY
-# ============================================================================
-LIB_PATH="${SCRIPT_DIR}/../lib/hook-utils.sh"
-if [ -f "$LIB_PATH" ]; then
-  source "$LIB_PATH"
-  debug_log "sourced lib/hook-utils.sh"
-else
-  debug_log "WARNING: lib/hook-utils.sh not found at $LIB_PATH — transcript extraction disabled"
-fi
 
 # ============================================================================
 # 7. CAPTURE PANE CONTENT

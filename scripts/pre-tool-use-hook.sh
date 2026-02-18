@@ -48,7 +48,7 @@ GSD_HOOK_LOG="${SKILL_LOG_DIR}/${SESSION_NAME}.log"
 debug_log "=== log redirected to per-session file ==="
 
 # ============================================================================
-# 4. REGISTRY LOOKUP (jq, no Python)
+# 4. REGISTRY LOOKUP (prefix match via shared function)
 # ============================================================================
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REGISTRY_PATH="${SCRIPT_DIR}/../config/recovery-registry.json"
@@ -58,14 +58,19 @@ if [ ! -f "$REGISTRY_PATH" ]; then
   exit 0
 fi
 
-AGENT_DATA=$(jq -r \
-  --arg session "$SESSION_NAME" \
-  '.agents[] | select(.tmux_session_name == $session) |
-   {agent_id, openclaw_session_id}' \
-  "$REGISTRY_PATH" 2>/dev/null || echo "")
+LIB_PATH="${SCRIPT_DIR}/../lib/hook-utils.sh"
+if [ -f "$LIB_PATH" ]; then
+  source "$LIB_PATH"
+  debug_log "sourced lib/hook-utils.sh"
+else
+  debug_log "EXIT: hook-utils.sh not found at $LIB_PATH"
+  exit 0
+fi
+
+AGENT_DATA=$(lookup_agent_in_registry "$REGISTRY_PATH" "$SESSION_NAME")
 
 if [ -z "$AGENT_DATA" ] || [ "$AGENT_DATA" = "null" ]; then
-  debug_log "EXIT: no agent matched tmux_session_name=$SESSION_NAME in registry"
+  debug_log "EXIT: no agent matched session=$SESSION_NAME in registry"
   exit 0  # Non-managed session, fast exit
 fi
 
@@ -89,17 +94,8 @@ fi
 debug_log "tool_input_length=${#TOOL_INPUT}"
 
 # ============================================================================
-# 6. SOURCE SHARED LIBRARY AND FORMAT QUESTIONS
+# 6. FORMAT QUESTIONS (hook-utils.sh already sourced in step 4)
 # ============================================================================
-LIB_PATH="${SCRIPT_DIR}/../lib/hook-utils.sh"
-if [ -f "$LIB_PATH" ]; then
-  source "$LIB_PATH"
-  debug_log "sourced lib/hook-utils.sh"
-else
-  debug_log "ERROR: could not source lib/hook-utils.sh at $LIB_PATH"
-  exit 0
-fi
-
 FORMATTED_QUESTIONS=$(format_ask_user_questions "$TOOL_INPUT")
 debug_log "formatted_questions_length=${#FORMATTED_QUESTIONS}"
 

@@ -1,8 +1,41 @@
 #!/usr/bin/env bash
-# lib/hook-utils.sh - Shared extraction functions for GSD hook scripts
-# Sourced by stop-hook.sh and pre-tool-use-hook.sh only.
+# lib/hook-utils.sh - Shared utility functions for GSD hook scripts
+# Sourced by all 6 hook scripts (registry lookup, extraction, formatting).
 # Contains ONLY function definitions - no side effects on source.
 # No set -euo pipefail here - the caller sets shell options.
+
+# ==========================================================================
+# lookup_agent_in_registry
+# ==========================================================================
+# Looks up an agent in the recovery registry using prefix matching on
+# agent_id. This is resilient to tmux session suffix increments (e.g.,
+# warden-main -> warden-main-2 -> warden-main-3) because it matches any
+# session name starting with "{agent_id}-" rather than requiring an exact
+# tmux_session_name match.
+#
+# Arguments:
+#   $1 - registry_path: path to recovery-registry.json
+#   $2 - session_name: current tmux session name
+# Returns:
+#   Agent JSON on stdout: {agent_id, openclaw_session_id, hook_settings}
+#   Empty string if no match or file missing.
+# ==========================================================================
+lookup_agent_in_registry() {
+  local registry_path="$1"
+  local session_name="$2"
+
+  if [ -z "$registry_path" ] || [ ! -f "$registry_path" ]; then
+    printf ''
+    return
+  fi
+
+  jq -r \
+    --arg session "$session_name" \
+    '.agents[] | . as $agent |
+     select($session | startswith($agent.agent_id + "-")) |
+     {agent_id, openclaw_session_id, hook_settings}' \
+    "$registry_path" 2>/dev/null || printf ''
+}
 
 # ==========================================================================
 # extract_last_assistant_response
