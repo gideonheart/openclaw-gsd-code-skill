@@ -174,7 +174,12 @@ Plans:
   4. All 6 scripts source lib/hook-utils.sh at top of script (before any guard exit)
   5. Plain-text `.log` files continue in parallel for backward compatibility during transition
   6. Guard exits (no TMUX, no registry match) do NOT emit JSONL — zero jq overhead for non-managed sessions
-**Plans**: TBD
+**Plans**: 3 plans
+
+Plans:
+- [ ] 09-01-PLAN.md -- Migrate simple hooks: notification-idle, notification-permission, session-end
+- [ ] 09-02-PLAN.md -- Migrate medium hooks: pre-tool-use (ASK-04), pre-compact (bidirectional)
+- [ ] 09-03-PLAN.md -- Migrate stop-hook.sh (bidirectional, dynamic content_source)
 
 ### Phase 10: AskUserQuestion Lifecycle Completion
 **Goal**: Full question-to-answer audit trail — see what OpenClaw received, what it decided, and how it controlled the TUI
