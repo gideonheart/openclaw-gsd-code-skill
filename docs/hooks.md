@@ -34,9 +34,9 @@ These hooks notify the OpenClaw agent when Claude Code needs attention.
    - `working` otherwise
 10. Extract context pressure: parse last 5 lines for `N%`, classify as CRITICAL (>=80%), WARNING (>=threshold), or OK
 11. Build structured wake message with session identity, trigger type, state hint, pane content, context pressure, and available `menu-driver.sh` actions
-12. Deliver message:
-    - **Async mode** (default): background `openclaw agent` call, exit immediately
-    - **Bidirectional mode**: wait for OpenClaw response, parse for `decision: "block"`, return decision to Claude Code
+12. Deliver message via `deliver_with_mode` from `lib/hook-utils.sh`:
+    - **Async mode** (default): delegates to `deliver_async_with_logging` which backgrounds `openclaw agent` call, exit immediately
+    - **Bidirectional mode**: waits for OpenClaw response, writes JSONL record, parses for `decision: "block"`, emits JSON-safe output via `jq -cn --arg` (no string-interpolated JSON), returns decision to Claude Code, exits 0
 
 **Configuration (hook_settings):**
 
@@ -82,7 +82,7 @@ Defaults: `pane_capture_lines=100`, `context_pressure_threshold=50`, `hook_mode=
 9. Detect session state (same pattern matching as stop-hook.sh)
 10. Extract context pressure (same logic as stop-hook.sh)
 11. Build structured wake message with `type: idle_prompt`
-12. Deliver message (async or bidirectional mode)
+12. Deliver message via `deliver_with_mode` (async or bidirectional mode)
 
 **Configuration (hook_settings):**
 
@@ -106,7 +106,7 @@ Same as stop-hook.sh: `pane_capture_lines`, `context_pressure_threshold`, `hook_
 
 **What It Does:**
 
-1-12. Identical flow to notification-idle-hook.sh, except wake message uses `type: permission_prompt`
+1-12. Identical flow to notification-idle-hook.sh, except wake message uses `type: permission_prompt`. Delivery via `deliver_with_mode`.
 
 **Configuration (hook_settings):**
 
@@ -254,7 +254,7 @@ Uses default timeout (no custom timeout in settings.json registration). Ignores 
     - `permission_prompt` if pane contains "permission to"
     - `active` otherwise
 11. Build structured wake message with `type: pre_compact`, state, pane content, context pressure, available actions
-12. Deliver message (async or bidirectional mode)
+12. Deliver message via `deliver_with_mode` (async or bidirectional mode)
 
 **Configuration (hook_settings):**
 
@@ -358,7 +358,7 @@ The stop hook uses a three-tier fallback to populate the `[CONTENT]` section:
 
 ## Shared Library
 
-`lib/hook-utils.sh` contains 6 functions:
+`lib/hook-utils.sh` contains 9 functions:
 
 | Function | Used By | Purpose |
 |----------|---------|---------|
@@ -366,8 +366,11 @@ The stop hook uses a three-tier fallback to populate the `[CONTENT]` section:
 | `extract_last_assistant_response` | stop-hook.sh | JSONL transcript text extraction |
 | `extract_pane_diff` | stop-hook.sh | Per-session pane line delta |
 | `format_ask_user_questions` | pre-tool-use-hook.sh | AskUserQuestion data formatting |
-| `write_hook_event_record` | all hooks (via deliver_async_with_logging) | Structured JSONL record emission with 13 positional parameters |
+| `write_hook_event_record` | all hooks (via deliver_async_with_logging) | Structured JSONL record emission with 13 positional parameters; uses conditional `extra_args` array for optional `--argjson` to avoid internal duplication |
 | `deliver_async_with_logging` | all hooks | Backgrounded async delivery with JSONL logging (calls write_hook_event_record + openclaw agent) |
+| `deliver_with_mode` | stop, notification-idle, notification-permission hooks | Encapsulates bidirectional-vs-async delivery; bidirectional emits JSON-safe output via `jq -cn` (not string interpolation); async delegates to deliver_async_with_logging; exits 0 |
+| `extract_hook_settings` | stop, notification-idle, notification-permission, pre-compact hooks | Three-tier fallback settings extraction; returns compact JSON |
+| `detect_session_state` | stop, notification-idle, notification-permission, pre-compact hooks | Case-insensitive pane pattern matching; returns menu/permission_prompt/idle/error/working |
 
 The library is sourced (not executed) -- no side effects, no output on source.
 
