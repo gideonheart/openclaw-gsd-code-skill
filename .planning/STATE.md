@@ -12,7 +12,7 @@ See: .planning/PROJECT.md (updated 2026-02-18)
 Phase: 7 of 7 (Registration, Deployment, and Documentation)
 Plan: 2 of 2 in current phase
 Status: Complete
-Last activity: 2026-02-18 — Phase 7 complete, v2.0 milestone shipped
+Last activity: 2026-02-18 - Completed quick task 5: Move GSD hook logs from /tmp to skill-local logs/
 
 Progress: [██████████] 100% (v1.0 complete, v2.0 complete)
 
@@ -59,6 +59,12 @@ None.
 
 - ~~Gideon's wake message parsing must be updated to handle v2 [CONTENT] format~~ — RESOLVED: no hardcoded parser exists. Wake messages are free-text consumed by LLM agents. Format change is transparent.
 - ~~Session name sanitization: if future sessions use spaces or slashes in names, /tmp file naming breaks~~ — RESOLVED: pane state files now live in logs/ using SESSION_NAME in filename; same constraint but logs/ is persistent and skill-local.
+
+### Quick Tasks Completed
+
+| # | Description | Date | Commit | Directory |
+|---|-------------|------|--------|-----------|
+| 5 | Move GSD hook logs from /tmp to skill-local logs/ with per-session files | 2026-02-18 | c9b74c3 | [5-move-gsd-hook-logs-from-tmp-to-skill-loc](./quick/5-move-gsd-hook-logs-from-tmp-to-skill-loc/) |
 
 ### Quick Task Decisions
 
