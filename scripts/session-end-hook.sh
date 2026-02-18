@@ -1,29 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
-
-# Resolve skill-local log directory from this script's location
-SKILL_LOG_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/logs"
-mkdir -p "$SKILL_LOG_DIR"
-
-# Phase 1: log to shared file until session name is known
-GSD_HOOK_LOG="${GSD_HOOK_LOG:-${SKILL_LOG_DIR}/hooks.log}"
-HOOK_SCRIPT_NAME="$(basename "${BASH_SOURCE[0]}")"
-
-debug_log() {
-  printf '[%s] [%s] %s\n' "$(date -u +'%Y-%m-%dT%H:%M:%SZ')" "$HOOK_SCRIPT_NAME" "$*" >> "$GSD_HOOK_LOG" 2>/dev/null || true
-}
-
-debug_log "FIRED — PID=$$ TMUX=${TMUX:-<unset>}"
-
-# Source shared library BEFORE any guard exits (Phase 9 requirement)
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-LIB_PATH="${SCRIPT_DIR}/../lib/hook-utils.sh"
-if [ -f "$LIB_PATH" ]; then
-  source "$LIB_PATH"
-else
-  debug_log "FATAL: hook-utils.sh not found at $LIB_PATH"
-  exit 0
-fi
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")/../lib" && pwd)/hook-preamble.sh"
 
 # SessionEnd hook: Notify OpenClaw when Claude Code session terminates.
 # Sends minimal wake message (identity + trigger only, no pane capture).
@@ -32,7 +9,7 @@ fi
 # 1. Consume stdin immediately to prevent pipe blocking
 STDIN_JSON=$(cat)
 HOOK_ENTRY_MS=$(date +%s%3N)
-debug_log "stdin: ${#STDIN_JSON} bytes, hook_event_name=$(echo "$STDIN_JSON" | jq -r '.hook_event_name // "unknown"' 2>/dev/null)"
+debug_log "stdin: ${#STDIN_JSON} bytes, hook_event_name=$(printf '%s' "$STDIN_JSON" | jq -r '.hook_event_name // "unknown"' 2>/dev/null)"
 
 # 2. Guard: Exit if not in tmux environment
 if [ -z "${TMUX:-}" ]; then
@@ -53,8 +30,6 @@ JSONL_FILE="${SKILL_LOG_DIR}/${SESSION_NAME}.jsonl"
 debug_log "=== log redirected to per-session file ==="
 
 # 4. Registry lookup (prefix match via shared function)
-REGISTRY_PATH="${SCRIPT_DIR}/../config/recovery-registry.json"
-
 if [ ! -f "$REGISTRY_PATH" ]; then
   debug_log "EXIT: registry not found at $REGISTRY_PATH"
   exit 0
@@ -67,9 +42,9 @@ if [ -z "$AGENT_DATA" ] || [ "$AGENT_DATA" = "null" ]; then
   exit 0
 fi
 
-# Extract required fields
-AGENT_ID=$(echo "$AGENT_DATA" | jq -r '.agent_id')
-OPENCLAW_SESSION_ID=$(echo "$AGENT_DATA" | jq -r '.openclaw_session_id')
+# Extract required fields (with 2>/dev/null error guards — FIX-03)
+AGENT_ID=$(printf '%s' "$AGENT_DATA" | jq -r '.agent_id' 2>/dev/null || echo "")
+OPENCLAW_SESSION_ID=$(printf '%s' "$AGENT_DATA" | jq -r '.openclaw_session_id' 2>/dev/null || echo "")
 debug_log "agent_id=$AGENT_ID openclaw_session_id=$OPENCLAW_SESSION_ID"
 
 if [ -z "$AGENT_ID" ] || [ -z "$OPENCLAW_SESSION_ID" ]; then

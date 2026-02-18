@@ -1,29 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
-
-# Resolve skill-local log directory from this script's location
-SKILL_LOG_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/logs"
-mkdir -p "$SKILL_LOG_DIR"
-
-# Phase 1: log to shared file until session name is known
-GSD_HOOK_LOG="${GSD_HOOK_LOG:-${SKILL_LOG_DIR}/hooks.log}"
-HOOK_SCRIPT_NAME="$(basename "${BASH_SOURCE[0]}")"
-
-debug_log() {
-  printf '[%s] [%s] %s\n' "$(date -u +'%Y-%m-%dT%H:%M:%SZ')" "$HOOK_SCRIPT_NAME" "$*" >> "$GSD_HOOK_LOG" 2>/dev/null || true
-}
-
-debug_log "FIRED — PID=$$ TMUX=${TMUX:-<unset>}"
-
-# Source shared library BEFORE any guard exits (Phase 9 requirement)
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-LIB_PATH="${SCRIPT_DIR}/../lib/hook-utils.sh"
-if [ -f "$LIB_PATH" ]; then
-  source "$LIB_PATH"
-else
-  debug_log "FATAL: hook-utils.sh not found at $LIB_PATH"
-  exit 0
-fi
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")/../lib" && pwd)/hook-preamble.sh"
 
 # PreCompact hook: Capture pane state before Claude Code compacts context window.
 # Sends full wake message with pane content, context pressure, and available actions.
@@ -32,7 +9,7 @@ fi
 # 1. Consume stdin immediately to prevent pipe blocking
 STDIN_JSON=$(cat)
 HOOK_ENTRY_MS=$(date +%s%3N)
-debug_log "stdin: ${#STDIN_JSON} bytes, hook_event_name=$(echo "$STDIN_JSON" | jq -r '.hook_event_name // "unknown"' 2>/dev/null)"
+debug_log "stdin: ${#STDIN_JSON} bytes, hook_event_name=$(printf '%s' "$STDIN_JSON" | jq -r '.hook_event_name // "unknown"' 2>/dev/null)"
 
 # 2. Guard: Exit if not in tmux environment
 if [ -z "${TMUX:-}" ]; then
@@ -53,8 +30,6 @@ JSONL_FILE="${SKILL_LOG_DIR}/${SESSION_NAME}.jsonl"
 debug_log "=== log redirected to per-session file ==="
 
 # 4. Registry lookup (prefix match via shared function)
-REGISTRY_PATH="${SCRIPT_DIR}/../config/recovery-registry.json"
-
 if [ ! -f "$REGISTRY_PATH" ]; then
   debug_log "EXIT: registry not found at $REGISTRY_PATH"
   exit 0
@@ -68,8 +43,8 @@ if [ -z "$AGENT_DATA" ] || [ "$AGENT_DATA" = "null" ]; then
 fi
 
 # Extract required fields
-AGENT_ID=$(echo "$AGENT_DATA" | jq -r '.agent_id')
-OPENCLAW_SESSION_ID=$(echo "$AGENT_DATA" | jq -r '.openclaw_session_id')
+AGENT_ID=$(printf '%s' "$AGENT_DATA" | jq -r '.agent_id' 2>/dev/null || echo "")
+OPENCLAW_SESSION_ID=$(printf '%s' "$AGENT_DATA" | jq -r '.openclaw_session_id' 2>/dev/null || echo "")
 debug_log "agent_id=$AGENT_ID openclaw_session_id=$OPENCLAW_SESSION_ID"
 
 if [ -z "$AGENT_ID" ] || [ -z "$OPENCLAW_SESSION_ID" ]; then
@@ -77,49 +52,32 @@ if [ -z "$AGENT_ID" ] || [ -z "$OPENCLAW_SESSION_ID" ]; then
   exit 0
 fi
 
-# 5. Extract hook_settings with three-tier fallback
-GLOBAL_SETTINGS=$(jq -r '.hook_settings // {}' "$REGISTRY_PATH")
-
-PANE_CAPTURE_LINES=$(echo "$AGENT_DATA" | jq -r \
-  --argjson global "$GLOBAL_SETTINGS" \
-  '(.hook_settings.pane_capture_lines // $global.pane_capture_lines // 100)')
-
-CONTEXT_PRESSURE_THRESHOLD=$(echo "$AGENT_DATA" | jq -r \
-  --argjson global "$GLOBAL_SETTINGS" \
-  '(.hook_settings.context_pressure_threshold // $global.context_pressure_threshold // 50)')
-
-HOOK_MODE=$(echo "$AGENT_DATA" | jq -r \
-  --argjson global "$GLOBAL_SETTINGS" \
-  '(.hook_settings.hook_mode // $global.hook_mode // "async")')
+# 5. Extract hook_settings via shared function (three-tier fallback)
+HOOK_SETTINGS_JSON=$(extract_hook_settings "$REGISTRY_PATH" "$AGENT_DATA")
+PANE_CAPTURE_LINES=$(printf '%s' "$HOOK_SETTINGS_JSON" | jq -r '.pane_capture_lines')
+CONTEXT_PRESSURE_THRESHOLD=$(printf '%s' "$HOOK_SETTINGS_JSON" | jq -r '.context_pressure_threshold')
+HOOK_MODE=$(printf '%s' "$HOOK_SETTINGS_JSON" | jq -r '.hook_mode')
 
 # 6. Capture pane content
 PANE_CONTENT=$(tmux capture-pane -t "$SESSION_NAME:0.0" -p -S "-${PANE_CAPTURE_LINES}" 2>/dev/null || echo "")
 
 # 7. Extract context pressure from last 5 lines
-LAST_LINES=$(echo "$PANE_CONTENT" | tail -5)
-CONTEXT_PRESSURE_PCT=$(echo "$LAST_LINES" | grep -oP '\d+(?=% of context)' | tail -1 || echo "0")
+LAST_LINES=$(printf '%s\n' "$PANE_CONTENT" | tail -5)
+CONTEXT_PRESSURE_PCT=$(printf '%s\n' "$LAST_LINES" | grep -oP '\d+(?=% of context)' | tail -1 || echo "0")
 
 # Determine pressure level
 if [ "$CONTEXT_PRESSURE_PCT" -ge "$CONTEXT_PRESSURE_THRESHOLD" ]; then
-  CONTEXT_PRESSURE="at ${CONTEXT_PRESSURE_PCT}% (⚠ above ${CONTEXT_PRESSURE_THRESHOLD}% threshold)"
+  CONTEXT_PRESSURE="at ${CONTEXT_PRESSURE_PCT}% (warning: above ${CONTEXT_PRESSURE_THRESHOLD}% threshold)"
 else
   CONTEXT_PRESSURE="at ${CONTEXT_PRESSURE_PCT}%"
 fi
 
-# 8. Detect session state from pane content
-if echo "$PANE_CONTENT" | grep -q "Choose an option:"; then
-  STATE="menu"
-elif echo "$PANE_CONTENT" | grep -q "Continue this conversation"; then
-  STATE="idle_prompt"
-elif echo "$PANE_CONTENT" | grep -q "permission to"; then
-  STATE="permission_prompt"
-else
-  STATE="active"
-fi
+# 8. Detect session state (shared function — case-insensitive extended regex)
+STATE=$(detect_session_state "$PANE_CONTENT")
 
 debug_log "state=$STATE"
 
-# 9. Build structured wake message (HOOK-10)
+# 9. Build structured wake message
 TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 
 WAKE_MESSAGE="[SESSION IDENTITY]
@@ -133,7 +91,7 @@ type: pre_compact
 [STATE HINT]
 state: ${STATE}
 
-[PANE CONTENT]
+[CONTENT]
 ${PANE_CONTENT}
 
 [CONTEXT PRESSURE]
