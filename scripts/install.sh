@@ -5,8 +5,8 @@ set -euo pipefail
 # Orchestrates: hook registration, logrotate setup, log directory creation,
 # diagnostic verification, and user-facing next-steps instructions.
 #
-# Usage: scripts/install.sh [agent-name]
-#   agent-name  Optional. If provided, runs diagnose-hooks.sh after installation.
+# Usage: scripts/install.sh
+# Auto-discovers agents from config/recovery-registry.json for diagnostics.
 
 # ============================================================================
 # Path Derivation
@@ -24,10 +24,10 @@ log_message() {
 }
 
 # ============================================================================
-# Arguments
+# Constants
 # ============================================================================
 
-AGENT_NAME="${1:-}"
+REGISTRY_FILE="${SKILL_ROOT}/config/recovery-registry.json"
 LOGROTATE_FAILED=false
 
 # ============================================================================
@@ -97,12 +97,23 @@ fi
 
 log_message "=== Step 5: Diagnostics ==="
 
-if [ -n "${AGENT_NAME}" ]; then
-  log_message "Running diagnostics for agent: ${AGENT_NAME}"
-  bash "${SCRIPT_DIR}/diagnose-hooks.sh" "${AGENT_NAME}" || true
+if [ -f "${REGISTRY_FILE}" ]; then
+  DISCOVERED_AGENTS=$(jq -r '.agents[] | .agent_id' "${REGISTRY_FILE}" 2>/dev/null || true)
+  if [ -n "${DISCOVERED_AGENTS}" ]; then
+    AGENT_COUNT=$(echo "${DISCOVERED_AGENTS}" | wc -l)
+    log_message "Discovered ${AGENT_COUNT} agent(s) from recovery-registry.json"
+    while IFS= read -r AGENT_NAME; do
+      log_message "Running diagnostics for agent: ${AGENT_NAME}"
+      bash "${SCRIPT_DIR}/diagnose-hooks.sh" "${AGENT_NAME}" || true
+      echo ""
+    done <<< "${DISCOVERED_AGENTS}"
+  else
+    log_message "INFO: No agents found in registry -- skipping diagnostics."
+    log_message "Register agents in config/recovery-registry.json first."
+  fi
 else
-  log_message "INFO: No agent name provided -- skipping diagnostics."
-  log_message "Run manually: scripts/diagnose-hooks.sh <agent-name>"
+  log_message "INFO: No recovery-registry.json found -- skipping diagnostics."
+  log_message "Create config/recovery-registry.json (see config/recovery-registry.example.json)"
 fi
 
 # ============================================================================
