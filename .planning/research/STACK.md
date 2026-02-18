@@ -1,234 +1,265 @@
-# Stack Research: v2.0 Smart Hook Delivery
+# Stack Research: Structured JSONL Hook Logging
 
-**Domain:** Hook-driven autonomous agent control for Claude Code sessions — context optimization
-**Researched:** 2026-02-17
-**Confidence:** HIGH — no new dependencies, all tools production-verified
+**Domain:** Structured event logging from bash hook scripts — per-session JSONL files
+**Researched:** 2026-02-18
+**Confidence:** HIGH — all tools production-verified on this host, no new dependencies required
 
 ## Executive Summary
 
-v2.0 Smart Hook Delivery requires **zero new dependencies**. All needed capabilities exist in the current production stack (bash 5.x, jq 1.7, tmux 3.4, Claude Code 2.1.45, OpenClaw 2026.2.16). The new features use standard Unix utilities (`diff`, `md5sum`, `tail`, `flock`) already installed on Ubuntu 24.
+Structured JSONL logging from bash requires **zero new dependencies** beyond what is already
+installed. The entire capability is built from `jq 1.7` (already in use), `uuidgen` (util-linux,
+confirmed present), `date` with millisecond precision (GNU coreutils 9.4), `flock` (already in use
+for pane state), and `stat` for size checks. No Python, no Node, no new packages.
 
-**Key finding:** The Claude Code hooks API already provides `transcript_path` in stdin JSON and supports `PreToolUse` with matchers — both confirmed in official docs and production. No API changes, no version upgrades, no new binaries required.
+The critical constraint is **jq's `--arg` flag for safe string embedding**. Every string value that
+could contain quotes, newlines, or special characters must be passed via `--arg`, never via string
+interpolation. This is the single most important rule for JSONL correctness from bash.
 
-## Core Stack (Unchanged from v1.0)
+**Recommended file naming:** `logs/${SESSION_NAME}.jsonl` — per-session, parallel to existing
+`logs/${SESSION_NAME}.log`. Both files serve different consumers: `.log` for human readline,
+`.jsonl` for machine processing.
 
-| Technology | Version | v2.0 Usage | Status |
-|------------|---------|------------|--------|
-| Bash | 5.x (Ubuntu 24) | All hook scripts, lib functions | Production verified |
-| jq | 1.7 | JSONL parsing, JSON extraction from stdin, registry ops | Production verified |
-| tmux | 3.4 | Pane capture, session detection, TUI control | Production verified |
-| Claude Code | 2.1.45 | Hook system (Stop, PreToolUse, Notification, etc.) | Production verified |
-| OpenClaw CLI | 2026.2.16 | `agent --session-id` wake delivery | Production verified |
+## Recommended Stack
 
-## Stack Additions for v2.0 Features
+### Core Technologies
 
-### 1. Transcript JSONL Parsing (tail + jq)
+| Technology | Version | Purpose | Why Recommended |
+|------------|---------|---------|-----------------|
+| jq | 1.7 (installed) | Generate JSONL records (`-cn` flag), safe string embedding via `--arg` | Already in every hook script. `jq -cn` with `--arg` is the only correct way to embed arbitrary strings (pane content, assistant responses) without JSON injection. No alternatives needed. |
+| uuidgen | util-linux (installed) | UUIDv4 correlation IDs and record IDs | 2ms per call (benchmarked). Produces spec-compliant UUIDv4. Both `uuidgen --random` and `/proc/sys/kernel/random/uuid` are equally fast (0.26s vs 0.30s for 100 calls). Use `uuidgen` for readability. |
+| date (GNU coreutils) | 9.4 (installed) | ISO 8601 millisecond timestamps via `%3N` | `date -u +'%Y-%m-%dT%H:%M:%S.%3NZ'` produces millisecond precision (verified: `2026-02-18T09:25:32.056Z`). Required for ordering records within the same second. |
+| flock | util-linux (installed) | Concurrent append protection | Multiple hooks fire concurrently for the same session (Stop + Notification can overlap). Without flock, concurrent `>>` appends to the same JSONL file corrupt records mid-line. Already used for pane state files — same pattern. |
+| stat | GNU coreutils (installed) | File size check for rotation | `stat --format="%s" file` returns bytes. Used in inline rotation guard before append. Zero subprocess overhead vs `du`. |
+| logrotate | 3.21.0 (installed) | Size-based log file rotation | Handles compression, keep N rotations, `copytruncate` for open-filehandle safety. Preferable to in-bash rotation for production use. |
 
-**For:** Transcript-based response extraction
+### Supporting Patterns (No New Binaries)
 
-**Tools:** `tail` (coreutils) + `jq` (already installed)
+| Pattern | Tools | Purpose | When to Use |
+|---------|-------|---------|-------------|
+| JSONL record generation | `jq -cn --arg k v ...` | Produce single-line JSON records | Every log write. The `-c` (compact) flag is mandatory for JSONL compliance — one record per line. |
+| Safe string embedding | `jq --arg name "$BASH_VAR"` | Escape quotes, newlines, tabs in values | Always. Never use string interpolation for user/session content. |
+| Correlation ID generation | `uuidgen --random` | UUIDv4 per hook invocation | At top of each hook script, before any branching, so every exit path carries the same correlation ID. |
+| parentId chaining | Store last ID in per-session state file | Link records within a session | For session-level threading: `session_start` record has `parentId: null`; subsequent records carry `parentId` of the preceding record. |
+| Millisecond timestamp | `date -u +'%Y-%m-%dT%H:%M:%S.%3NZ'` | ISO 8601 with ms precision | Every record. Required for within-second ordering. Verified to produce distinct values on consecutive calls (056Z, 058Z, 059Z). |
+| Concurrent append | `flock -x -w 2 200; jq -cn ... >> file; } 200>file.lock` | Atomic JSONL line append | Whenever multiple hooks can fire for the same session simultaneously. |
+| Inline size rotation | `stat --format="%s"` + `mv file file.1` | Rotate before file grows unbounded | For per-session JSONL files where logrotate is not session-aware enough. |
 
-**Approach:** Read last N lines of transcript JSONL, filter for assistant text blocks.
+## File Naming Convention
 
-```bash
-TRANSCRIPT_PATH=$(echo "$STDIN_JSON" | jq -r '.transcript_path // ""')
-if [ -n "$TRANSCRIPT_PATH" ] && [ -f "$TRANSCRIPT_PATH" ]; then
-  LAST_RESPONSE=$(tail -50 "$TRANSCRIPT_PATH" | \
-    jq -r 'select(.type == "assistant") | .message.content[]? | select(.type == "text") | .text' \
-    2>/dev/null | tail -1)
-fi
+```
+logs/
+  hooks.jsonl              # Pre-session-resolution events (hook fired but TMUX unset, etc.)
+  ${SESSION_NAME}.jsonl    # Per-session structured events (after session name resolved)
+  ${SESSION_NAME}.jsonl.1  # Rotated (if inline rotation used)
 ```
 
-**Why tail, not cat:** Transcripts grow unbounded (thousands of lines for long sessions). `tail -50` reads only the last 50 lines, keeping hook latency constant regardless of session length.
+The existing `.log` files (`hooks.log`, `${SESSION_NAME}.log`) remain in place — they serve human
+readline debugging. The new `.jsonl` files serve machine processing. They are parallel, not
+replacements.
 
-**Why `content[]? | select(.type == "text")`:** Assistant messages contain mixed content blocks (text, tool_use, thinking). Positional indexing (`content[0].text`) fails when thinking blocks are first. Type filtering is required.
+## JSONL Record Schema
 
-**JSONL entry structure (confirmed from live transcripts):**
+Every record must include these fields. Optional fields are hook-specific.
+
 ```json
 {
-  "type": "assistant",
-  "message": {
-    "role": "assistant",
-    "content": [
-      {"type": "text", "text": "Claude's clean response text here"}
-    ]
-  },
-  "timestamp": "2026-02-17T10:00:00.000Z"
+  "type": "hook_fired",
+  "id": "621c4d70-01e8-4f9d-890e-ca2fd682f7d8",
+  "parentId": "50d706d9-09eb-4f72-a904-531d34c7a021",
+  "timestamp": "2026-02-18T09:24:37.469Z",
+  "session": "warden-main-3",
+  "hook": "stop-hook.sh",
+  "pid": 72231
 }
 ```
 
-### 2. PreToolUse Hook Registration (Claude Code native)
+**Mandatory fields:**
+- `type` — event discriminator (see event types below)
+- `id` — UUIDv4 for this record (from `uuidgen`)
+- `parentId` — UUIDv4 of preceding record in this session, or `null` for first record
+- `timestamp` — ISO 8601 with milliseconds, UTC (from `date -u +'%Y-%m-%dT%H:%M:%S.%3NZ'`)
+- `session` — tmux session name (or `"pre-session"` before resolution)
+- `hook` — script filename
 
-**For:** AskUserQuestion forwarding
+**Event types:**
+- `hook_fired` — hook script started, stdin consumed
+- `guard_exit` — early exit due to guard condition (include `reason` field)
+- `registry_miss` — no agent matched session in registry
+- `delivery_start` — OpenClaw agent call initiated
+- `delivery_complete` — OpenClaw agent call returned (include `exit_code`, `mode` fields)
+- `session_end` — SessionEnd hook fired
 
-**Tools:** Claude Code hooks API (existing), `jq` for stdin parsing
+## JSONL Generation Pattern
 
-**Hook registration format in settings.json:**
-```json
-{
-  "PreToolUse": [
-    {
-      "matcher": "AskUserQuestion",
-      "hooks": [
-        {
-          "type": "command",
-          "command": "/path/to/pre-tool-use-hook.sh",
-          "timeout": 30
-        }
-      ]
-    }
-  ]
+The canonical pattern for a single JSONL record append in bash:
+
+```bash
+RECORD_ID=$(uuidgen --random)
+RECORD_TS=$(date -u +'%Y-%m-%dT%H:%M:%S.%3NZ')
+
+jq -cn \
+  --arg type "hook_fired" \
+  --arg id "$RECORD_ID" \
+  --arg parentId "${PARENT_ID:-null}" \
+  --arg ts "$RECORD_TS" \
+  --arg session "${SESSION_NAME:-pre-session}" \
+  --arg hook "$HOOK_SCRIPT_NAME" \
+  --argjson pid "$$" \
+  '{
+    type: $type,
+    id: $id,
+    parentId: (if $parentId == "null" then null else $parentId end),
+    timestamp: $ts,
+    session: $session,
+    hook: $hook,
+    pid: $pid
+  }' >> "$GSD_JSONL_LOG" 2>/dev/null || true
+```
+
+**Why `--argjson pid "$$"`** rather than `--arg pid "$$"`: PID is a number in JSON, not a string.
+`--argjson` injects already-parsed JSON (the number `72231`), while `--arg` would produce the
+string `"72231"`. Use `--arg` for strings, `--argjson` for numbers and booleans.
+
+**Why `parentId: (if $parentId == "null" then null else $parentId end)`**: `--arg` always passes
+strings, so the literal string `"null"` must be converted to JSON `null` for the first record.
+This is the correct jq idiom.
+
+## Rotation Strategy
+
+**Use logrotate for production rotation.** Install a config at
+`/etc/logrotate.d/gsd-code-skill`:
+
+```
+/home/forge/.openclaw/workspace/skills/gsd-code-skill/logs/*.jsonl {
+    size 10M
+    rotate 5
+    compress
+    delaycompress
+    missingok
+    notifempty
+    copytruncate
 }
 ```
 
-**Key: matcher must be `"AskUserQuestion"`, not `"*"`**. A global matcher fires for EVERY tool call (Bash, Read, Write, Edit, Glob, Grep, etc.), adding latency to each one. Specific matcher fires only for AskUserQuestion.
+**Why `copytruncate`**: Hook scripts append to open file descriptors. Standard logrotate renames
+the file and creates a new one — but the hook script's open `>>` handle still points to the
+renamed file. `copytruncate` copies the content then truncates in-place, keeping the file
+descriptor valid. Required for correctness.
 
-**PreToolUse stdin JSON for AskUserQuestion:**
-```json
-{
-  "session_id": "abc123",
-  "transcript_path": "/path/to/transcript.jsonl",
-  "hook_event_name": "PreToolUse",
-  "tool_name": "AskUserQuestion",
-  "tool_input": {
-    "questions": [
-      {
-        "question": "Which approach should I use?",
-        "header": "Approach",
-        "options": [
-          {"label": "OAuth (Recommended)", "description": "Use OAuth 2.0"},
-          {"label": "JWT", "description": "Lightweight tokens"}
-        ],
-        "multiSelect": false
-      }
-    ]
-  }
+**Why `size 10M`**: Per-session JSONL files grow proportionally to hook firing frequency. A busy
+warden session firing 10 hooks/minute with ~200 byte records produces ~2MB/hour. 10MB = ~5 hours
+before rotation, reasonable for debugging any session.
+
+**Inline rotation fallback** (for hooks.jsonl which may not suit logrotate's once-daily default):
+
+```bash
+rotate_jsonl_if_needed() {
+  local log_file="$1"
+  local max_bytes="${2:-10485760}"  # 10MB default
+  if [ -f "$log_file" ]; then
+    local file_size
+    file_size=$(stat --format="%s" "$log_file" 2>/dev/null || echo "0")
+    if [ "$file_size" -ge "$max_bytes" ]; then
+      mv "$log_file" "${log_file}.1" 2>/dev/null || true
+    fi
+  fi
 }
 ```
 
-**Known bug (fixed):** PreToolUse + AskUserQuestion caused empty responses in Claude Code < 2.0.76 (GitHub issue #13439). Current version 2.1.45 is safe.
+Call this before each append when you need size-bounded files without logrotate scheduling.
 
-### 3. Diff-Based Pane Delivery (GNU diff)
+## Concurrent Write Safety
 
-**For:** Send only changed lines instead of full 120-line dump
-
-**Tools:** `diff` (GNU diffutils 3.12, already installed), `/tmp` for state files
-
-**Approach:** Store previous pane capture per session, compare with current.
+All JSONL appends to per-session files must use flock. Same pattern already used for pane state:
 
 ```bash
-# Extract only new/added lines (no diff markup)
-PANE_DELTA=$(diff \
-  --new-line-format='%L' \
-  --old-line-format='' \
-  --unchanged-line-format='' \
-  <(echo "$PREV_PANE") <(echo "$CURRENT_PANE") 2>/dev/null || echo "")
+{
+  flock -x -w 2 200 || { printf '' ; exit 0; }
+  jq -cn --arg ... ... >> "$GSD_JSONL_LOG"
+} 200>"${GSD_JSONL_LOG}.lock"
 ```
 
-**Why `--new-line-format='%L'`:** Produces only the truly new lines without diff markup (`+`, `-`, `@@` headers). Clean output for the orchestrator agent to read.
+The lock file lives alongside the JSONL file (`${SESSION_NAME}.jsonl.lock`). It is never written
+with content, only used as a lock target.
 
-**State files:** `/tmp/gsd-pane-prev-${SESSION_NAME}.txt` (previous pane content), `/tmp/gsd-pane-hash-${SESSION_NAME}.txt` (md5 hash for quick dedup check). Files in `/tmp` auto-clean on reboot.
+**When concurrent writes actually occur:** Stop hook and Notification hook can both fire within
+milliseconds of each other for the same session. Without flock, two concurrent `jq -cn ... >>`
+appends interleave their output and produce a corrupt JSONL line like
+`{"type":"hook_fired"...}{"type":"notification"...}` on one line.
 
-### 4. Deduplication (md5sum)
+## Alternatives Considered
 
-**For:** Skip wake when pane content identical to previous
-
-**Tools:** `md5sum` (coreutils, already installed)
-
-```bash
-CURRENT_HASH=$(echo "$PANE_CONTENT" | md5sum | cut -d' ' -f1)
-PREV_HASH=$(cat "/tmp/gsd-pane-hash-${SESSION_NAME}.txt" 2>/dev/null || echo "")
-if [ "$CURRENT_HASH" = "$PREV_HASH" ]; then
-  debug_log "DEDUP: pane unchanged, skipping full wake"
-  # Still send minimum 10-line context (requirement)
-fi
-echo "$CURRENT_HASH" > "/tmp/gsd-pane-hash-${SESSION_NAME}.txt"
-```
-
-**Why md5sum over sha256sum:** Speed. md5sum is faster for non-cryptographic hash comparison. Collision resistance irrelevant for pane content dedup.
-
-### 5. File Locking (flock)
-
-**For:** Prevent race conditions on pane state files
-
-**Tools:** `flock` (util-linux, already installed on Ubuntu 24)
-
-```bash
-PANE_LOCK_FILE="/tmp/gsd-pane-lock-${SESSION_NAME}"
-(
-  flock -x -w 2 200 || { debug_log "WARN: lock timeout"; exit 0; }
-  # Read-modify-write state files here
-) 200>"$PANE_LOCK_FILE"
-```
-
-**Why flock:** Multiple hooks (Stop, Notification) can fire concurrently for the same session. Without locking, concurrent reads and writes to the state files produce corruption or duplicate wakes.
-
-### 6. Shared Library Pattern (source)
-
-**For:** DRY extraction functions across hook scripts
-
-**Tools:** `source` (bash builtin)
-
-**New file:** `lib/hook-utils.sh` — shared functions sourced by stop-hook.sh and pre-tool-use-hook.sh.
-
-Functions:
-- `extract_last_assistant_response()` — transcript JSONL parsing
-- `extract_pane_diff()` — diff calculation with state file management
-- `is_pane_duplicate()` — hash-based dedup check
-- `format_ask_user_questions()` — AskUserQuestion tool_input formatting
-
-**Only sourced by scripts that need it.** Notification-idle, notification-permission, session-end, and pre-compact hooks remain unchanged.
+| Recommended | Alternative | When to Use Alternative |
+|-------------|-------------|-------------------------|
+| `jq -cn --arg` for record generation | `printf '{"type":"%s",...}' "$var"` | Never. String interpolation breaks on any value containing `"`, newlines, or `\`. One corrupted JSONL line invalidates the entire file for streaming parsers. |
+| `uuidgen --random` for correlation IDs | `/proc/sys/kernel/random/uuid` | Use `/proc` path only if `uuidgen` is absent. Both are equally fast (2ms). `/proc` has no external binary dependency, but `uuidgen` is more readable and confirmed present. |
+| `date -u +'%Y-%m-%dT%H:%M:%S.%3NZ'` for timestamps | `date -u +'%Y-%m-%dT%H:%M:%SZ'` (no ms) | Use second-precision only if within-second ordering is irrelevant. For hook events that fire in rapid succession (multiple hooks on the same Claude response), milliseconds are needed to order records correctly. |
+| logrotate with `copytruncate` | In-bash rotation with `mv` | Use in-bash rotation only for `hooks.jsonl` (pre-session file) where logrotate's `size`-based trigger may not run frequently enough. For per-session files, logrotate is preferable. |
+| flock for concurrent appends | No locking | Only safe if you can guarantee hooks never fire concurrently for the same session — which cannot be guaranteed (Stop + Notification can overlap). |
 
 ## What NOT to Add
 
 | Avoid | Why | Use Instead |
 |-------|-----|-------------|
-| Python for JSONL parsing | Adds dependency, slower startup | `tail + jq` (2ms vs 50ms) |
-| Node.js for transcript reading | Adds dependency, overkill | `tail + jq` |
-| `cat` for full transcript read | Latency grows with session length | `tail -50` (constant time) |
-| `diff -u` (unified format) | Includes markup noise (+, -, @@) | `--new-line-format='%L'` (clean output) |
-| `sha256sum` for dedup | Slower than needed for non-crypto use | `md5sum` (faster for hash comparison) |
-| Global PreToolUse matcher `"*"` | Fires on every tool call | Specific `"AskUserQuestion"` matcher |
-| Separate state management daemon | Over-engineering | `/tmp` files with `flock` |
+| Python for JSONL generation | Adds dependency, 50ms startup vs 2ms for jq | `jq -cn --arg` (already installed, 2ms) |
+| Node.js for JSONL generation | Adds dependency, overkill | `jq -cn --arg` |
+| `printf '{"key":"%s"}' "$var"` string interpolation | Breaks on any `"`, newline, `\t` in value — silently produces invalid JSONL | `jq -cn --arg key "$var"` |
+| `echo '{"key":"'"$var"'"}' ` string concatenation | Same breakage as printf interpolation | `jq -cn --arg` |
+| `sha256sum` for record IDs | Slower and produces non-UUID format (hex string, not hyphenated UUID) | `uuidgen --random` |
+| Separate logging daemon | Over-engineering for this scale | Direct file append with flock |
+| JSON arrays instead of JSONL | Arrays require full-file rewrite to append | One JSON object per line (JSONL) — append-safe |
+| Date without milliseconds | Events within the same second are unorderable | `%3N` for milliseconds |
+| `logrotate` without `copytruncate` | Rotated file descriptor still writes to renamed file | Always include `copytruncate` for append-mode log files |
 
 ## Version Compatibility
 
-| Component | Version | v2.0 Feature Dependency | Status |
-|-----------|---------|------------------------|--------|
-| Claude Code | >= 2.0.76 | PreToolUse + AskUserQuestion bug fix | 2.1.45 installed (safe) |
-| Claude Code | >= 2.1.3 | 10-minute hook timeout (vs old 60s) | 2.1.45 installed (safe) |
-| jq | >= 1.6 | `select()` on JSONL streaming input | 1.7 installed (safe) |
-| GNU diff | >= 3.0 | `--new-line-format` flag | 3.12 installed (safe) |
-| flock | any | File-based exclusive locking | util-linux installed (safe) |
+| Component | Version | Requirement | Status |
+|-----------|---------|-------------|--------|
+| jq | 1.7 (installed) | `--arg`, `--argjson`, `-c`, `-n` flags, `select()` | All present since jq 1.5. Verified 1.7 installed. |
+| GNU date (coreutils) | 9.4 (installed) | `%3N` millisecond format specifier | GNU-specific (not POSIX). Confirmed working: `date -u +'%Y-%m-%dT%H:%M:%S.%3NZ'` → `2026-02-18T09:25:32.056Z` |
+| uuidgen | util-linux (installed) | UUIDv4 generation | Confirmed at `/usr/bin/uuidgen`. `--random` flag selects UUIDv4 algorithm. |
+| flock | util-linux (installed) | Exclusive file locking, `-x -w 2` flags | Already used in `extract_pane_diff()`. Same version, confirmed working. |
+| stat | GNU coreutils (installed) | `--format="%s"` for byte count | GNU stat (not POSIX). Confirmed working. |
+| logrotate | 3.21.0 (installed) | `size`, `copytruncate`, `compress` directives | All present in logrotate 3.x. Confirmed 3.21.0 installed. |
+| bash | 5.2.21 (installed) | `>>` append, `200>lockfile` fd syntax, `$()` subshell | Standard bash 4+. Verified 5.2 installed. |
 
-## Integration Checklist for v2.0
+## Integration Points with Existing Code
 
-- [ ] `lib/hook-utils.sh` — new shared library (4 functions)
-- [ ] `scripts/pre-tool-use-hook.sh` — new hook script (chmod +x)
-- [ ] `scripts/stop-hook.sh` — modified (transcript extraction, diff, dedup, v2 wake format)
-- [ ] `scripts/register-hooks.sh` — modified (add PreToolUse registration)
-- [ ] `~/.claude/settings.json` — updated via register-hooks.sh (adds PreToolUse entry)
-- [ ] `/tmp/gsd-pane-*` state files created at runtime (no setup needed)
+**hook-utils.sh changes needed:**
+- Add `emit_jsonl_record()` function — takes event type + optional key/value pairs, writes to
+  `$GSD_JSONL_LOG` with flock. Sourced by all 6 hooks (already sourced by stop and pre-tool-use).
+- Add `rotate_jsonl_if_needed()` function — inline rotation guard.
+
+**Each hook script changes needed:**
+- Add `GSD_JSONL_LOG` variable initialization alongside existing `GSD_HOOK_LOG`.
+- Replace or supplement `debug_log()` calls with `emit_jsonl_record()` calls at key decision points.
+- Generate `CORRELATION_ID=$(uuidgen --random)` at the top of each script, before any branching.
+- Pass `CORRELATION_ID` as the `id` for the first record, carry it as `parentId` for subsequent records within the same invocation.
+
+**No changes needed to:**
+- `settings.json` hook registration
+- `recovery-registry.json` schema
+- `openclaw agent` delivery calls
+- `spawn.sh` or `register-hooks.sh`
 
 ## Sources
 
-**HIGH confidence (official documentation):**
-- [Claude Code Hooks Reference](https://code.claude.com/docs/en/hooks) — PreToolUse stdin JSON schema, matcher patterns, transcript_path field, all hook event schemas
-- [Handle approvals and user input — Claude Agent SDK](https://platform.claude.com/docs/en/agent-sdk/user-input) — AskUserQuestion tool_input.questions structure
-- [GitHub Issue #13439](https://github.com/anthropics/claude-code/issues/13439) — PreToolUse + AskUserQuestion bug, confirmed fixed in v2.0.76
-
 **HIGH confidence (local verification):**
-- Live transcript JSONL inspection on host — confirmed `type`, `message.role`, `message.content[]` structure
-- `claude --version` — 2.1.45 (supports all required hook features)
-- `diff --version` — GNU diffutils 3.10 (supports `--new-line-format`)
-- `jq --version` — 1.7 (supports JSONL streaming)
-- `flock --version` — util-linux (confirmed available)
+- `jq --version` on host → `jq-1.7` — all flags confirmed working
+- `date -u +'%Y-%m-%dT%H:%M:%S.%3NZ'` → `2026-02-18T09:25:32.056Z` — milliseconds confirmed
+- `uuidgen --random` → valid UUIDv4, 2ms latency (100-iteration benchmark)
+- `/proc/sys/kernel/random/uuid` → equally fast (2ms), UUIDv4 format confirmed
+- `flock -x -w 2 200 ... 200>lockfile` — existing usage in `extract_pane_diff()`, confirmed working
+- `stat --format="%s" file` → byte count, confirmed working
+- `logrotate --version` → `logrotate 3.21.0`, `copytruncate` directive confirmed in man page
+- `jq -cn --arg content "$MULTILINE"` → correct JSON escaping of `"`, `\n`, `\t` confirmed
+- Concurrent `jq -cn ... >> file` with flock → 3 parallel writes produced 3 separate JSONL lines, no corruption
 
-**MEDIUM confidence (community patterns):**
-- [GNU diff manual](https://www.gnu.org/software/diffutils/manual/diffutils.html) — format flags documentation
-- [claude-code-log](https://github.com/daaain/claude-code-log) — JSONL content type enumeration (text, tool_use, thinking)
+**HIGH confidence (JSONL specification):**
+- [JSON Lines specification](http://jsonlines.org/) — UTF-8, one JSON value per line, newline-delimited
+- [OpenClaw session JSONL schema](file:///home/forge/.openclaw/agents/forge/sessions/) — `type`, `id`, `parentId`, `timestamp` pattern confirmed from live session files
 
 ---
-*Stack research for: gsd-code-skill v2.0 Smart Hook Delivery*
-*Researched: 2026-02-17*
-*Confidence: HIGH — zero new dependencies, all tools production-verified*
+*Stack research for: gsd-code-skill — structured JSONL hook event logging*
+*Researched: 2026-02-18*
+*Confidence: HIGH — zero new dependencies, all tools production-verified on this host*

@@ -1,195 +1,187 @@
 # Project Research Summary
 
-**Project:** gsd-code-skill v2.0 "Smart Hook Delivery"
-**Domain:** Hook-driven autonomous agent control for Claude Code sessions — context optimization
-**Researched:** 2026-02-17
+**Project:** gsd-code-skill v3.0 — Structured Hook Observability
+**Domain:** Structured JSONL event logging from bash hook scripts in a Claude Code / OpenClaw agent control system
+**Researched:** 2026-02-18
 **Confidence:** HIGH
 
 ## Executive Summary
 
-v2.0 Smart Hook Delivery solves a concrete problem with the working v1.0 system: hook wake messages are too noisy. The orchestrator agent (Gideon) currently receives 120 lines of raw tmux pane content on every hook fire, including ANSI escape codes, statusline garbage, rendering artifacts, and large blocks of content identical to the previous delivery. Claude's actual response text is buried in this rendering noise. v2.0 replaces the raw pane dump with precision-extracted content: the last assistant message extracted directly from the transcript JSONL, a line-level diff of only what changed on screen since the last fire, deduplication to skip redundant wakes entirely, and a structured PreToolUse hook that forwards AskUserQuestion content as structured data before the TUI even renders it.
+v3.0 adds structured JSONL event logging to the six Claude Code hook scripts that drive OpenClaw agent control in gsd-code-skill. The current v2.0 system is a working production system: hooks fire on Claude Code events (Stop, PreToolUse, Notification, SessionEnd, PreCompact), extract pane/transcript content, build wake messages, and deliver them to OpenClaw agents synchronously or asynchronously. The problem is purely observability — the plain-text `debug_log()` outputs are not machine-parseable, the full wake message body sent to OpenClaw is never stored, and async responses are dumped as unlabeled raw text with no way to correlate which response belongs to which hook invocation. v3.0 replaces this with paired `hook.request` / `hook.response` JSONL events linked by correlation ID.
 
-The recommended approach is strictly additive. Four new capabilities — transcript extraction, PreToolUse forwarding, diff-based delivery, and deduplication — are implemented in a new shared library (`lib/hook-utils.sh`) sourced only by the two scripts that need it (`stop-hook.sh` which is modified, and `pre-tool-use-hook.sh` which is new). The other four hook scripts (notification-idle, notification-permission, session-end, pre-compact) remain completely unchanged. Zero new dependencies are introduced; all tools required (jq, diff, md5sum, flock, tail) are already installed on the production Ubuntu 24 host. Claude Code 2.1.45 already running in production supports all required APIs including the PreToolUse hook with AskUserQuestion matcher.
+The recommended implementation uses zero new dependencies: `jq 1.7` (already installed, already used in all hooks), `uuidgen` or `date +%s` for correlation IDs, `flock` (already used for pane state files), and `logrotate 3.21.0` (already installed) for rotation. All work concentrates in one file — `lib/hook-utils.sh` — where five new functions are added alongside the four existing extraction functions. Each of the six hook scripts then follows a mechanical modification pattern: source lib earlier, generate a correlation ID at entry, call `log_hook_request()` before delivery, and replace the bare `openclaw &` call with `deliver_async_with_logging()`. This is an integration task, not a greenfield build.
 
-The key risk is the wake message format change: the orchestrator has been trained on the v1.0 `[PANE CONTENT]` format and switching to `[CLAUDE RESPONSE]` + `[PANE DELTA]` without a transition period will break Gideon's parsing. The mitigation is explicit: add a `wake_message_version: 2` field to every new message, keep backward-compatible sections during the rollout transition, and update Gideon's parsing before or simultaneously with hook deployment. Three additional technical traps must be avoided in the extraction code: using positional `content[0].text` instead of type-filtered `content[]? | select(.type == "text") | .text`, reading full transcript files with `cat` instead of `tail -20`, and forgetting to background the `openclaw` call in the PreToolUse hook.
+The critical risk is JSON correctness: wake messages contain newlines, quotes, ANSI codes, and embedded JSON that will silently corrupt JSONL records if assembled via bash string interpolation instead of `jq --arg`. A secondary risk is concurrent write interleaving — Stop and Notification hooks can fire within milliseconds of each other, and JSONL records with wake message bodies routinely exceed the 4KB POSIX atomicity guarantee for `>>` appends. Both risks are fully preventable with non-negotiable rules: every string field uses `jq --arg`, and every append uses `flock`. There are no architectural surprises — the build order, component boundaries, and integration points are fully mapped from the v2.0 codebase.
 
 ## Key Findings
 
 ### Recommended Stack
 
-v2.0 requires zero new dependencies. All capabilities are built from the same production stack that v1.0 runs on. See `STACK.md` for full version verification.
+The entire implementation is bash + jq. No new packages or runtimes. jq 1.7 handles JSON construction with `--arg` for safe string embedding. GNU `date` with `%3N` provides millisecond-precision timestamps. `uuidgen --random` or `date +%s_$$` provides collision-resistant correlation IDs. `flock` (already in use for pane state) provides concurrent append safety. `logrotate 3.21.0` with `copytruncate` handles rotation without breaking open file descriptors.
 
 **Core technologies:**
-- `bash 5.x` — all hook scripts and lib functions; Ubuntu 24, production verified
-- `jq 1.7` — JSONL parsing from transcript files, JSON extraction from hook stdin, registry operations
-- `tail` (coreutils) — constant-time reads from transcript JSONL files regardless of session length; always `tail -20`, never `cat`; 2ms vs 100ms+ for large files
-- `diff` (GNU diffutils 3.12) — pane delta extraction using `--new-line-format='%L' --old-line-format='' --unchanged-line-format=''` for clean new-lines-only output without diff markup noise
-- `md5sum` (coreutils) — per-session pane content hashing for deduplication; chosen over sha256sum for speed (non-cryptographic use)
-- `flock` (util-linux) — exclusive per-session locking on `/tmp` state files to prevent race conditions when Stop and Notification hooks fire concurrently
-- `Claude Code 2.1.45` — provides `transcript_path` in all hook stdin payloads and supports `PreToolUse` with `"AskUserQuestion"` matcher; must be >= 2.0.76 (bug fix: GitHub #13439 that caused AskUserQuestion results to be stripped when any PreToolUse hook was active)
+- `jq 1.7` (installed): JSONL record generation via `jq -cn --arg` — the only safe way to embed arbitrary string content (wake messages, responses) in JSON from bash; 2ms per invocation; all required flags confirmed
+- `date -u +'%Y-%m-%dT%H:%M:%S.%3NZ'` (GNU coreutils 9.4, installed): millisecond-precision ISO 8601 UTC timestamps — required because multiple hooks can fire within the same second
+- `uuidgen --random` (util-linux, installed): UUIDv4 correlation IDs at 2ms per call — confirmed at `/usr/bin/uuidgen`; fallback is `date +%s_$$` which is universally available
+- `flock -x -w 2` (util-linux, installed): exclusive file locking for concurrent JSONL appends — same pattern already used in `extract_pane_diff()`; lock file lives alongside JSONL file (`${SESSION_NAME}.jsonl.lock`)
+- `logrotate 3.21.0` (installed): size-based log rotation with `copytruncate` — required because hook scripts hold open `>>` file descriptors; `copytruncate` truncates in place rather than renaming, keeping the file descriptor valid
 
-**What NOT to use:**
-- Python or Node.js for JSONL parsing — adds dependency, 50ms startup vs 2ms for `tail + jq`
-- `cat transcript | jq` — reads full file; latency grows unbounded with session age
-- `diff -u` unified format — includes `+`/`-` markers and context lines; use `--new-line-format` flags instead
-- Global PreToolUse matcher `"*"` — fires on every tool call (Bash, Read, Write, Edit, Glob); use specific `"AskUserQuestion"` matcher
-- Separate state management daemon — over-engineering; `/tmp` files with `flock` are sufficient
+**What NOT to add:** Python, Node.js, SQLite, OpenTelemetry, or any logging framework. All add startup latency (50–200ms) to hooks that must complete in under 5ms for non-managed sessions. The jq pattern produces identical output at under 2ms.
 
 ### Expected Features
 
-All six milestone features are table stakes — they must ship together because the wake message v2 format depends on the extraction features being complete. See `FEATURES.md` for behavior descriptions, schemas, and edge cases.
+**Must have (table stakes — v3.0 core, all ship together):**
+- `jsonl_log()` shared function in `lib/hook-utils.sh` — the DRY foundation all six hooks source; uses `jq -cn --arg` for all fields; wraps append with `flock`; fire-and-forget with `|| true`
+- `hook_fired` event in all 6 hook scripts — proves execution started, captures entry state: correlation ID, session, hook script name, stdin bytes, PID
+- `hook_exit` event on all early-exit paths — distinguishes "never fired" from "fired and exited early" for non-managed sessions; replaces existing `debug_log "EXIT: ..."` lines
+- `hook.request` / `wake_sent` event — captures the full wake message body sent to OpenClaw, content source (transcript vs pane diff), trigger type, delivery mode, wake message byte count
+- `hook.response` / `wake_response_received` event — captures OpenClaw's response, exit code, outcome classification (delivered / error / blocked), and decision field in bidirectional mode
+- Correlation ID linking request and response — generated once per hook invocation before the async fork, passed explicitly as a parameter through `deliver_async_with_logging()`
+- `question_forwarded` event in `pre-tool-use-hook.sh` — AskUserQuestion audit trail capturing tool_use_id, question count, options count
+- Per-session JSONL file (`logs/{SESSION_NAME}.jsonl`) parallel to existing plain-text `.log` files
 
-**Must have (all six required for v2.0 — tightly coupled through wake format):**
-- Transcript-based response extraction — reads `transcript_path` JSONL, extracts last assistant `message.content[]` text blocks using type filtering, adds as `[CLAUDE RESPONSE]` section; eliminates ANSI noise entirely
-- PreToolUse hook for AskUserQuestion — new `pre-tool-use-hook.sh`, registered in settings.json with matcher `"AskUserQuestion"` only; receives exact `tool_input.questions[]` with question text, header, options, multiSelect; sends `[ASK USER QUESTION]` section before TUI renders; always exits 0 (notification-only)
-- Diff-based pane delivery — stores previous pane capture per session in `/tmp/gsd-pane-prev-SESSION.txt`; sends only new/changed lines as `[PANE DELTA]` instead of full 120-line dump
-- Deduplication — md5sum hash comparison against `/tmp/gsd-pane-hash-SESSION.txt`; if pane content unchanged since last fire, skip full delivery; minimum 10-line context guarantee enforced even in skip path
-- Structured wake message v2 format — compact format with `wake_message_version: 2`: `[SESSION IDENTITY]`, `[TRIGGER]`, `[CLAUDE RESPONSE]`, `[STATE HINT]`, `[PANE DELTA]`, `[CONTEXT PRESSURE]`, `[AVAILABLE ACTIONS]`; removes raw `[PANE CONTENT]`
-- Minimum context guarantee — when pane delta is fewer than 10 lines (e.g., only a statusline change), pad with `tail -10` of current pane so orchestrator always has actionable baseline
+**Should have (v3.x — add after core validated):**
+- `answer_selected` event via new `post-tool-use-hook.sh` — closes the AskUserQuestion lifecycle loop; requires new script and hook registration; PostToolUse stdin schema needs empirical verification
+- `duration_ms` in all events — time from hook entry to event emission; requires capturing `EPOCHREALTIME` at script start
+- Log rotation guard in `jsonl_log()` — inline size check before write prevents unbounded growth between logrotate runs
 
-**Defer to v2.x (post-validation):**
-- Per-hook dedup mode settings in hook_settings (measure actual dedup rates first)
-- AskUserQuestion async pre-notification with configurable delay window
-- Transcript diff delivery (conversation delta instead of pane delta) — higher complexity, higher value for long sessions
-- Selective hook muting (orchestrator instructs hook to be silent for N turns)
-- PostToolUse hook for AskUserQuestion (forward which answer was selected)
+**Defer (v4+):**
+- Remove plain-text `debug_log()` entirely — only after JSONL event coverage is confirmed complete with no gaps
+- Cross-session query tooling (`query-logs.sh`) — deferred until dashboard integration begins
+- OTLP export — only if a local collector is ever deployed on this host
 
 ### Architecture Approach
 
-v2.0 is strictly additive to the existing 5-hook architecture. New capabilities are centralized in `lib/hook-utils.sh` to avoid duplicating extraction logic across hook scripts. Only two scripts change: `stop-hook.sh` gains three new processing steps (transcript extraction at step 7b, dedup check at step 9b, diff extraction at step 9c) and an updated wake message builder (step 10); `pre-tool-use-hook.sh` is created new. All four other hook scripts are untouched. See `ARCHITECTURE.md` for exact line-level integration points and complete data flow diagrams.
+All new logic lives in `lib/hook-utils.sh` as five new functions added alongside the four existing extraction functions. The six hook scripts are mechanically modified to source lib earlier and call the new functions — no new files for v3.0 core. The `deliver_async_with_logging()` wrapper replaces the bare `openclaw ... &` pattern across all async delivery paths: it captures stdout from the `openclaw` call inside a background subshell (with explicit `</dev/null` to prevent stdin inheritance hangs) and emits the `hook.response` event with the captured response and exit code. The log file format changes from plain-text to JSONL for both `hooks.log` and per-session files; `diagnose-hooks.sh` may need updating to parse JSONL with `jq` instead of plain `grep`.
 
 **Major components:**
-1. `lib/hook-utils.sh` (NEW) — shared library with four functions: `extract_last_assistant_response()`, `extract_pane_diff()`, `is_pane_duplicate()`, `format_ask_user_questions()`; sourced only by stop-hook.sh and pre-tool-use-hook.sh; all new v2.0 extraction logic lives here
-2. `scripts/stop-hook.sh` (MODIFIED) — Stop event entry point; gains transcript extraction, dedup check, diff extraction, and v2 wake format; all existing guards, registry lookup, state detection, and delivery logic unchanged
-3. `scripts/pre-tool-use-hook.sh` (NEW) — PreToolUse entry point; matcher-scoped to AskUserQuestion only; always exits 0 (notification-only, never blocks); openclaw delivery is mandatory async background
-4. `scripts/register-hooks.sh` (MODIFIED) — adds PreToolUse block with AskUserQuestion matcher to settings.json HOOKS_CONFIG; adds pre-tool-use-hook.sh to HOOK_SCRIPTS verification array
-5. `/tmp/gsd-pane-prev-SESSION.txt` and `/tmp/gsd-pane-hash-SESSION.txt` (NEW runtime) — per-session ephemeral state files with flock protection; `/tmp` provides natural cleanup on reboot; stale file detection (24-hour age check) at hook startup
-6. `config/recovery-registry.json` (OPTIONAL MODIFICATION) — v2 hook_settings fields (transcript_extract_chars, min_context_lines, dedup_enabled) if configurability is needed; hardcoded defaults acceptable for v2.0 MVP
+1. `lib/hook-utils.sh` (EXTENDED) — adds `generate_correlation_id()`, `jsonl_log()`, `log_hook_request()`, `log_hook_response()`, `deliver_async_with_logging()` alongside unchanged extraction functions; grows from ~150 lines to ~220 lines
+2. Six hook scripts (ALL MODIFIED) — source lib at top of script (before any guard), generate correlation ID at entry, replace inline `debug_log()` with `jsonl_log()` at lifecycle points, replace bare `openclaw &` with `deliver_async_with_logging()`
+3. `logs/` directory — `{SESSION_NAME}.jsonl` files added parallel to existing `.log` files; same two-phase routing as plain-text logs (Phase 1: `hooks.jsonl`, Phase 2: `{SESSION_NAME}.jsonl`)
 
-**Build order (dependency chain from ARCHITECTURE.md):**
-- Step 1: Create `lib/hook-utils.sh` — no dependencies
-- Step 2: Create `pre-tool-use-hook.sh` — depends on lib (format_ask_user_questions)
-- Step 3: Modify `stop-hook.sh` — depends on lib (three extraction functions)
-- Step 4: Modify `register-hooks.sh` — depends on pre-tool-use-hook.sh existing and executable
-- Steps 2 and 3 can proceed in parallel once Step 1 is complete; Steps 2 and 3 have no mutual dependency
+**Build order:** Step 1 (extend lib) must complete before Steps 2-7 (modify each hook script). Steps 2-7 are fully parallel — all six hook scripts depend only on Step 1, not on each other. This makes Phase 2 a single Warden task.
 
 ### Critical Pitfalls
 
-The following pitfalls produce silent wrong behavior that is hard to debug in production. See `PITFALLS.md` for full symptom lists, recovery strategies, performance trap analysis, and a 12-item "looks done but isn't" verification checklist.
+1. **JSON string interpolation in bash** — Wake messages contain newlines, quotes, ANSI codes, and embedded JSON. Any `printf '{"field":"%s"}' "$VAR"` or `jq -n "{\"field\": \"$VAR\"}"` pattern silently produces invalid JSONL on first special character. Prevention: every string field uses `jq -n --arg field "$VAR"` without exception. Verify with `grep -n 'jq.*"\$' lib/hook-utils.sh` — must return zero matches.
 
-1. **Positional content indexing** — Using `content[0].text` fails silently when thinking blocks or tool_use blocks precede the text block. Always use `content[]? | select(.type == "text") | .text`. Symptom: extraction works in simple sessions, fails randomly in sessions with extended thinking enabled.
+2. **Concurrent JSONL appends without flock** — Stop and Notification hooks can fire simultaneously for the same session. JSONL records with full wake message bodies are routinely 5–15KB, far exceeding the 4KB POSIX `O_APPEND` atomicity guarantee. Interleaved writes produce merged corrupt lines. Prevention: `jsonl_log()` must use `flock -x -w 2` on `${LOG_FILE}.lock` for every append — same pattern already used for pane state files.
 
-2. **Full transcript file read** — Using `cat transcript | jq` causes hook latency to grow with session age (100ms–2s on multi-MB files). Always use `tail -20`. Performance degrades invisibly; only manifests in long-running production sessions.
+3. **Correlation ID lost in async subprocess** — If `CORRELATION_ID` is a local variable and the background subshell does not receive it as an explicit parameter, the response event gets an empty or mismatched ID. Prevention: `deliver_async_with_logging()` takes `correlation_id` as an explicit positional parameter — never relies on implicit variable inheritance.
 
-3. **Synchronous openclaw call in PreToolUse** — Not backgrounding the `openclaw agent` call blocks Claude Code's UI for 200ms–2s before showing the AskUserQuestion prompt. Always use `</dev/null >/dev/null 2>&1 &`. Every single AskUserQuestion invocation is affected.
+4. **Log file path split across Phase 1/Phase 2 routing** — Each hook script mutates `$GSD_HOOK_LOG` mid-execution. If `deliver_async_with_logging()` reads `$GSD_HOOK_LOG` from the global at fork time rather than receiving the path as an explicit parameter, request and response events can end up in different files. Prevention: pass log file path as an explicit argument captured after Phase 2 redirect.
 
-4. **Missing flock on pane state files** — Stop and Notification hooks can fire concurrently for the same session. Without `flock -x -w 2` on a per-session lock file, concurrent reads and writes to `/tmp/gsd-pane-prev-SESSION.txt` produce corrupt state and duplicate wakes. flock is required from day one.
+5. **jq process overhead at guard exits** — Each `jq -n` call costs 5–15ms. Emitting JSONL at every guard exit adds 20–75ms to hook execution for ALL sessions including personal non-managed Claude Code sessions. Prevention: JSONL events for managed session lifecycle only (`hook.request`, `hook.response`); guard exits use plain `printf` or are omitted.
 
-5. **Wake message v2 format breaks orchestrator parsing** — The format change from `[PANE CONTENT]` to `[CLAUDE RESPONSE]` + `[PANE DELTA]` is a breaking change for Gideon. Add `wake_message_version: 2` to every new message header. Keep backward-compatible sections during rollout. Update Gideon's parsing before deploying new hooks, not after. Note: hooks snapshot at session startup — existing sessions keep v1 format until restarted.
+6. **Async stdin inheritance causing hangs** — `deliver_async_with_logging()` captures `openclaw` output via `$()` inside a background subshell. Without explicit `</dev/null`, the subshell inherits the hook's stdin, which can cause `openclaw` to block waiting for input. Prevention: `</dev/null` on both the outer subshell and the `openclaw` call inside it.
 
-6. **Dedup skip path with zero context** — When hash matches and wake is suppressed, failing to send the 10-line minimum context leaves the orchestrator unable to assess session state after a recovery. The minimum-context guarantee is a hard requirement, not optional — enforce it even in the "no change" path.
+7. **lib sourced after inline debug_log removed** — v2.0 sources lib late (after TMUX guard, around line 35-50). v3.0 needs lib at the top of the script for the `hook_fired` event. Removing the inline `debug_log()` before moving the source line causes "command not found" on early logging calls. Prevention: move `source lib/hook-utils.sh` immediately after `SKILL_LOG_DIR` and `GSD_HOOK_LOG` setup; add plain-printf fallback for lib-not-found path.
 
 ## Implications for Roadmap
 
-All six v2.0 features share a single dependency chain: the shared library must be built first, then the two entry points, then registration. The features are tightly coupled through the wake message v2 format — `[CLAUDE RESPONSE]` replacing `[PANE CONTENT]` requires transcript extraction; `[PANE DELTA]` requires diff working with dedup running before it. The wake format change also creates a deployment sequencing concern: Gideon must be updated before the new hook format reaches it. This points to a clean 2-phase structure: build in Phase 1, deploy safely in Phase 2.
+Based on research, the implementation has a clear two-phase structure: build and validate the shared library foundation, then apply the mechanical hook script migration.
 
-### Phase 1: Core Extraction and Delivery Engine
+### Phase 1: JSONL Logging Foundation (lib/hook-utils.sh)
 
-**Rationale:** All six milestone features are tightly coupled through the wake message v2 format and share the dependency chain through `lib/hook-utils.sh`. Building the library first, then the two scripts that source it, is the only valid order. This entire phase produces working new code without touching existing hook registration — safe to develop and test without affecting live sessions.
+**Rationale:** All other work depends on this. The five new functions in `lib/hook-utils.sh` are the prerequisite for every hook script change. The critical correctness rules — jq `--arg` for all string fields, `flock` on every append, explicit parameter passing for correlation ID and log file path, `</dev/null` in the delivery wrapper — must be established here before any hook script calls these functions. Retrofitting correctness issues after Phase 2 would require touching all 6 scripts again. This phase can be tested in isolation by calling the functions directly in bash without any running Claude Code session.
 
-**Delivers:** `lib/hook-utils.sh` with all four extraction functions; `pre-tool-use-hook.sh` (complete new script); `stop-hook.sh` updated with transcript extraction (step 7b), dedup check (step 9b), diff extraction (step 9c), and wake message v2 format (step 10) with `wake_message_version: 2` field.
+**Delivers:** Extended `lib/hook-utils.sh` with `generate_correlation_id()`, `jsonl_log()`, `log_hook_request()`, `log_hook_response()`, `deliver_async_with_logging()`.
 
-**Addresses:** All six v2.0 milestone features — transcript extraction, PreToolUse AskUserQuestion forwarding, diff-based delivery, deduplication, wake message v2 format, minimum 10-line context guarantee.
+**Addresses features:** `jsonl_log()` / `emit_event()` foundation; correlation ID generation; async delivery wrapper with response capture.
 
-**Avoids:**
-- Content[0].text indexing failure — use type-filtered `content[]? | select(.type == "text") | .text` (Pitfall 1)
-- Full-file transcript reads — enforce `tail -20` in lib function comments and code (Pitfall 2 / Pitfall 3)
-- Synchronous PreToolUse delivery — always background openclaw call (Pitfall 3)
-- Missing flock — use from day one on all `/tmp` state file read-write cycles (Pitfall 4)
-- Empty extraction results — always provide non-empty fallback strings (Pitfall 2)
-- transcript_path file not found — check file existence before reading (Pitfall 11 in PITFALLS.md)
+**Avoids pitfalls:** Pitfall 1 (jq --arg), Pitfall 2 (flock), Pitfall 3 (explicit correlation_id param), Pitfall 4 (explicit log_file param), Pitfall 6 (stdin /dev/null) — all must be correct in the lib before any hook uses it.
 
-**Build order within phase:**
-1. Create `lib/hook-utils.sh` (no dependencies; provides all four functions)
-2. Create `pre-tool-use-hook.sh` in parallel with step 3 (depends on lib)
-3. Modify `stop-hook.sh` in parallel with step 2 (depends on lib)
+### Phase 2: Hook Script Migration (all 6 scripts)
 
-### Phase 2: Registration, Deployment, and Backward Compatibility
+**Rationale:** Once lib is tested and correct, all 6 hook scripts can be modified in a single Warden task. The modification pattern is mechanical and identical across all 6: move source earlier, generate correlation ID, replace debug_log calls with jsonl_log calls, replace bare openclaw call with logging wrappers. This is the bulk of the implementation by file count but the lowest-risk work given a correct lib — each script change is a straightforward find-and-replace of known patterns.
 
-**Rationale:** Hook scripts snapshot at session startup — existing Claude Code sessions keep running v1.0 hooks until they restart. During the transition, Gideon receives both v1.0 `[PANE CONTENT]` and v2.0 `[CLAUDE RESPONSE]` format messages simultaneously. Registration and Gideon compatibility handling must be addressed as a coordinated deployment, not as a pure code change.
+**Delivers:** All 6 hook scripts emitting `hook_fired`, `hook_exit`, `hook.request`, and `hook.response` JSONL events to per-session `.jsonl` files. Plain-text `.log` files continue in parallel for backward compatibility.
 
-**Delivers:** Updated `register-hooks.sh` with PreToolUse registration block (AskUserQuestion matcher, 30s timeout); `session-end-hook.sh` updated to clean up `/tmp/gsd-pane-prev-SESSION.txt` on clean exits; stale temp file detection (24-hour age check) added to hook startup; verification that Gideon's parsing handles both v1 and v2 format messages; SKILL.md documentation update with minimum version requirement (Claude Code >= 2.0.76).
+**Addresses features:** `hook_fired` event, `hook_exit` event, `hook.request` / `wake_sent` event, `hook.response` / `wake_response_received` event, `question_forwarded` event in pre-tool-use-hook.sh, per-session JSONL file.
 
-**Avoids:**
-- Wake v2 format breaking Gideon's parsing — update orchestrator parsing before deploying registration (Pitfall 5)
-- Stale pane delta files from dead sessions — age check at hook startup + session-end cleanup (Pitfall 7)
-- PreToolUse + AskUserQuestion bug — add `claude --version >= 2.0.76` gate in register-hooks.sh (Pitfall 4 in PITFALLS.md)
+**Avoids pitfalls:** Pitfall 7 (lib sourcing order — move source to top of all 6 scripts), Pitfall 4 (log file routing — pass explicit path after Phase 2 redirect).
 
-**Deployment gate:** Gideon's wake message parsing must be updated and confirmed before `register-hooks.sh` is run. The `wake_message_version: 2` field allows Gideon to detect and handle both formats simultaneously during the session transition period.
+### Phase 3: AskUserQuestion Lifecycle Completion (v3.x)
+
+**Rationale:** The `question_forwarded` event ships in Phase 2. The `answer_selected` event requires a new `post-tool-use-hook.sh` and a new hook registration — medium complexity and a new script touches settings.json. More importantly, the PostToolUse stdin field names for AskUserQuestion tool_response have medium confidence and need empirical verification before the typed event schema is finalized. Validate `question_forwarded` and `tool_use_id` correlation in production first, then build the PostToolUse hook with confirmed field names.
+
+**Delivers:** `post-tool-use-hook.sh` (new script) with `answer_selected` event; PostToolUse hook registration in `settings.json`; validated AskUserQuestion lifecycle end-to-end.
+
+**Addresses features:** `answer_selected` event (P2), closed AskUserQuestion question-to-answer lifecycle.
+
+**Avoids pitfalls:** Empirical verification of PostToolUse stdin schema before committing to field names.
+
+### Phase 4: Operational Hardening
+
+**Rationale:** After core events are confirmed correct in production, add the operational hygiene items that depend on observing real usage patterns: `duration_ms` requires confirming baseline hook execution times, log rotation needs depend on actual log growth rates, and `diagnose-hooks.sh` updates need confirmed JSONL field names. These are low-risk additions that improve long-term stability but do not affect core observability.
+
+**Delivers:** `duration_ms` in all events; logrotate config at `/etc/logrotate.d/gsd-code-skill` with `copytruncate`; optional inline rotation guard in `jsonl_log()` for `hooks.jsonl`; updated `diagnose-hooks.sh` parsing JSONL with `jq`.
+
+**Addresses features:** duration_ms (P2), log rotation (P3), diagnose-hooks.sh compatibility.
 
 ### Phase Ordering Rationale
 
-- Phase 1 before Phase 2: registration requires the scripts to exist; the format change risk requires Gideon to be updated first
-- `lib/hook-utils.sh` before both entry points: both scripts source it; no shortcuts
-- Steps 2 and 3 within Phase 1 can proceed in parallel: `pre-tool-use-hook.sh` and `stop-hook.sh` share only the lib dependency, not each other
-- Gideon orchestrator update is a Phase 2 concern, not Phase 1: the new hook scripts can be tested locally without registering them in settings.json
-- `session-end-hook.sh` cleanup belongs in Phase 2: the temp file naming pattern is established in Phase 1, cleanup implementation depends on knowing those names
+- Phase 1 before Phase 2 is a hard dependency — shared library functions must exist and be correct before any hook script calls them.
+- Phase 2 can be a single Warden task — all 6 hook scripts follow the same mechanical pattern; they are independent of each other after Phase 1.
+- Phase 3 after Phase 2 because: (a) `question_forwarded` must be validated in production before the PostToolUse schema is committed, (b) the new script + hook registration is higher deployment risk than modifying existing scripts.
+- Phase 4 last because it depends on observing Phase 2/3 events in production to confirm baselines and rotation needs.
+- This ordering concentrates all correctness-critical decisions into Phase 1 where they are testable in isolation, before they are exercised across 6 hook scripts simultaneously.
 
 ### Research Flags
 
 Phases with well-documented patterns — skip additional research:
-- **Phase 1 (lib/hook-utils.sh):** All four function implementations specified with working bash code in ARCHITECTURE.md; JSONL structure verified against live transcripts; no new patterns required
-- **Phase 1 (stop-hook.sh modifications):** Exact integration points mapped to specific line numbers in ARCHITECTURE.md (steps 7b, 9b, 9c, 10); no ambiguity about where changes go
-- **Phase 1 (pre-tool-use-hook.sh):** Complete data flow diagram and full wake message format in ARCHITECTURE.md; AskUserQuestion schema confirmed from official docs and live transcripts
-- **Phase 2 (register-hooks.sh):** Registration pattern already exists in v1.0 for Stop/Notification/SessionEnd/PreCompact hooks; PreToolUse addition follows identical pattern
+- **Phase 1:** All tools locally verified on this host (jq 1.7, flock, uuidgen, date %3N). Implementation patterns are production-proven. Concurrent write flock pattern already exists in `extract_pane_diff()`. No external research needed.
+- **Phase 2:** Mechanical modification of known, fully-read code. All 6 hook scripts read in full; the modification pattern is exact and identical across all scripts. No research needed.
+- **Phase 4:** logrotate 3.21.0 with `copytruncate` — confirmed installed and working. Pattern is standard and fully specified in STACK.md.
 
-Phases that need coordination during execution (not research gaps):
-- **Phase 2 (Gideon compatibility):** Research documents the format change and version field, but does not inspect Gideon's actual wake message parsing code. Before Phase 2 registration, Gideon's parsing logic must be found and confirmed. This is an execution-time coordination step with the orchestrator, not a research gap for the hooks themselves.
-- **Phase 2 (session-end-hook.sh):** Current session-end-hook.sh implementation should be inspected before adding temp file cleanup to confirm no unintended side effects on existing clean-exit behavior.
+Phases needing empirical validation during implementation (not additional pre-research):
+- **Phase 3 (PostToolUse stdin schema):** MEDIUM confidence on field names for `tool_response.content` in PostToolUse hook stdin for AskUserQuestion. The `tool_use_id` field in PreToolUse stdin is confirmed. Plan: build `post-tool-use-hook.sh` to log raw stdin first, verify field names against a live session, then add the typed `answer_selected` event schema. Do not commit to field names before empirical verification.
 
 ## Confidence Assessment
 
 | Area | Confidence | Notes |
 |------|------------|-------|
-| Stack | HIGH | Zero new dependencies; all tools version-checked on production host (`claude --version` 2.1.45, `jq --version` 1.7, `diff --version` GNU 3.10, `flock` confirmed); Claude Code 2.1.45 confirmed supporting all required APIs and exceeding 2.0.76 bug-fix threshold |
-| Features | HIGH | Six features fully specified with schemas from official docs; AskUserQuestion tool_input structure confirmed from live transcripts and official platform.claude.com docs; all edge cases enumerated (11 edge case scenarios in FEATURES.md); before/after behavior described with example wake messages |
-| Architecture | HIGH | Integration points mapped to exact line numbers in stop-hook.sh (steps 7b at line 101, 9b, 9c at line 135, 10 at line 142); all four lib function implementations provided in working bash code; build dependency chain explicit with parallelization opportunities identified |
-| Pitfalls | HIGH | Based on official Claude Code documentation, two confirmed GitHub issues with exact version fix numbers (#13439, #12031), live transcript verification, and analysis of existing v1.0 codebase; all pitfalls have specific bash prevention patterns, symptom lists, and recovery steps; 12-item verification checklist provided |
+| Stack | HIGH | All tools verified locally: jq 1.7, uuidgen, date %3N, flock, logrotate 3.21.0. Benchmarked (uuidgen: 2ms, jq --arg: correct escaping of multiline content confirmed). Zero new dependencies. |
+| Features | HIGH | v2.0 codebase read in full. Feature set derived from PROJECT.md, REQUIREMENTS.md, and direct code analysis. The one medium-confidence item (PostToolUse stdin schema) is correctly scoped to v3.x, not v3.0 core. |
+| Architecture | HIGH | All 6 hook scripts and lib/hook-utils.sh read in full. Integration points mapped to exact functions and patterns. Build order validated against dependency graph. No architectural unknowns. |
+| Pitfalls | HIGH | Sourced from Linux kernel documentation, empirical write-atomicity research (POSIX O_APPEND limits, PIPE_BUF measurements), official jq manual, official flock man page, and direct analysis of v2.0 codebase. All 7 pitfalls have concrete prevention steps and verification commands. |
 
 **Overall confidence:** HIGH
 
 ### Gaps to Address
 
-- **Gideon's wake message parsing implementation:** Research identifies the format change risk and specifies the `wake_message_version: 2` mitigation, but does not inspect Gideon's actual parsing code. Before Phase 2 deployment, locate and confirm Gideon's parsing logic. This is a coordination dependency, not a research gap for the hook system itself.
+- **PostToolUse stdin schema for AskUserQuestion:** The `tool_response.content` field name is inferred from the PreToolUse pattern and hooks documentation structure. Must be empirically verified in Phase 3 before finalizing the `answer_selected` event schema. Mitigation: log raw stdin first, validate field names, then commit to typed schema.
 
-- **Actual dedup rate in production:** Research identifies deduplication as HIGH value but cannot quantify what percentage of Stop hook fires are truly duplicate in live sessions. Defer per-hook dedup mode settings to v2.x until real rates are measured. The core dedup feature is correct and cheap regardless of the actual rate.
+- **diagnose-hooks.sh JSONL compatibility:** The script reads the plain-text log files. The exact changes needed to parse JSONL with `jq` are not mapped — the script was not read in full during research. Assess at Phase 4 implementation start.
 
-- **Session name sanitization:** ARCHITECTURE.md notes that tmux session names with spaces or slashes would break `/tmp/gsd-pane-prev-SESSION.txt` file naming. Current production sessions (`warden-main`, `forge-main`) are safe. If future sessions use unusual names, add `SESSION_SAFE_NAME=$(echo "$SESSION_NAME" | tr ' /' '__')` sanitization. Low-severity, document in PITFALLS.md for future reference.
+- **logrotate scheduling frequency for hooks.jsonl:** Default logrotate runs once daily. For `hooks.jsonl` (pre-session events that can accumulate before a session starts), the daily schedule may allow excessive growth. Mitigation: add an inline `rotate_jsonl_if_needed()` size guard specifically for `hooks.jsonl`, or configure a more frequent logrotate invocation via cron. Decide based on observed growth rate in Phase 4.
 
 ## Sources
 
-### Primary (HIGH confidence — official documentation)
-- [Claude Code Hooks Reference](https://code.claude.com/docs/en/hooks) — complete PreToolUse stdin JSON schema, matcher patterns, transcript_path field, all hook event schemas and lifecycle
-- [Handle approvals and user input — Claude Agent SDK](https://platform.claude.com/docs/en/agent-sdk/user-input) — AskUserQuestion tool_input.questions[] structure, question/header/options/multiSelect fields, 1-4 questions and 2-4 options per call constraints, confirmed response format
-- [GitHub Issue #13439](https://github.com/anthropics/claude-code/issues/13439) — PreToolUse + AskUserQuestion bug confirmed fixed in v2.0.76; symptoms documented
-- [GitHub Issue #12031](https://github.com/anthropics/claude-code/issues/12031) — same bug, additional symptom confirmation; AskUserQuestion answers stripped when any PreToolUse hook active
+### Primary (HIGH confidence — local verification on this host)
+- `lib/hook-utils.sh` (v2.0) — exact function signatures, 150 lines, read in full
+- `scripts/stop-hook.sh`, `pre-tool-use-hook.sh`, `notification-idle-hook.sh`, `notification-permission-hook.sh`, `session-end-hook.sh`, `pre-compact-hook.sh` (all v2.0) — read in full; inline debug_log pattern, openclaw delivery calls, async/bidirectional branches confirmed
+- `jq --version` on host: `jq-1.7` — all flags (`--arg`, `--argjson`, `-c`, `-n`) confirmed
+- `date -u +'%Y-%m-%dT%H:%M:%S.%3NZ'` on host: `2026-02-18T09:25:32.056Z` — millisecond precision confirmed
+- `uuidgen --random` on host: valid UUIDv4 at 2ms latency (100-iteration benchmark)
+- `flock -x -w 2` on host: confirmed working in `extract_pane_diff()`, same util-linux version
+- `logrotate --version`: `logrotate 3.21.0`, `copytruncate` directive confirmed in man page
+- `.planning/PROJECT.md`, `.planning/REQUIREMENTS.md`, `.planning/STATE.md` — v3.0 goals, constraints, existing lib architecture
+- OpenClaw session JSONL schema from live session files — `type`, `id`, `parentId`, `timestamp` pattern confirmed
 
-### Primary (HIGH confidence — local verification)
-- Live transcript JSONL inspection on host — confirmed `type: "assistant"`, `message.content[].type`, `message.content[].text` structure; confirmed AskUserQuestion `tool_input.questions[].{question, header, options, multiSelect}` field paths from actual transcripts
-- `claude --version` output — 2.1.45 (all required hook features supported, bug-fix threshold 2.0.76 exceeded)
-- `diff --version` output — GNU diffutils 3.10 (supports `--new-line-format` flag confirmed)
-- `jq --version` output — 1.7 (supports JSONL streaming and `select()`)
-- `flock` confirmed available — util-linux package on Ubuntu 24
-- `scripts/stop-hook.sh` v1.0 source (196 lines) — exact line numbers for all integration points verified
-- `scripts/register-hooks.sh` v1.0 source (240 lines) — hook registration pattern for PreToolUse addition confirmed
+### Secondary (HIGH confidence — official documentation)
+- [JSON Lines specification](http://jsonlines.org/) — UTF-8, one JSON value per line, newline-delimited
+- [jq 1.8 Manual — jqlang.org](https://jqlang.org/manual/) — `--arg`, `--argjson`, `@json` flags
+- [flock(1) — Linux Manual Page](https://man7.org/linux/man-pages/man1/flock.1.html) — `-x` exclusive lock, `-w` timeout, fd-based lock file pattern
+- [Appending to a log — Paul Khuong (2021)](https://pvk.ca/Blog/2021/01/22/appending-to-a-log-an-introduction-to-the-linux-dark-arts/) — POSIX O_APPEND atomicity limits for concurrent writes
+- [Command Execution Environment — Bash Reference Manual](https://www.gnu.org/software/bash/manual/html_node/Command-Execution-Environment.html) — background subshell environment inheritance
 
-### Secondary (MEDIUM confidence — community)
-- [claude-code-log](https://github.com/daaain/claude-code-log) — JSONL content type enumeration confirming text, tool_use, and thinking blocks in content array
-- [Analyzing Claude Code Interaction Logs with DuckDB](https://liambx.com/blog/claude-code-log-analysis-with-duckdb) — real JSONL structure showing message.role and content[] fields
-- [Claude Code Transcript JSONL Format — Simon Willison](https://simonwillison.net/2025/Dec/25/claude-code-transcripts/) — confirms JSONL format and session structure
-- GNU diff manual — `--new-line-format` / `--old-line-format` / `--unchanged-line-format` flag documentation
-- flock(1) and diff(1) Linux man pages — standard utility behavior
+### Tertiary (MEDIUM confidence — community sources)
+- [Are Files Appends Really Atomic? — Not The Wizard (2014)](https://www.notthewizard.com/2014/06/17/are-files-appends-really-atomic/) — empirical PIPE_BUF limits by OS (pre-2025, still accurate for ext4)
+- [Build a JSON String With Bash Variables — Baeldung on Linux](https://www.baeldung.com/linux/bash-variables-create-json-string) — `jq -n --arg` pattern for safe variable injection
+- [Structured Logging: Best Practices — Uptrace](https://uptrace.dev/glossary/structured-logging) — standard field names (timestamp, correlation_id, event type)
+- [How to make a shell script log JSON messages — stegard.net](https://stegard.net/2021/07/how-to-make-a-shell-script-log-json-messages/) — jq-based structured logging in bash
 
 ---
-*Research completed: 2026-02-17*
+*Research completed: 2026-02-18*
 *Ready for roadmap: yes*

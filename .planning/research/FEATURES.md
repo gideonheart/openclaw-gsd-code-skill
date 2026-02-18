@@ -1,23 +1,22 @@
 # Feature Research
 
-**Domain:** Hook-driven autonomous agent control for Claude Code sessions — v2.0 Smart Hook Delivery
-**Researched:** 2026-02-17
-**Confidence:** HIGH (transcript/PreToolUse from official docs; diff/dedup from standard bash patterns)
+**Domain:** Structured JSONL event logging for hook/webhook interaction lifecycle — gsd-code-skill v3.0
+**Researched:** 2026-02-18
+**Confidence:** HIGH (existing codebase well-understood; JSONL log schema patterns verified via multiple sources)
 
 ---
 
-## Context: What v1.0 Built (Already Shipped)
+## Context: What v2.0 Built (Already Shipped)
 
-This is a subsequent milestone research file. v1.0 shipped the complete hook system:
-- Stop hook fires on response complete, captures 120-line pane dump, sends structured wake message
-- Notification hooks for idle_prompt and permission_prompt events
-- SessionEnd and PreCompact hooks
-- Three-tier hook_settings (per-agent > global > hardcoded)
-- Hybrid hook mode (async background / bidirectional with decision injection)
-- menu-driver.sh with type action, snapshot, choose, enter, esc, clear_then, submit
-- Per-agent system prompts via recovery registry
+This is a subsequent milestone research file. v2.0 shipped:
+- Transcript JSONL extraction as primary content source (no tmux noise)
+- Pane diff fallback when transcript unavailable
+- PreToolUse hook for AskUserQuestion forwarding (structured question + options)
+- Wake message v2 format: [SESSION IDENTITY], [TRIGGER], [CONTENT], [STATE HINT], [CONTEXT PRESSURE], [AVAILABLE ACTIONS]
+- Per-session log files in skill logs/ directory (plain-text debug_log())
+- Shared lib/hook-utils.sh with DRY extraction functions
 
-**v2.0 problem statement:** The wake messages are noisy and redundant. 120 lines of raw tmux pane content contains ANSI escape codes, rendering artifacts, statusline noise, and large blocks of content identical to the previous hook fire. Claude's actual response text is buried in this rendering noise. AskUserQuestion menus fire via pattern-matching imprecision — the exact question text and option labels are not forwarded structurally.
+**v3.0 problem statement:** The current plain-text log format captures debug breadcrumbs but not structured events. What actually went into the wake message (the full body sent to OpenClaw) is never recorded. What OpenClaw responded with is only recorded as the first 200 characters in bidirectional mode, and as background PID in async mode. No request/response pairs are correlated. No AskUserQuestion lifecycle is captured (questions asked → option selected). This makes post-hoc debugging difficult and makes automation impossible — you can't grep for "all ask_user_question interactions in the last hour" or "all bidirectional responses where decision=block."
 
 ---
 
@@ -25,387 +24,304 @@ This is a subsequent milestone research file. v1.0 shipped the complete hook sys
 
 ### Table Stakes (Users Expect These)
 
-Features that must exist for v2.0 to be considered functional. Missing any of these means the milestone fails its stated goal.
+Features that must exist for v3.0 to be considered functional. These are the non-negotiable building blocks. Missing any makes the milestone incomplete by its own definition.
 
-| Feature | Why Expected | Complexity | Dependencies on v1.0 |
+| Feature | Why Expected | Complexity | Dependencies on v2.0 |
 |---------|--------------|------------|----------------------|
-| Transcript-based response extraction | Hook stdin already provides `transcript_path` JSONL — reading it is the obvious, correct way to get Claude's exact response text (no ANSI codes, no tmux artifacts) | LOW | stop-hook.sh (has transcript_path in stdin), existing guard and registry lookup logic |
-| AskUserQuestion forwarding via PreToolUse | PreToolUse hook fires before `AskUserQuestion` executes, stdin contains structured `tool_input` with `questions` array, `options`, `header`, `multiSelect` — this is the only reliable way to get exact question text and option labels without tmux scraping | MEDIUM | Existing notification-permission-hook.sh as structural reference; settings.json hook registration pattern |
-| Deduplication: skip wake when pane content is identical | Same pane content across consecutive hook fires means agent receives no new information — sending it wastes tokens and creates noise | LOW | stop-hook.sh (add state file per session in /tmp) |
-| Minimum context guarantee (always include at least 10 lines) | Orchestrator agent must have enough baseline context to act, even when diff is empty or small | LOW | stop-hook.sh pane capture logic |
-| Structured wake message v2 format | v1.0 format embeds raw 120-line pane in `[PANE CONTENT]` — v2.0 must replace this with extracted response text + optional compact delta | MEDIUM | Existing wake message builder in all 5 hook scripts |
+| JSONL event schema with standard fields | Every structured log system uses machine-parseable one-record-per-line format. Fields: `timestamp`, `event_type`, `correlation_id`, `session_name`, `agent_id`, `hook_script`, `level` | LOW | Existing debug_log() replaced or wrapped in all 6 hook scripts |
+| Shared JSONL logging function in lib/hook-utils.sh | All 6 hook scripts currently duplicate the debug_log() definition inline — a shared emit_event() function that writes a JSONL line belongs in hook-utils.sh (DRY, SRP) | LOW | lib/hook-utils.sh (exists, 4 functions) |
+| hook_fired event (request) on every hook invocation | The moment a hook script fires is a meaningful lifecycle event: which hook, which session, which agent, timestamp, stdin size, trigger type — this is the "request" side of each interaction | LOW | All 6 hook scripts — add after stdin consumed and session resolved |
+| wake_sent event (request delivery) capturing full wake message body | The complete text sent to OpenClaw is currently never stored. Logging it in a JSONL field makes it queryable and replayable. This is the primary gap. | LOW | Stop hook and notification hooks — log after building WAKE_MESSAGE and before the openclaw call |
+| wake_response_received event (response) with OpenClaw response body | In bidirectional mode, RESPONSE is currently truncated to 200 chars. Log the full response. In async mode, log the background PID and that response capture is not available. | LOW | Bidirectional branches in stop-hook.sh, notification-idle-hook.sh, notification-permission-hook.sh, pre-compact-hook.sh |
+| correlation_id linking request and response events | Async mode fires the openclaw call in a background process — the parent and background process can't share a variable after fork. A correlation_id generated before the fork and passed to the background process links the wake_sent and wake_response_received events from different PIDs. | MEDIUM | All hooks using async backgrounding — generate ID before fork, pass via env or argument |
+| Per-session JSONL log file (one file per session, session-prefixed name) | v2.0 already uses per-session plain-text logs ({SESSION_NAME}.log). The JSONL file should use the same pattern: {SESSION_NAME}.jsonl in logs/. | LOW | Existing per-session plain-text log pattern (sessions already write to logs/{SESSION_NAME}.log) |
+| hook_exit event on early-exit paths (non-managed sessions, guards) | When a hook exits early (no TMUX, no registry match, stop_hook_active guard), that exit should be a minimal JSONL record so early exits are distinguishable from never-fired hooks | LOW | All 6 hooks — add before each early-exit point |
 
 ### Differentiators (Competitive Advantage)
 
-Features that make the system meaningfully better than the current v1.0 behavior. Not required for correctness, but high value for token efficiency and orchestrator signal quality.
+Features that make this logging system significantly more capable than plain-text logs. Not required for basic correctness, but high diagnostic and automation value.
 
-| Feature | Value Proposition | Complexity | Dependencies on v1.0 |
+| Feature | Value Proposition | Complexity | Dependencies on v2.0 |
 |---------|-------------------|------------|----------------------|
-| Diff-based pane delivery (send only changed lines) | When pane content changes between hook fires, send a compact line-level delta (new lines only, or `diff --unified` output) instead of full 120-line dump — dramatically reduces per-wake message size during long active sessions | MEDIUM | stop-hook.sh pane capture; /tmp state file per session for previous-capture storage |
-| AskUserQuestion structured forwarding (questions + options as JSON-like section) | Orchestrator receives `[ASK USER QUESTION]` section with structured data: question text, option labels, option descriptions, header — no tmux pattern-matching required, exact phrasing preserved | MEDIUM | pre-tool-use-hook.sh (NEW); existing hook registration pattern |
-| Last assistant message extraction from transcript | From transcript JSONL, find the most recent `message.role == "assistant"` entry and extract `message.content[].text` — gives clean response text without tmux rendering noise, ANSI codes, statusline garbage | LOW | transcript_path available in all hook stdin payloads since v1.0 |
-| Per-session previous-pane state storage in /tmp | Store `pane_capture_hash` and `pane_capture_raw` per session in `/tmp/gsd-hook-state-${SESSION_NAME}.json` — enables both deduplication (hash comparison) and diff delivery (raw comparison) in a single read | LOW | stop-hook.sh state file pattern |
-| Compact pane delta section `[PANE DELTA]` | When pane changed but transcript extraction succeeded, include only the new/changed lines (not full dump) as a smaller `[PANE DELTA]` section — orchestrator gets both clean response + what changed on screen | MEDIUM | Diff-based delivery feature |
+| AskUserQuestion lifecycle: question_forwarded event | When PreToolUse hook fires for AskUserQuestion, log which questions and options were forwarded — structured: question text, options list, tool_use_id. Enables "how often does Claude ask questions?" analysis. | LOW | pre-tool-use-hook.sh (question data already extracted in format_ask_user_questions); add JSONL emit before openclaw call |
+| AskUserQuestion lifecycle: answer_selected event via PostToolUse hook | When AskUserQuestion tool completes, a PostToolUse hook fires with the selected answer in tool_result. Logging the answer_selected event closes the question/answer lifecycle: you know what was asked AND what was chosen. This requires adding a new PostToolUse hook script and registering it. | MEDIUM | Requires new post-tool-use-hook.sh (new script); new PostToolUse hook registration in register-hooks.sh and settings.json; tool_result field in hook stdin |
+| Duration field in wake events (ms from hook_fired to wake_sent) | Time from hook entry to openclaw call reveals slow registry lookups, slow transcript reads, slow pane captures. Single arithmetic subtraction (EPOCHREALTIME or date +%s%N). | LOW | All hooks — capture start timestamp at entry, compute delta before wake_sent event |
+| content_source field in wake events (transcript vs pane_diff vs raw_pane) | The stop hook already knows which source was used (extracted response vs pane diff fallback). Recording this in the JSONL event exposes when fallback mode activates — a signal that transcript extraction is failing. | LOW | stop-hook.sh — content source decision already made (line 163-177), just add to event fields |
+| decision field in response events (block vs proceed for bidirectional mode) | When bidirectional response contains decision=block, log the decision and reason explicitly. Enables "how many times did Gideon block an action?" queries. | LOW | Bidirectional response parsing already done in stop-hook.sh and notification-idle-hook.sh |
+| Shared log rotation awareness (max file size guard before writing) | JSONL files grow indefinitely. A simple guard: if logs/{SESSION_NAME}.jsonl exceeds 10MB, rotate to .jsonl.1 or truncate. Prevents disk fill on long-running sessions. | LOW | Per-session JSONL file — add size check before emit_event() writes |
 
 ### Anti-Features (Commonly Requested, Often Problematic)
 
 | Feature | Why Requested | Why Problematic | Alternative |
 |---------|---------------|-----------------|-------------|
-| Parse tmux pane content for AskUserQuestion question text | Seems simpler than adding a new hook — just grep "?" patterns in pane | Brittle: question text can span multiple lines, wrap, contain special chars; ANSI codes corrupt grep output; menu borders interfere; breaks on any UI change | Use PreToolUse hook — fires before tool executes, stdin contains exact `tool_input.questions` from Claude's tool call, zero ambiguity |
-| Send full transcript content in wake message | Complete conversation history seems useful for agent context | Transcripts grow to hundreds of KB; single JSONL line for last assistant message is sufficient; orchestrator has its own conversation memory | Extract only last assistant `message.content[].text` block — precise and bounded in size |
-| Global PreToolUse hook (no matcher) that fires for all tools | Seems easy to configure — one hook handles everything | Global PreToolUse fires before every single Bash, Read, Write, Edit, Glob, Grep, WebFetch, WebSearch, Task call — extreme overhead for every tool use; known bug (fixed in 2.0.76) caused AskUserQuestion to return empty responses when PreToolUse global hook was active | Use matcher `"AskUserQuestion"` — fires only when Claude calls that specific tool, zero overhead for all other tool uses |
-| diff output with full context lines (unified diff format) | Familiar format from git, easy to read | Unified diff with surrounding context lines still sends most of the unchanged content; for the orchestrator, added lines are sufficient | Send only the added/new lines using `comm` or `grep` against stored previous capture, or `diff --new-line-format` with no context |
-| Re-implement previous-pane storage in registry JSON | Registry already exists — seems natural to store state there | Registry is read-only in hooks (atomic writes via flock + mv only in spawn/recover); hooks run concurrently and frequently; adding write operations to every hook fire risks corruption | Use per-session files in /tmp — ephemeral, no locking required, natural cleanup on reboot |
-| Blocking PreToolUse hook that intercepts AskUserQuestion and waits for orchestrator decision | Bidirectional mode already works for Stop hook — seems consistent | AskUserQuestion is specifically designed for interactive user input; blocking it while waiting for OpenClaw adds latency to the user-facing TUI; the hook should forward the question, not intercept the answer | Forward question data in async mode — orchestrator receives the question before it appears in TUI, can prepare context, but user interaction proceeds normally via Claude Code's native UI |
+| Log the full pane content in JSONL events | Seems useful for debugging — store exactly what the pane showed | Pane content is 40-120 lines per hook fire, potentially 8000+ characters, mostly unchanged between fires. JSONL files grow to hundreds of MB per session per day. The pane content is already captured in the wake message which IS logged. | Log wake_message_bytes (size of the payload) and content_source (transcript/pane_diff) — enough for diagnosis without storing the full content twice |
+| Log the full transcript content in JSONL events | Complete conversation context enables replaying sessions | Transcripts grow to hundreds of KB. Logging them in JSONL events creates 100x storage amplification. The transcript file itself is the source of truth at transcript_path. | Log transcript_path (string reference) and transcript_bytes (file size) in the event — pointer, not copy |
+| Emit JSONL to stdout or stderr instead of a log file | Simpler — no file management | Claude Code captures hook stdout for decision injection (bidirectional mode). Writing JSONL to stdout corrupts the decision JSON. Writing to stderr risks interleaving with Claude Code's own stderr. | Write to per-session .jsonl files in logs/ — completely separate from hook stdout/stderr |
+| OpenTelemetry / structured logging framework (Python/Node runtime) | Industry-standard distributed tracing with OTLP export | Adds Python or Node.js startup penalty (50-200ms) to hooks that must complete in <5ms for non-managed sessions. Violates the "Bash + jq only" constraint. No OTLP collector running on this host. | Use jq -n with --arg parameters to emit JSONL directly — no runtime dependency, same output format, <1ms overhead |
+| Centralized JSONL log file across all sessions (single hooks.jsonl) | Easier to query one file | Concurrent hook fires from multiple sessions race to write to the same file. Requires flock on every event emit. Per-session files have no concurrent writers. | Per-session JSONL files — session isolation means no locking needed. Cross-session queries use: jq -s '.' logs/*.jsonl |
+| SQLite event store instead of JSONL | Structured queries, proper indexing, atomic writes | SQLite requires sqlite3 binary (not guaranteed installed), adds dependency. Querying JSONL with jq is sufficient for single-host use. Migration path away from SQLite is painful. | JSONL files queryable with: jq 'select(.event_type == "wake_sent")' logs/*.jsonl — no additional dependencies |
+| Real-time streaming / tailing of events | Useful for live dashboards | Not in scope for v3.0 (out of scope in PROJECT.md: "Dashboard rendering/UI — warden.kingdom.lv integration is separate work"). JSONL files support tail -f natively for humans. | JSONL files are inherently tail-able. Dashboard integration deferred to separate milestone. |
 
 ---
 
 ## Feature Dependencies
 
 ```
-Transcript-based response extraction
-    └──requires──> transcript_path in hook stdin (v1.0, available in all hooks)
-    └──requires──> last assistant message JSONL parsing (tail + jq)
-    └──enhances──> Structured wake message v2 format ([RESPONSE] section replaces [PANE CONTENT])
+Shared JSONL logging function (emit_event in lib/hook-utils.sh)
+    └──required by──> hook_fired event (all 6 hooks)
+    └──required by──> wake_sent event (all hooks with openclaw delivery)
+    └──required by──> wake_response_received event (bidirectional hooks)
+    └──required by──> hook_exit event (all early-exit paths)
+    └──required by──> question_forwarded event (pre-tool-use-hook.sh)
+    └──required by──> answer_selected event (post-tool-use-hook.sh, if built)
 
-Deduplication (skip identical pane content)
-    └──requires──> Per-session previous-pane state storage in /tmp
-    └──provides──> hash(pane_content) == hash(previous_pane) → skip wake or send lightweight signal
+correlation_id
+    └──requires──> generation before openclaw call (in hook script, before fork)
+    └──required by──> wake_sent event (carries the ID)
+    └──required by──> wake_response_received event (carries same ID from background process)
+    └──links──> hook_fired → wake_sent → wake_response_received (same invocation chain)
 
-Diff-based pane delivery
-    └──requires──> Per-session previous-pane state storage in /tmp (same state file as deduplication)
-    └──enhances──> Structured wake message v2 format ([PANE DELTA] instead of [PANE CONTENT])
-    └──conflicts──> Full 120-line pane dump (replaced, not combined)
+hook_fired event
+    └──requires──> Shared JSONL logging function
+    └──requires──> session_name resolved (fires after TMUX check + registry lookup)
+    └──enhances──> duration_ms in wake_sent (needs start timestamp from hook_fired)
 
-AskUserQuestion forwarding via PreToolUse
-    └──requires──> pre-tool-use-hook.sh (NEW script)
-    └──requires──> PreToolUse hook registered in ~/.claude/settings.json with matcher "AskUserQuestion"
-    └──uses──> tool_input.questions[] from PreToolUse stdin (NOT tmux pane scraping)
-    └──provides──> [ASK USER QUESTION] section in wake message with structured question + options
+wake_sent event
+    └──requires──> Shared JSONL logging function
+    └──requires──> correlation_id (generated before openclaw call)
+    └──requires──> hook_fired (provides start timestamp for duration_ms calculation)
+    └──requires──> WAKE_MESSAGE built (logs full body or byte count)
 
-Structured wake message v2 format
-    └──requires──> Transcript-based response extraction (to replace [PANE CONTENT] with [RESPONSE])
-    └──requires──> Diff-based pane delivery (to add [PANE DELTA] section)
-    └──requires──> Minimum context guarantee (10-line baseline when diff is small)
-    └──modifies──> stop-hook.sh wake message builder (existing, v1.0)
-    └──modifies──> notification-idle-hook.sh wake message builder (existing, v1.0)
+wake_response_received event
+    └──requires──> Shared JSONL logging function
+    └──requires──> correlation_id (passed to background process or captured in bidirectional branch)
+    └──requires──> openclaw call completed (async: after background process waits; bidirectional: after synchronous call)
+    └──contains──> decision field (only relevant in bidirectional mode with block response)
 
-Minimum context guarantee
-    └──requires──> Diff-based pane delivery (guard: if delta < 10 lines, include 10 lines from bottom)
-    └──modifies──> Pane delta calculation logic in stop-hook.sh
+AskUserQuestion question_forwarded event
+    └──requires──> Shared JSONL logging function
+    └──requires──> format_ask_user_questions output (already extracted in pre-tool-use-hook.sh)
+    └──contains──> tool_use_id (links to answer_selected event)
+
+AskUserQuestion answer_selected event
+    └──requires──> Shared JSONL logging function
+    └──requires──> post-tool-use-hook.sh (NEW script — does not exist yet)
+    └──requires──> PostToolUse hook registration in settings.json with matcher "AskUserQuestion"
+    └──requires──> tool_result field in PostToolUse hook stdin (contains selected answer)
+    └──links to──> question_forwarded (via tool_use_id)
+    └──conflicts with──> "ASK-03: always exit 0, always async" (PostToolUse is separate from PreToolUse — no conflict)
+
+Per-session JSONL log file
+    └──requires──> Shared JSONL logging function (writes to file path)
+    └──follows same pattern as──> Per-session plain-text log (logs/{SESSION_NAME}.log already exists)
+    └──enhanced by──> Log rotation guard (optional, prevents disk fill)
+```
+
+### Dependency Notes
+
+- **emit_event requires no external calls:** It is a pure jq -n invocation writing one JSON line — no network, no flock needed (per-session files have single writer).
+- **correlation_id bridges async fork boundary:** Generated with `date +%s%N-$$-$RANDOM` or similar before `openclaw ... &` — the background subshell inherits the variable from the parent environment.
+- **answer_selected event has the highest complexity:** It requires a new script (post-tool-use-hook.sh) and a new hook registration. It is the only v3.0 feature that touches scripts/settings beyond lib/hook-utils.sh additions. This makes it a candidate for a separate phase from the core JSONL infrastructure.
+- **duration_ms requires start timestamp capture:** The hook_fired event must capture a start timestamp (EPOCHREALTIME in bash 5+, or date +%s%3N). All subsequent events in the same hook invocation compute duration relative to this start.
+
+---
+
+## Event Schema
+
+### Core Event Fields (All Events)
+
+```json
+{
+  "timestamp": "2026-02-18T10:00:00.123Z",
+  "event_type": "hook_fired | hook_exit | wake_sent | wake_response_received | question_forwarded | answer_selected",
+  "hook_script": "stop-hook.sh",
+  "session_name": "warden-main",
+  "agent_id": "warden",
+  "correlation_id": "1708250400123-12345-47829",
+  "level": "info | warn | error"
+}
+```
+
+### Event-Specific Fields
+
+**hook_fired** (emitted when hook starts, after stdin consumed and session resolved):
+```json
+{
+  "event_type": "hook_fired",
+  "hook_event_name": "Stop",
+  "stdin_bytes": 1842,
+  "pid": 12345
+}
+```
+
+**hook_exit** (emitted on early-exit paths — non-managed session, guard triggered):
+```json
+{
+  "event_type": "hook_exit",
+  "exit_reason": "no_tmux | no_registry_match | stop_hook_active | empty_session_name | registry_missing",
+  "exit_phase": "tmux_guard | registry_lookup | agent_id_empty"
+}
+```
+
+**wake_sent** (emitted after openclaw call is dispatched, before hook exits):
+```json
+{
+  "event_type": "wake_sent",
+  "openclaw_session_id": "sess_abc123",
+  "hook_mode": "async | bidirectional",
+  "wake_message_bytes": 1247,
+  "content_source": "transcript | pane_diff | raw_pane",
+  "trigger_type": "response_complete | idle_prompt | permission_prompt | pre_compact | session_end | ask_user_question",
+  "duration_ms": 12,
+  "bg_pid": 12348
+}
+```
+
+**wake_response_received** (emitted by background process after openclaw responds, or synchronously in bidirectional mode):
+```json
+{
+  "event_type": "wake_response_received",
+  "hook_mode": "async | bidirectional",
+  "response_bytes": 98,
+  "response_status": "ok | error | empty",
+  "decision": "block | proceed | null",
+  "reason": "reason text if block, else null",
+  "duration_ms": 843
+}
+```
+
+**question_forwarded** (emitted by pre-tool-use-hook.sh after AskUserQuestion wake is dispatched):
+```json
+{
+  "event_type": "question_forwarded",
+  "tool_use_id": "toolu_01ABC...",
+  "question_count": 1,
+  "options_count": 3,
+  "multi_select": false,
+  "duration_ms": 8
+}
+```
+
+**answer_selected** (emitted by post-tool-use-hook.sh after AskUserQuestion completes):
+```json
+{
+  "event_type": "answer_selected",
+  "tool_use_id": "toolu_01ABC...",
+  "answer_text": "OAuth (Recommended)",
+  "answer_index": 0,
+  "duration_ms": 4521
+}
 ```
 
 ---
 
 ## MVP Definition
 
-### Launch With (v2.0 — all six stated milestone features)
+### Launch With (v3.0 — core JSONL infrastructure)
 
-These are the six explicitly named v2.0 features. All must ship together since the wake message v2 format depends on the others.
+The minimum that makes v3.0 meaningful. All must ship together since they share the emit_event function.
 
-- [ ] **Transcript-based extraction** — Read `transcript_path` JSONL from hook stdin, extract last `message.role == "assistant"` entry, pull `message.content[].text`, add as `[RESPONSE]` section in wake message. Replaces tmux scraping as the source of Claude's last response text.
-- [ ] **PreToolUse hook for AskUserQuestion** — New `pre-tool-use-hook.sh` script. Registered in settings.json with matcher `"AskUserQuestion"`. Receives `tool_input.questions[]` (each with `question`, `header`, `options[].label`, `options[].description`, `multiSelect`). Sends structured wake with `[ASK USER QUESTION]` section to orchestrator. Async mode only (no bidirectional — forwarding only, not intercepting).
-- [ ] **Diff-based pane delivery** — Store previous pane capture per session in `/tmp/gsd-hook-state-${SESSION_NAME}`. On each hook fire, compare with current capture. Send only new/changed lines as `[PANE DELTA]` section instead of full `[PANE CONTENT]` dump.
-- [ ] **Structured wake message v2** — Compact format: `[SESSION IDENTITY]`, `[TRIGGER]`, `[STATE HINT]`, `[RESPONSE]` (from transcript), `[PANE DELTA]` (changed lines only), `[CONTEXT PRESSURE]`, `[AVAILABLE ACTIONS]`. Removes raw 120-line `[PANE CONTENT]` dump.
-- [ ] **Deduplication** — Hash pane content (md5sum or sha1sum). If hash matches previous, skip wake entirely OR send lightweight `[NO CHANGE]` signal. Configurable via hook_settings (`dedup_mode: "skip" | "lightweight"`).
-- [ ] **Minimum context guarantee** — When pane delta is fewer than 10 lines (e.g., only a statusline change), pad to always include at least 10 lines from pane bottom so orchestrator has baseline context.
+- [ ] **Shared emit_event() in lib/hook-utils.sh** — Replaces debug_log() with a jq-based JSONL emitter. Writes one JSON line per call to the per-session .jsonl file. Accepts event_type and arbitrary key-value fields. Shared by all hook scripts via source.
+- [ ] **hook_fired event** — Emitted in all 6 hook scripts after stdin consumed and session resolved. Fields: hook_script, hook_event_name, session_name, agent_id, correlation_id, stdin_bytes, pid.
+- [ ] **hook_exit event** — Emitted on early-exit paths in all 6 hook scripts. Replaces "EXIT: ..." debug_log lines. Fields: exit_reason, exit_phase.
+- [ ] **wake_sent event** — Emitted in stop-hook.sh, notification-idle-hook.sh, notification-permission-hook.sh, pre-compact-hook.sh, pre-tool-use-hook.sh, session-end-hook.sh after openclaw call is dispatched. Fields: wake_message_bytes, content_source, trigger_type, hook_mode, duration_ms, bg_pid (async only).
+- [ ] **wake_response_received event** — Emitted in bidirectional branches (stop, notification-idle, notification-permission, pre-compact) after openclaw responds synchronously. Fields: response_bytes, response_status, decision, reason, duration_ms. In async mode: emitted by background subprocess after openclaw call completes.
+- [ ] **correlation_id linking request and response** — Generated once per hook invocation (before the openclaw fork), carried in hook_fired, wake_sent, and wake_response_received events.
+- [ ] **question_forwarded event** — Emitted in pre-tool-use-hook.sh after AskUserQuestion wake is dispatched. Fields: tool_use_id, question_count, options_count, multi_select.
+- [ ] **Per-session JSONL file** — logs/{SESSION_NAME}.jsonl, parallel to existing logs/{SESSION_NAME}.log plain-text file. emit_event() writes here; debug_log() continues writing to .log for backward compatibility during transition.
 
-### Add After Validation (v2.x)
+### Add After Validation (v3.x)
 
-Features to add once v2.0 core delivery is working and token reduction is measurable.
+- [ ] **answer_selected event via PostToolUse hook** — Requires new post-tool-use-hook.sh and hook registration. Closes the AskUserQuestion lifecycle loop. Add after confirming question_forwarded works correctly and correlation via tool_use_id is reliable.
+- [ ] **duration_ms in all events** — Requires capturing hook start time (EPOCHREALTIME) immediately on script entry. Straightforward but requires touching all 6 hooks. Add in second pass after core events are confirmed correct.
+- [ ] **Log rotation guard** — Size check before emit_event writes. Add when log accumulation becomes visible in practice (depends on session frequency).
 
-- [ ] **Per-hook dedup mode settings** — Add `dedup_mode` to hook_settings with per-hook override (same three-tier fallback as existing hook_settings). Trigger after measuring actual dedup rates.
-- [ ] **AskUserQuestion async pre-notification** — When PreToolUse hook fires for AskUserQuestion, orchestrator receives the question 50-200ms before Claude Code renders the TUI menu. Add a brief delay in the hook before exiting to give orchestrator time to prepare context (e.g., look up session state). Only useful if orchestrator response latency is measurable and matters.
+### Future Consideration (v4+)
 
-### Future Consideration (v3+)
-
-- [ ] **Transcript diff (conversation delta)** — Instead of pane delta, send only the new conversation turns since last wake (diff of transcript JSONL). Requires tracking last-read transcript position per session. Higher complexity, potentially higher value for long sessions.
-- [ ] **Selective hook muting** — Allow orchestrator to instruct hook to be silent for N turns ("I'm handling this, don't wake me again until next Stop"). Requires two-way state channel between hook and orchestrator.
-- [ ] **PostToolUse hook for AskUserQuestion** — After AskUserQuestion tool executes, forward what answer was selected back to orchestrator as confirmation. Enables orchestrator to build a record of user preferences without polling.
+- [ ] **Remove plain-text debug_log() entirely** — Once JSONL events cover all cases debug_log() covered, delete the duplicate plain-text logging. Requires confirming JSONL log contains no gaps.
+- [ ] **Cross-session query tooling** — A query-logs.sh script that wraps jq queries across all session JSONL files. Deferred to when dashboard integration begins.
+- [ ] **OTLP export** — If a local collector is ever running, add OTLP transport as an alternative destination for emit_event(). Separate from file-based logging, not replacing it.
 
 ---
 
 ## Feature Prioritization Matrix
 
-| Feature | Orchestrator Value | Implementation Cost | Priority |
-|---------|-------------------|---------------------|----------|
-| Transcript-based response extraction | HIGH — eliminates ANSI noise from response text | LOW — tail JSONL + jq, 5 lines of bash | P1 |
-| Deduplication (hash comparison + skip) | HIGH — eliminates duplicate wakes entirely | LOW — md5sum comparison + /tmp state file | P1 |
-| Structured wake message v2 format | HIGH — orchestrator reads cleaner signal | MEDIUM — modify wake builder in 2 hook scripts (stop, notification-idle) | P1 |
-| Diff-based pane delivery | MEDIUM — reduces delta size during active work | MEDIUM — diff calculation + /tmp state file (shares with dedup) | P2 |
-| Minimum context guarantee | LOW — safety net for edge cases | LOW — guard in delta calculation | P2 |
-| AskUserQuestion forwarding via PreToolUse | HIGH — exact question/options without pattern matching | MEDIUM — new pre-tool-use-hook.sh + settings.json registration | P1 |
+| Feature | Diagnostic Value | Implementation Cost | Priority |
+|---------|-----------------|---------------------|----------|
+| Shared emit_event() in lib | HIGH — enables all other features | LOW — 10-15 lines of jq bash | P1 |
+| hook_fired event | HIGH — proves hook executed, captures entry state | LOW — one call per hook after session resolved | P1 |
+| wake_sent event with wake_message_bytes | HIGH — confirms delivery, captures payload size | LOW — one call per hook before openclaw | P1 |
+| correlation_id | HIGH — links request/response across async fork | MEDIUM — generate before fork, pass to bg subprocess | P1 |
+| wake_response_received (bidirectional) | HIGH — captures what OpenClaw actually said | LOW — synchronous, already in response variable | P1 |
+| wake_response_received (async) | MEDIUM — async response captured after the fact | MEDIUM — background subprocess must emit to same file | P2 |
+| hook_exit event | MEDIUM — distinguishes early exits from never-fired | LOW — replaces existing debug_log exit lines | P1 |
+| question_forwarded event | MEDIUM — AskUserQuestion audit trail starts here | LOW — data already extracted in pre-tool-use-hook.sh | P1 |
+| answer_selected event (PostToolUse) | HIGH — closes the lifecycle loop | MEDIUM — new script + new hook registration | P2 |
+| duration_ms in wake events | LOW-MEDIUM — performance diagnosis | LOW — one arithmetic op per event | P2 |
+| content_source in wake events | MEDIUM — reveals transcript fallback rate | LOW — already a local variable in stop-hook.sh | P1 |
+| Log rotation guard | LOW — prevents disk fill over weeks | LOW — wc -c check + mv | P3 |
 
 **Priority key:**
-- P1: Must have for v2.0 launch (all stated milestone features)
-- P2: Should have for completeness, add in same milestone
-- P3: Nice to have, defer
+- P1: Core JSONL infrastructure — must ship in first phase
+- P2: Completeness — add in second phase within same milestone
+- P3: Operational hygiene — add when problem manifests
 
 ---
 
-## Behavior Descriptions (Orchestrator Perspective)
+## AskUserQuestion Lifecycle Detail
 
-### Before v2.0 (current v1.0 behavior)
-
-Orchestrator receives a wake message like:
-
+### Current State (v2.0)
 ```
-[SESSION IDENTITY]
-agent_id: warden
-tmux_session_name: warden-main
-timestamp: 2026-02-17T10:00:00Z
-
-[TRIGGER]
-type: response_complete
-
-[STATE HINT]
-state: menu
-
-[PANE CONTENT]
-[full 120 lines of raw tmux pane content including ANSI codes, statusline,
- previous responses, menu borders, rendering artifacts, and identical content
- from the previous hook fire — 3000-8000 characters]
-
-[CONTEXT PRESSURE]
-72% [WARNING]
-
-[AVAILABLE ACTIONS]
-menu-driver.sh warden-main choose <n>
-...
+Claude calls AskUserQuestion tool
+    → PreToolUse hook fires
+    → pre-tool-use-hook.sh: extracts question + options from tool_input
+    → Formats and sends wake message to Gideon (async background)
+    → debug_log: "DELIVERED (async AskUserQuestion forward, bg PID=X)"
+    → Hook exits 0 (TUI menu renders)
+    → [NOTHING LOGGED ABOUT WHICH OPTION WAS SELECTED]
 ```
 
-Orchestrator must: parse ANSI codes mentally, find Claude's actual response buried in the pane dump, identify what changed since last wake, distinguish menu options from surrounding noise, and handle repeated sends of identical content.
-
-### After v2.0
-
-Orchestrator receives:
-
+### Target State (v3.0)
 ```
-[SESSION IDENTITY]
-agent_id: warden
-tmux_session_name: warden-main
-timestamp: 2026-02-17T10:00:00Z
+Claude calls AskUserQuestion tool
+    → PreToolUse hook fires
+    → pre-tool-use-hook.sh:
+        → correlation_id = "1708250400123-12345-47829"
+        → emit_event: {event_type: "hook_fired", correlation_id: ..., tool_use_id: "toolu_01ABC..."}
+        → extracts question + options
+        → sends wake to Gideon (async background, background process emits wake_response_received)
+        → emit_event: {event_type: "question_forwarded", tool_use_id: "toolu_01ABC...", question_count: 1, options_count: 3}
+        → hook exits 0 (TUI menu renders)
 
-[TRIGGER]
-type: response_complete
-
-[STATE HINT]
-state: menu
-
-[RESPONSE]
-I've analyzed the codebase and found 3 issues to address. Which approach would
-you like me to take?
-
-[PANE DELTA]
-  > 1. Fix all issues in a single commit
-  > 2. Fix each issue separately with individual commits
-  > 3. Show me the issues first before deciding
-
-[CONTEXT PRESSURE]
-72% [WARNING]
-
-[AVAILABLE ACTIONS]
-menu-driver.sh warden-main choose <n>
-...
+Gideon selects option (via menu-driver.sh choose 2)
+    → Claude Code submits answer
+    → PostToolUse hook fires (NEW in v3.x)
+    → post-tool-use-hook.sh:
+        → reads tool_use_id from stdin
+        → reads answer from tool_result in stdin
+        → emit_event: {event_type: "answer_selected", tool_use_id: "toolu_01ABC...", answer_text: "JWT", answer_index: 1}
+        → hook exits 0
 ```
 
-Orchestrator gets: exact response text (no ANSI codes), only the changed lines (not 120-line dump), clean signal-to-noise ratio. If pane was identical to previous fire, wake is skipped entirely.
+### tool_use_id as the Lifecycle Link
 
-### AskUserQuestion wake (new in v2.0)
+The `tool_use_id` field in PreToolUse and PostToolUse hook stdin is the stable identifier for a single AskUserQuestion invocation. It links the question_forwarded event to the answer_selected event. This is the canonical way to correlate question and answer across the async gap between hook fires.
 
-When Claude calls `AskUserQuestion`, orchestrator receives a separate wake before the TUI menu renders:
-
-```
-[SESSION IDENTITY]
-agent_id: warden
-tmux_session_name: warden-main
-timestamp: 2026-02-17T10:00:01Z
-
-[TRIGGER]
-type: ask_user_question
-
-[STATE HINT]
-state: menu
-
-[ASK USER QUESTION]
-questions:
-  - header: "Approach"
-    question: "Which approach should I use for the authentication fix?"
-    multiSelect: false
-    options:
-      1. OAuth (Recommended) — Use OAuth 2.0 with PKCE for third-party integrations
-      2. JWT — Lightweight stateless tokens, good for internal services
-      3. Session-based — Traditional server-side sessions, simplest to implement
-
-[AVAILABLE ACTIONS]
-menu-driver.sh warden-main choose <n>
-menu-driver.sh warden-main type <text>
-...
-```
-
-No pattern matching, no ANSI parsing. The question text and option labels are taken directly from `tool_input.questions` in the PreToolUse hook stdin.
-
----
-
-## AskUserQuestion Tool Input Schema (CONFIRMED — official docs)
-
-From [platform.claude.com/docs/en/agent-sdk/user-input](https://platform.claude.com/docs/en/agent-sdk/user-input):
-
+PostToolUse hook stdin structure (for AskUserQuestion completion):
 ```json
 {
-  "questions": [
-    {
-      "question": "Which approach should I use?",
-      "header": "Approach",
-      "options": [
-        { "label": "OAuth (Recommended)", "description": "Use OAuth 2.0 with PKCE" },
-        { "label": "JWT", "description": "Lightweight stateless tokens" }
-      ],
-      "multiSelect": false
-    }
-  ]
-}
-```
-
-PreToolUse hook stdin for AskUserQuestion:
-
-```json
-{
-  "session_id": "abc123",
-  "transcript_path": "/home/forge/.claude/projects/.../transcript.jsonl",
-  "cwd": "/path/to/project",
-  "permission_mode": "bypassPermissions",
-  "hook_event_name": "PreToolUse",
+  "hook_event_name": "PostToolUse",
   "tool_name": "AskUserQuestion",
   "tool_use_id": "toolu_01ABC...",
-  "tool_input": {
-    "questions": [
-      {
-        "question": "Which approach should I use?",
-        "header": "Approach",
-        "options": [
-          { "label": "OAuth (Recommended)", "description": "Use OAuth 2.0 with PKCE" },
-          { "label": "JWT", "description": "Lightweight stateless tokens" }
-        ],
-        "multiSelect": false
-      }
-    ]
+  "tool_input": { "questions": [...] },
+  "tool_response": {
+    "type": "tool_result",
+    "content": "JWT"
   }
 }
 ```
 
-Constraints (confirmed):
-- 1–4 questions per AskUserQuestion call
-- 2–4 options per question
-- `multiSelect: true` allows multiple selections, joined with `", "` in answer
-- `header` field is max 12 characters (short label for TUI display)
-- AskUserQuestion is NOT available in subagents spawned via Task tool
-- Bug fixed in Claude Code v2.0.76: PreToolUse hook with global matcher caused AskUserQuestion to return empty responses (stdin/stdout conflict) — fixed, safe to use with matcher `"AskUserQuestion"`
-
----
-
-## Transcript JSONL: Last Assistant Message (CONFIRMED — official docs)
-
-From hook stdin: `transcript_path` points to a JSONL file at `~/.claude/projects/<project-hash>/<session-id>.jsonl`.
-
-Each line is a JSON object. Assistant message structure:
-
-```json
-{
-  "parentUuid": "...",
-  "isSidechain": false,
-  "userType": "external",
-  "sessionId": "...",
-  "type": "assistant",
-  "message": {
-    "id": "msg_...",
-    "type": "message",
-    "role": "assistant",
-    "model": "claude-sonnet-4-6",
-    "content": [
-      {
-        "type": "text",
-        "text": "Claude's actual response text here, clean, no ANSI codes"
-      }
-    ]
-  },
-  "uuid": "...",
-  "timestamp": "2026-02-17T10:00:00.000Z"
-}
-```
-
-Extraction pattern (bash + jq):
-
-```bash
-TRANSCRIPT_PATH=$(echo "$STDIN_JSON" | jq -r '.transcript_path // ""')
-LAST_RESPONSE=""
-if [ -n "$TRANSCRIPT_PATH" ] && [ -f "$TRANSCRIPT_PATH" ]; then
-  LAST_RESPONSE=$(tail -50 "$TRANSCRIPT_PATH" | \
-    jq -r 'select(.message.role == "assistant") | .message.content[] | select(.type == "text") | .text' 2>/dev/null | \
-    tail -1 || echo "")
-fi
-```
-
-Notes:
-- `tail -50` scans last 50 lines (avoids reading entire large transcript)
-- `select(.message.role == "assistant")` filters out user messages, tool calls, tool results
-- `select(.type == "text")` filters out tool_use blocks inside assistant messages
-- Transcript may have multiple assistant messages (multi-turn); `tail -1` gets the most recent text block
-- If transcript_path is empty or file missing, fall back to pane content (graceful degradation)
-
----
-
-## Diff-Based Pane Delivery Implementation Notes
-
-State file location: `/tmp/gsd-hook-state-${SESSION_NAME}`
-
-State file contents (plain text, two lines):
-```
-<hash>
-<previous_pane_content_base64>
-```
-
-Or as two separate files:
-```
-/tmp/gsd-hook-state-${SESSION_NAME}.hash
-/tmp/gsd-hook-state-${SESSION_NAME}.prev
-```
-
-Two separate files preferred (simpler to read/write independently).
-
-Deduplication check (bash):
-```bash
-STATE_HASH_FILE="/tmp/gsd-hook-state-${SESSION_NAME}.hash"
-CURRENT_HASH=$(echo "$PANE_CONTENT" | md5sum | cut -d' ' -f1)
-PREV_HASH=$(cat "$STATE_HASH_FILE" 2>/dev/null || echo "")
-
-if [ "$CURRENT_HASH" = "$PREV_HASH" ]; then
-  debug_log "DEDUP: pane content identical to previous, skipping wake"
-  exit 0
-fi
-echo "$CURRENT_HASH" > "$STATE_HASH_FILE"
-```
-
-Diff calculation (bash):
-```bash
-STATE_PREV_FILE="/tmp/gsd-hook-state-${SESSION_NAME}.prev"
-PREV_PANE=$(cat "$STATE_PREV_FILE" 2>/dev/null || echo "")
-echo "$PANE_CONTENT" > "$STATE_PREV_FILE"
-
-if [ -n "$PREV_PANE" ]; then
-  PANE_DELTA=$(diff <(echo "$PREV_PANE") <(echo "$PANE_CONTENT") | grep '^>' | sed 's/^> //' || echo "")
-else
-  PANE_DELTA=$(echo "$PANE_CONTENT" | tail -10)
-fi
-
-# Minimum context guarantee
-DELTA_LINES=$(echo "$PANE_DELTA" | wc -l)
-if [ "$DELTA_LINES" -lt 10 ]; then
-  PANE_DELTA=$(echo "$PANE_CONTENT" | tail -10)
-fi
-```
-
-State file cleanup: files in /tmp clean up on reboot. No explicit cleanup needed. Old files from dead sessions are harmless (small, ignored on next session start with different content).
+Note: The `tool_response.content` field contains the raw selected answer text (or comma-separated for multiSelect). Confidence: MEDIUM — inferred from PreToolUse pattern and Claude Code hooks documentation structure; PostToolUse is in the hooks spec but the exact field name for AskUserQuestion response needs verification during implementation.
 
 ---
 
@@ -413,40 +329,38 @@ State file cleanup: files in /tmp clean up on reboot. No explicit cleanup needed
 
 | Scenario | Severity | Behavior |
 |----------|----------|----------|
-| transcript_path file does not exist yet | LOW | Fall back to pane delta only — no `[RESPONSE]` section, keep `[PANE DELTA]` |
-| transcript_path has no assistant messages yet (session just started) | LOW | LAST_RESPONSE empty — omit `[RESPONSE]` section from wake |
-| Pane content is empty (session just started) | LOW | PANE_DELTA is empty — apply minimum context guarantee, send last 10 lines |
-| State file unreadable (/tmp full or permission error) | LOW | Treat as first fire — send full 10-line minimum, continue without dedup |
-| AskUserQuestion called inside subagent (Task tool) | MEDIUM | PreToolUse fires for the subagent session — hook checks registry by tmux session name; if subagent is in different tmux session, no match found, hook exits 0 (non-managed session behavior). AskUserQuestion inside subagents is a known limitation per official docs. |
-| PreToolUse global matcher bug (old Claude Code version) | HIGH | Verify Claude Code >= 2.0.76 before registering PreToolUse hook. Current version 2.1.44 is safe. Bug: empty AskUserQuestion responses when global PreToolUse hook active. Fix: use matcher `"AskUserQuestion"` not global matcher. |
-| Multiple questions in single AskUserQuestion call (1-4 allowed) | LOW | Forward all questions in `[ASK USER QUESTION]` section, numbered sequentially |
-| Wake skipped by dedup, but session state actually changed externally | LOW | Next genuine change triggers new wake with delta from the skipped-state base. Orchestrator may miss one update but will not miss all future updates. |
-| Diff produces very large output (complete screen refresh) | LOW | Fall back to last 10 lines when delta is larger than original pane — minimum context guarantee handles this |
+| emit_event() fails (disk full, permission error) | LOW | emit_event must be fire-and-forget with `|| true` — never abort hook execution on logging failure |
+| JSONL file gets corrupted (partial write) | LOW | JSONL is append-only; a corrupted line is one bad record; jq --raw-input skips invalid lines gracefully |
+| Background subprocess can't write to JSONL file (file deleted between hook_fired and bg completion) | LOW | The bg process emits with `|| true`; lost wake_response_received events are non-fatal |
+| correlation_id generation in same-second, same-PID, same-RANDOM scenario | VERY LOW | Use `$EPOCHREALTIME-$$-$RANDOM` — EPOCHREALTIME has microsecond precision, collision probability is negligible |
+| PostToolUse stdin for AskUserQuestion field names | MEDIUM | Needs empirical verification during implementation — test with a real session before committing to field schema |
+| debug_log() and emit_event() writing to different files simultaneously | LOW | The .log and .jsonl files are independent write targets — no conflict, both append-only |
+| Session name contains characters that break jq --arg | LOW | SESSION_NAME already used in .log filenames without issue; jq --arg handles arbitrary strings safely |
 
 ---
 
 ## Sources
 
-**HIGH confidence (official documentation):**
-- [Claude Code Hooks Reference — code.claude.com/docs/en/hooks](https://code.claude.com/docs/en/hooks) — PreToolUse input schema, tool_input fields, AskUserQuestion matcher, hookSpecificOutput format
-- [Handle approvals and user input — platform.claude.com/docs/en/agent-sdk/user-input](https://platform.claude.com/docs/en/agent-sdk/user-input) — AskUserQuestion tool_input.questions[] structure, `question`, `header`, `options`, `multiSelect` fields, response format with `answers`, 1-4 questions/2-4 options constraints
-- [GitHub Issue #13439 — PreToolUse bug with AskUserQuestion](https://github.com/anthropics/claude-code/issues/13439) — Confirmed fixed in v2.0.76; current 2.1.44 is safe; use matcher "AskUserQuestion" not global matcher
+**HIGH confidence (existing codebase — ground truth):**
+- scripts/stop-hook.sh (v2.0 shipped) — current plain-text debug_log pattern, async/bidirectional branches, RESPONSE capture
+- scripts/pre-tool-use-hook.sh (v2.0 shipped) — AskUserQuestion forwarding, format_ask_user_questions call
+- lib/hook-utils.sh (v2.0 shipped) — existing shared library, format_ask_user_questions, extract functions
+- .planning/PROJECT.md — v3.0 target features, constraints (bash + jq only), out-of-scope declarations
+- .planning/REQUIREMENTS.md — ADV-05 (PostToolUse for AskUserQuestion answer) — pre-existing requirement
 
-**HIGH confidence (transcript format from community implementations):**
-- [Analyzing Claude Code Interaction Logs with DuckDB — liambx.com](https://liambx.com/blog/claude-code-log-analysis-with-duckdb) — Real JSONL structure showing `message.role`, `message.content[]`, `type: "text"`, `text` fields
-- [Claude Code conversation history — kentgigger.com](https://kentgigger.com/posts/claude-code-conversation-history) — Confirmed JSONL format with `parentUuid`, `sessionId`, `message.role`, `message.content`
+**HIGH confidence (structured logging best practices — multiple sources):**
+- [Structured Logging: Best Practices & JSON Examples — Uptrace](https://uptrace.dev/glossary/structured-logging) — standard fields: timestamp, level, service, correlation_id, event; request/response schema
+- [Practical Structured Logging — Dash0](https://www.dash0.com/guides/structured-logging-for-modern-applications) — correlation ID propagation, 2-3 level nesting limit, ISO 8601 UTC
+- [Log Event JSON Schema — vectordotdev](https://github.com/vectordotdev/log-event-json-schema) — context object for cross-cutting data (session, agent identity), event object for typed event data
 
-**MEDIUM confidence (diff patterns — standard bash utilities):**
-- Standard `diff` command: `diff <(echo "$OLD") <(echo "$NEW") | grep '^>' | sed 's/^> //'` — extracts only added lines; widely used for text delta extraction
-- `md5sum` for hash comparison: standard Linux utility, available on all Ubuntu 24 systems
+**MEDIUM confidence (bash JSONL pattern — implementation pattern):**
+- [How to make a shell script log JSON messages — stegard.net](https://stegard.net/2021/07/how-to-make-a-shell-script-log-json-messages/) — jq-based structured logging in bash, field expansion approach; does NOT cover correlation IDs (verified: not in the article)
+- jq -n --arg pattern — standard `jq` usage for constructing JSON from bash variables; widely documented
 
-**LOCAL (existing implementation):**
-- scripts/stop-hook.sh (v1.0) — guard patterns, registry lookup, pane capture, wake message builder
-- scripts/notification-idle-hook.sh (v1.0) — duplicate of stop-hook patterns for reference
-- PRD.md — v1.0 architecture and Structured Wake Message Format section
-- config/recovery-registry.json — hook_settings schema for dedup_mode addition
+**MEDIUM confidence (PostToolUse hook stdin schema):**
+- Claude Code Hooks Reference (via training data + v2.0 PreToolUse investigation) — PostToolUse fires after tool execution with tool_result in stdin; specific field names for AskUserQuestion tool_response require empirical verification
 
 ---
 
-*Feature research for: gsd-code-skill v2.0 Smart Hook Delivery*
-*Researched: 2026-02-17*
+*Feature research for: gsd-code-skill v3.0 Structured Hook Observability*
+*Researched: 2026-02-18*
