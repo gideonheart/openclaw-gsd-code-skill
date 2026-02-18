@@ -76,24 +76,18 @@ Requirements for milestone v2.0: Smart Hook Delivery. Replaces noisy 120-line ra
 ### Content Extraction
 
 - [ ] **EXTRACT-01**: Stop hook extracts last assistant response from transcript_path JSONL using type-filtered content parsing (`content[]? | select(.type == "text")`)
-- [ ] **EXTRACT-02**: Extracted response replaces raw pane content as primary data in wake messages
-- [ ] **EXTRACT-03**: When transcript extraction fails (file missing, empty, parse error), fall back to diff-based pane delivery
+- [ ] **EXTRACT-02**: When transcript extraction fails (file missing, empty, parse error), fall back to pane diff (only new/added lines from last 40 pane lines)
+- [ ] **EXTRACT-03**: Per-session previous pane state stored in /tmp for diff fallback calculation
 
 ### AskUserQuestion Forwarding
 
 - [ ] **ASK-01**: PreToolUse hook fires on AskUserQuestion tool calls only (matcher: `"AskUserQuestion"`)
-- [ ] **ASK-02**: PreToolUse hook extracts structured question data (questions, options, header, multiSelect) from tool_input
-- [ ] **ASK-03**: PreToolUse hook sends question data to OpenClaw agent asynchronously (never blocks Claude Code UI)
-
-### Pane Delivery
-
-- [ ] **PANE-01**: Stop hook sends only new/added lines from last 40 pane lines (diff against previous capture per session)
-- [ ] **PANE-02**: Per-session previous pane state stored in /tmp with flock protection for concurrent access
-- [ ] **PANE-03**: When diff is empty (no pane changes), skip or send lightweight signal instead of full content
+- [ ] **ASK-02**: PreToolUse hook extracts structured question data (questions, options, header, multiSelect) from tool_input in stdin
+- [ ] **ASK-03**: PreToolUse hook sends question data to OpenClaw agent asynchronously (background, never blocks Claude Code UI)
 
 ### Wake Format
 
-- [ ] **WAKE-07**: Wake messages use v2 structured format: [SESSION IDENTITY], [TRIGGER], [CLAUDE RESPONSE], [STATE HINT], [PANE DELTA], [CONTEXT PRESSURE], [AVAILABLE ACTIONS]
+- [ ] **WAKE-07**: Wake messages use v2 structured format: [SESSION IDENTITY], [TRIGGER], [CONTENT] (transcript or pane diff), [STATE HINT], [CONTEXT PRESSURE], [AVAILABLE ACTIONS]
 - [ ] **WAKE-08**: v1 wake format code removed entirely — clean break, no backward compatibility layer
 - [ ] **WAKE-09**: AskUserQuestion forwarding uses dedicated [ASK USER QUESTION] section with structured question/options data
 
@@ -171,14 +165,27 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| | | |
+| LIB-01 | Phase 6 | Pending |
+| LIB-02 | Phase 6 | Pending |
+| EXTRACT-01 | Phase 6 | Pending |
+| EXTRACT-02 | Phase 6 | Pending |
+| EXTRACT-03 | Phase 6 | Pending |
+| ASK-01 | Phase 6 | Pending |
+| ASK-02 | Phase 6 | Pending |
+| ASK-03 | Phase 6 | Pending |
+| WAKE-07 | Phase 6 | Pending |
+| WAKE-08 | Phase 6 | Pending |
+| WAKE-09 | Phase 6 | Pending |
+| REG-01 | Phase 7 | Pending |
+| REG-02 | Phase 7 | Pending |
+| DOCS-03 | Phase 7 | Pending |
 
 **Coverage:**
 - v1 requirements: 38 total, all done
-- v2 requirements: 16 total
-- Mapped to phases: 0 (pending roadmap)
-- Unmapped: 16
+- v2 requirements: 14 total
+- Mapped to phases: 14 (Phase 6: 11, Phase 7: 3)
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-02-17*
-*Last updated: 2026-02-17 — v2.0 requirements added*
+*Last updated: 2026-02-18 — simplified: transcript OR pane diff, not both*
