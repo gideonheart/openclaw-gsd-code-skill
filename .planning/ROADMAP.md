@@ -160,8 +160,8 @@ Plans:
 **Plans**: 2 plans
 
 Plans:
-- [ ] 08-01-PLAN.md -- write_hook_event_record() function in lib/hook-utils.sh with JSONL record construction, flock atomic append, and unit test
-- [ ] 08-02-PLAN.md -- deliver_async_with_logging() wrapper in lib/hook-utils.sh with background subshell delivery and integration test
+- [x] 08-01-PLAN.md -- write_hook_event_record() function in lib/hook-utils.sh with JSONL record construction, flock atomic append, and unit test
+- [x] 08-02-PLAN.md -- deliver_async_with_logging() wrapper in lib/hook-utils.sh with background subshell delivery and integration test
 
 ### Phase 9: Hook Script Migration
 **Goal**: All 6 hook scripts emit structured JSONL records — source lib at top, accumulate lifecycle data, replace debug_log with structured logging, replace bare openclaw calls with delivery wrapper
@@ -245,7 +245,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 5. Documentation | v1.0 | 2/2 | Complete | 2026-02-17 |
 | 6. Core Extraction and Delivery Engine | v2.0 | 3/3 | Complete | 2026-02-18 |
 | 7. Registration, Deployment, and Documentation | v2.0 | 2/2 | Complete | 2026-02-18 |
-| 8. JSONL Logging Foundation | v3.0 | 0/2 | Planned | — |
+| 8. JSONL Logging Foundation | v3.0 | 2/2 | Complete | 2026-02-18 |
 | 9. Hook Script Migration | v3.0 | 0/? | Pending | — |
 | 10. AskUserQuestion Lifecycle Completion | v3.0 | 0/? | Pending | — |
 | 11. Operational Hardening | v3.0 | 0/? | Pending | — |

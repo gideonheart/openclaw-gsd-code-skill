@@ -9,17 +9,17 @@ See: .planning/PROJECT.md (updated 2026-02-18)
 
 ## Current Position
 
-Phase: 8 of 11 (JSONL Logging Foundation)
+Phase: 9 of 11 (Hook Script Migration)
 Plan: 0/? — not yet planned
-Status: Requirements and roadmap defined. Ready for `/gsd:plan-phase 8`
-Last activity: 2026-02-18 — v3.0 requirements and roadmap written
+Status: Phase 8 complete. Ready for `/gsd:plan-phase 9`
+Last activity: 2026-02-18 — Phase 8 JSONL Logging Foundation shipped (2/2 plans)
 
-Progress: [░░░░░░░░░░] 0% (v3.0 Phases 8-11)
+Progress: [██░░░░░░░░] 25% (v3.0 Phases 8-11)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 14 (v1.0 phases 1-5 + v2.0 phases 6-7)
+- Total plans completed: 16 (v1.0 phases 1-5 + v2.0 phases 6-7 + v3.0 phase 8)
 - Average duration: —
 - Total execution time: —
 
@@ -30,6 +30,7 @@ Progress: [░░░░░░░░░░] 0% (v3.0 Phases 8-11)
 | 1-5 (v1.0) | 9 | — | — |
 | 6 (v2.0) | 3 | ~9 min | ~3 min |
 | 7 (v2.0) | 2 | ~7 min | ~3.5 min |
+| 8 (v3.0) | 2 | ~6 min | ~3 min |
 
 *Updated after each plan completion*
 
@@ -50,6 +51,12 @@ Phase 6 decisions (confirmed and shipped):
 Phase 7 decisions (confirmed and shipped):
 - PreToolUse timeout set to 10s (hook backgrounds work and exits immediately)
 - register-hooks.sh registers 6 hook events including PreToolUse with AskUserQuestion matcher
+
+Phase 8 decisions (confirmed and shipped):
+- 12 explicit positional parameters for write_hook_event_record — no globals for full testability
+- Silent failure (return 0) on jq error and flock timeout — never crash calling hook
+- deliver_async_with_logging() backgrounds subshell with </dev/null — hook exits immediately
+- lib/hook-utils.sh now has 6 functions: 4 original + write_hook_event_record + deliver_async_with_logging
 
 ### Pending Todos
 
@@ -73,5 +80,5 @@ Quick-5 (2026-02-18): Two-phase logging — hooks.log shared until SESSION_NAME 
 ## Session Continuity
 
 Last session: 2026-02-18
-Stopped at: v3.0 milestone defined — requirements + roadmap written, ready for Phase 8 planning.
+Stopped at: Phase 8 complete, ready to plan Phase 9 (Hook Script Migration)
 Resume file: None
