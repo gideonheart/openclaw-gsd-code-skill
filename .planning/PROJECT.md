@@ -35,16 +35,19 @@ Reliable, intelligent agent session lifecycle — launch, recover, and respond t
 - hook_settings with three-tier fallback (per-agent > global > hardcoded) (v1.0)
 - Hybrid hook mode: async default, bidirectional per-agent (v1.0)
 - Separate scripts per hook event (SRP) (v1.0)
+- Transcript JSONL extraction for Claude response text — no pane noise (v2.0, Phase 6)
+- PreToolUse hook forwarding structured AskUserQuestion data to OpenClaw (v2.0, Phase 6)
+- Pane diff fallback when transcript unavailable — only new/added lines (v2.0, Phase 6)
+- Wake message v2 format with [CONTENT] replacing [PANE CONTENT] — clean break (v2.0, Phase 6)
+- Shared lib/hook-utils.sh with DRY extraction functions (v2.0, Phase 6)
 
 ### Active
 
 <!-- Current scope. Building toward these. -->
 
-- [ ] Read transcript_path JSONL to extract Claude's last response
-- [ ] PreToolUse hook forwarding AskUserQuestion data to OpenClaw
-- [ ] Diff-based pane content delivery (send delta, not full 120 lines)
-- [ ] Structured wake message v2 format
-- [ ] Deduplication (skip or lightweight signal when content unchanged)
+- [ ] Register PreToolUse hook in settings.json (Phase 7)
+- [ ] Clean up /tmp pane state files on session exit (Phase 7)
+- [ ] Update SKILL.md with v2.0 architecture documentation (Phase 7)
 
 ### Out of Scope
 
@@ -87,4 +90,4 @@ Reliable, intelligent agent session lifecycle — launch, recover, and respond t
 | Diff-based pane delivery | Git-style delta reduces token waste and signal-to-noise for orchestrator | Confirmed |
 
 ---
-*Last updated: 2026-02-17 after v2.0 milestone start*
+*Last updated: 2026-02-18 after Phase 6 (v2.0 Core Extraction and Delivery Engine)*

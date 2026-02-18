@@ -2,24 +2,24 @@
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-02-17)
+See: .planning/PROJECT.md (updated 2026-02-18)
 
 **Core value:** Reliable, intelligent agent session lifecycle — launch, recover, and respond without human intervention
-**Current focus:** Phase 6 — Core Extraction and Delivery Engine (v2.0)
+**Current focus:** Phase 7 — Registration, Deployment, and Documentation (v2.0)
 
 ## Current Position
 
-Phase: 6 of 7 (Core Extraction and Delivery Engine)
-Plan: 3 of 3 in current phase
-Status: Phase 6 complete, verifying
-Last activity: 2026-02-18 — All three Phase 6 plans executed (lib, pre-tool-use-hook, stop-hook v2)
+Phase: 7 of 7 (Registration, Deployment, and Documentation)
+Plan: 0 of TBD in current phase
+Status: Ready to plan
+Last activity: 2026-02-18 — Phase 6 complete, transitioning to Phase 7
 
-Progress: [████████░░] ~80% (v1.0 complete, v2.0 phase 6 complete)
+Progress: [████████░░] ~80% (v1.0 complete, v2.0 phase 6 complete, phase 7 pending)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 12 (v1.0 phases 1-5 + phase 6)
+- Total plans completed: 12 (v1.0 phases 1-5 + v2.0 phase 6)
 - Average duration: —
 - Total execution time: —
 
@@ -28,6 +28,7 @@ Progress: [████████░░] ~80% (v1.0 complete, v2.0 phase 6 com
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
 | 1-5 (v1.0) | 9 | — | — |
+| 6 (v2.0) | 3 | ~9 min | ~3 min |
 
 *Updated after each plan completion*
 
@@ -37,17 +38,17 @@ Progress: [████████░░] ~80% (v1.0 complete, v2.0 phase 6 com
 
 Decisions are logged in PROJECT.md Key Decisions table.
 
-v2.0 decisions affecting current work:
-- Transcript extraction as PRIMARY source: Stop hook stdin has NO response text — only metadata + transcript_path. Must read JSONL file with tail + jq, type-filtered content[] select
-- Pane diff as FALLBACK only: when transcript unavailable, diff last 40 pane lines, send only new additions. NOT both transcript and pane in same message — one or the other
-- PreToolUse for AskUserQuestion: stdin provides FULL structured tool_input (questions, options, header, multiSelect). Specific matcher only, async background call, never blocks TUI
-- Clean break from v1 wake format: remove all v1 [PANE CONTENT] code entirely, no backward compat layer
-- lib/hook-utils.sh is the DRY anchor: extraction functions live here, sourced only by stop-hook.sh and pre-tool-use-hook.sh
-- DRY and SRP throughout: no over-engineering, extract from hook → format → send to OpenClaw
+Phase 6 decisions (confirmed and shipped):
+- Transcript extraction as PRIMARY source — tail -40 + jq type-filtered content[] select. Confirmed working.
+- Pane diff as FALLBACK only — diff last 40 pane lines, send only new additions. One source per message, never both.
+- PreToolUse for AskUserQuestion — async background call, never blocks TUI. format_ask_user_questions via lib.
+- Clean break from v1 — all v1 [PANE CONTENT] code removed. v2 [CONTENT] section only.
+- lib/hook-utils.sh is the DRY anchor — three functions, sourced by stop-hook.sh and pre-tool-use-hook.sh only.
+- fd-based flock with command group for atomic pane diff read-write cycle.
 
 ### Pending Todos
 
-None yet.
+None.
 
 ### Blockers/Concerns
 
@@ -57,5 +58,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-02-18
-Stopped at: Phase 6 execution complete. Verifying phase goal achievement.
+Stopped at: Phase 6 complete, ready to plan Phase 7.
 Resume file: None
