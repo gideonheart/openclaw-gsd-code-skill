@@ -44,13 +44,15 @@ Reliable, intelligent agent session lifecycle — launch, recover, and respond t
 - PreToolUse hook registered in settings.json (v2.0, Phase 7)
 - Pane state file cleanup on session exit (v2.0, Phase 7)
 - SKILL.md updated with v2.0 architecture documentation (v2.0, Phase 7)
+- hook-preamble.sh shared bootstrap with BASH_SOURCE[1] identity and source guards (v3.1, Phase 12)
+- extract_hook_settings() three-tier jq fallback function in hook-utils.sh (v3.1, Phase 12)
+- detect_session_state() unified state detection in hook-utils.sh (v3.1, Phase 12)
 
 ### Active
 
 <!-- Current scope. Building toward these. -->
 
-- [ ] hook-preamble.sh shared preamble sourced by all 7 hooks (REFAC-01 through REFAC-03)
-- [ ] extract_hook_settings() shared function in lib/hook-utils.sh (REFAC-04)
+- [ ] hook-preamble.sh sourced by all 7 hooks (REFAC-03 — Phase 13)
 - [ ] v2.0 [CONTENT] migration for notification-idle, notification-permission, pre-compact (MIGR-01 through MIGR-03)
 - [ ] State detection unified across all hooks (UNIFY-01 through UNIFY-02)
 - [ ] diagnose-hooks.sh prefix-match fix and echo-to-printf cleanup (FIX-01 through FIX-02)
@@ -97,6 +99,8 @@ Reliable, intelligent agent session lifecycle — launch, recover, and respond t
 | Structured JSONL over plain-text logs | Machine-parseable, dashboard-renderable, full lifecycle capture | Confirmed |
 | Single record per invocation (not paired events) | Simpler — accumulate data during execution, write once at end. No correlation_id needed. Background subshell writes after async response. | Confirmed |
 | Skill logs/ directory (not OpenClaw sessions/) | Separation of concerns; avoids coupling to OpenClaw internal format and pruning | Confirmed |
+| BASH_SOURCE[1] for caller identity in sourced preamble | Automatic and verified; no parameter passing needed from hooks | Confirmed |
+| JSON return from extract_hook_settings() | Immune to injection risk; consistent with existing lib/hook-utils.sh pattern | Confirmed |
 
 ---
-*Last updated: 2026-02-18 after v3.1 milestone start*
+*Last updated: 2026-02-18 after Phase 12*
