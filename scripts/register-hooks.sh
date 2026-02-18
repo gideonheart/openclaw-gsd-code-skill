@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # register-hooks.sh - Idempotent hook registration script for Claude Code
-# Registers all 5 hook events in ~/.claude/settings.json and removes gsd-session-hook.sh from SessionStart
+# Registers all 6 hook events in ~/.claude/settings.json and removes gsd-session-hook.sh from SessionStart
 # Usage: bash scripts/register-hooks.sh
 
 # ============================================================================
@@ -49,6 +49,7 @@ HOOK_SCRIPTS=(
   "notification-permission-hook.sh"
   "session-end-hook.sh"
   "pre-compact-hook.sh"
+  "pre-tool-use-hook.sh"
 )
 
 for script in "${HOOK_SCRIPTS[@]}"; do
@@ -129,6 +130,18 @@ HOOKS_CONFIG=$(cat <<EOF
         }
       ]
     }
+  ],
+  "PreToolUse": [
+    {
+      "matcher": "AskUserQuestion",
+      "hooks": [
+        {
+          "type": "command",
+          "command": "${SKILL_ROOT}/scripts/pre-tool-use-hook.sh",
+          "timeout": 10
+        }
+      ]
+    }
   ]
 }
 EOF
@@ -151,6 +164,7 @@ jq --argjson new "$HOOKS_CONFIG" '
   .hooks.Notification = $new.Notification |
   .hooks.SessionEnd = $new.SessionEnd |
   .hooks.PreCompact = $new.PreCompact |
+  .hooks.PreToolUse = $new.PreToolUse |
 
   # Clean up SessionStart: remove gsd-session-hook.sh, keep others
   .hooks.SessionStart = (
@@ -209,6 +223,10 @@ log_message "SessionEnd hook: $SESSION_END"
 # PreCompact hook
 PRE_COMPACT=$(jq -r '.hooks.PreCompact[0]?.hooks[0]?.command // "NOT REGISTERED"' "$SETTINGS_FILE")
 log_message "PreCompact hook: $PRE_COMPACT"
+
+# PreToolUse hook (AskUserQuestion)
+PRE_TOOL_USE=$(jq -r '.hooks.PreToolUse[] | select(.matcher == "AskUserQuestion") | .hooks[0].command // "NOT REGISTERED"' "$SETTINGS_FILE")
+log_message "PreToolUse (AskUserQuestion): $PRE_TOOL_USE"
 
 log_message ""
 
