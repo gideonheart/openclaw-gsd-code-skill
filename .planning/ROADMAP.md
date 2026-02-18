@@ -204,7 +204,11 @@ Plans:
   1. logrotate config at `/etc/logrotate.d/gsd-code-skill` with `copytruncate` prevents unbounded disk growth
   2. `diagnose-hooks.sh` parses JSONL log files with `jq` for meaningful diagnostic output (recent events, error counts, outcome distribution)
   3. Log rotation verified safe with open `>>` file descriptors (copytruncate pattern)
-**Plans**: TBD
+**Plans**: 2 plans
+
+Plans:
+- [ ] 11-01-PLAN.md -- Logrotate config template and install script (copytruncate for open >> fd safety)
+- [ ] 11-02-PLAN.md -- diagnose-hooks.sh Step 10: JSONL log analysis with jq diagnostic queries
 
 ## Phase Details
 
@@ -256,4 +260,4 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 8. JSONL Logging Foundation | v3.0 | 2/2 | Complete | 2026-02-18 |
 | 9. Hook Script Migration | v3.0 | 3/3 | Complete | 2026-02-18 |
 | 10. AskUserQuestion Lifecycle Completion | 1/1 | Complete    | 2026-02-18 | — |
-| 11. Operational Hardening | v3.0 | 0/? | Pending | — |
+| 11. Operational Hardening | v3.0 | 0/2 | Pending | — |
