@@ -8,16 +8,17 @@ A multi-agent Claude Code session management skill for OpenClaw. It launches Cla
 
 Reliable, intelligent agent session lifecycle — launch, recover, and respond to Claude Code sessions without human intervention.
 
-## Current Milestone: v2.0 Smart Hook Delivery
+## Current Milestone: v3.0 Structured Hook Observability
 
-**Goal:** Replace blunt 120-line pane scraping with precise content extraction — read transcript for responses, forward AskUserQuestion data via PreToolUse hook, and diff-based delivery for remaining pane captures.
+**Goal:** Replace plain-text hook logs with structured JSONL event logging — each hook interaction produces paired events (request + response) linked by correlation_id, providing full lifecycle visibility into hook interactions.
 
 **Target features:**
-- Transcript-based response extraction (read transcript_path JSONL instead of tmux pane scraping)
-- PreToolUse hook for AskUserQuestion (forward exact questions + options to OpenClaw)
-- Diff-based pane content (compare with previous capture, send only changes)
-- Structured wake message v2 (compact, extracted data instead of raw pane dump)
-- Minimum context guarantee (always send at least 10 lines so orchestrator has context)
+- Structured JSONL event logging replacing plain-text debug_log
+- Paired request/response events linked by correlation_id per hook invocation
+- Full wake message body captured in request events (what was actually sent to OpenClaw)
+- OpenClaw response captured in response events (what came back, what action was taken)
+- AskUserQuestion lifecycle visibility (questions, options, which option selected)
+- Per-session JSONL log files in skill logs/ directory
 
 ## Requirements
 
@@ -40,19 +41,25 @@ Reliable, intelligent agent session lifecycle — launch, recover, and respond t
 - Pane diff fallback when transcript unavailable — only new/added lines (v2.0, Phase 6)
 - Wake message v2 format with [CONTENT] replacing [PANE CONTENT] — clean break (v2.0, Phase 6)
 - Shared lib/hook-utils.sh with DRY extraction functions (v2.0, Phase 6)
+- PreToolUse hook registered in settings.json (v2.0, Phase 7)
+- Pane state file cleanup on session exit (v2.0, Phase 7)
+- SKILL.md updated with v2.0 architecture documentation (v2.0, Phase 7)
 
 ### Active
 
 <!-- Current scope. Building toward these. -->
 
-- [ ] Register PreToolUse hook in settings.json (Phase 7)
-- [ ] Clean up /tmp pane state files on session exit (Phase 7)
-- [ ] Update SKILL.md with v2.0 architecture documentation (Phase 7)
+- [ ] Structured JSONL event schema for hook interactions (v3.0)
+- [ ] Shared JSONL logging library replacing debug_log (v3.0)
+- [ ] Paired request/response events with correlation_id (v3.0)
+- [ ] Full wake message capture in request events (v3.0)
+- [ ] OpenClaw response capture in response events (v3.0)
+- [ ] AskUserQuestion lifecycle logging (v3.0)
 
 ### Out of Scope
 
 - Multi-project session management — one session per agent is sufficient
-- Web dashboard integration — warden.kingdom.lv reads tmux directly
+- Dashboard rendering/UI — warden.kingdom.lv integration is separate work
 - Claude Code plugin/extension development — bash scripts only
 - /copy programmatic API — no programmatic access exists, user-facing command only
 
@@ -88,6 +95,9 @@ Reliable, intelligent agent session lifecycle — launch, recover, and respond t
 | Transcript-based extraction over pane scraping | transcript_path JSONL provides exact response text, no tmux noise | Confirmed |
 | PreToolUse hook for AskUserQuestion | Notification hooks don't include question data; PreToolUse does via tool_input | Confirmed |
 | Diff-based pane delivery | Git-style delta reduces token waste and signal-to-noise for orchestrator | Confirmed |
+| Structured JSONL over plain-text logs | Machine-parseable, dashboard-renderable, full lifecycle capture | — Pending |
+| Paired events with correlation_id | Async hooks can't capture request+response in one record; paired events with shared ID links them | — Pending |
+| Skill logs/ directory (not OpenClaw sessions/) | Separation of concerns; avoids coupling to OpenClaw internal format and pruning | — Pending |
 
 ---
-*Last updated: 2026-02-18 after Phase 6 (v2.0 Core Extraction and Delivery Engine)*
+*Last updated: 2026-02-18 after v3.0 milestone start*

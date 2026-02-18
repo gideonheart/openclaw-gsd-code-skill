@@ -5,16 +5,14 @@
 See: .planning/PROJECT.md (updated 2026-02-18)
 
 **Core value:** Reliable, intelligent agent session lifecycle — launch, recover, and respond without human intervention
-**Current focus:** v2.0 milestone complete
+**Current focus:** v3.0 Structured Hook Observability
 
 ## Current Position
 
-Phase: 7 of 7 (Registration, Deployment, and Documentation)
-Plan: 2 of 2 in current phase
-Status: Complete
-Last activity: 2026-02-18 - Completed quick task 5: Move GSD hook logs from /tmp to skill-local logs/
-
-Progress: [██████████] 100% (v1.0 complete, v2.0 complete)
+Phase: Not started (defining requirements)
+Plan: —
+Status: Defining requirements
+Last activity: 2026-02-18 — Milestone v3.0 started
 
 ## Performance Metrics
 
