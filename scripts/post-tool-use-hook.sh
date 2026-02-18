@@ -1,30 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
-
-# Resolve skill-local log directory from this script's location
-SKILL_LOG_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/logs"
-mkdir -p "$SKILL_LOG_DIR"
-
-# Phase 1: log to shared file until session name is known
-GSD_HOOK_LOG="${GSD_HOOK_LOG:-${SKILL_LOG_DIR}/hooks.log}"
-HOOK_SCRIPT_NAME="$(basename "${BASH_SOURCE[0]}")"
-
-debug_log() {
-  printf '[%s] [%s] %s\n' "$(date -u +'%Y-%m-%dT%H:%M:%SZ')" "$HOOK_SCRIPT_NAME" "$*" >> "$GSD_HOOK_LOG" 2>/dev/null || true
-}
-
-debug_log "FIRED — PID=$$ TMUX=${TMUX:-<unset>}"
-
-# Source shared library BEFORE any guard exits (Phase 9 requirement)
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-LIB_PATH="${SCRIPT_DIR}/../lib/hook-utils.sh"
-if [ -f "$LIB_PATH" ]; then
-  source "$LIB_PATH"
-  debug_log "sourced lib/hook-utils.sh"
-else
-  debug_log "FATAL: hook-utils.sh not found at $LIB_PATH"
-  exit 0
-fi
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")/../lib" && pwd)/hook-preamble.sh"
 
 # post-tool-use-hook.sh - Claude Code PostToolUse hook for AskUserQuestion answer logging
 # Fires when Claude's AskUserQuestion tool completes (after the user submits an answer).
@@ -69,8 +45,6 @@ debug_log "=== log redirected to per-session file ==="
 # ============================================================================
 # 4. REGISTRY LOOKUP (prefix match via shared function)
 # ============================================================================
-REGISTRY_PATH="${SCRIPT_DIR}/../config/recovery-registry.json"
-
 if [ ! -f "$REGISTRY_PATH" ]; then
   debug_log "EXIT: registry not found at $REGISTRY_PATH"
   exit 0
