@@ -14,11 +14,12 @@ Reliable, intelligent agent session lifecycle — launch, recover, and respond t
 
 **Target features:**
 - Structured JSONL event logging replacing plain-text debug_log
-- Paired request/response events linked by correlation_id per hook invocation
-- Full wake message body captured in request events (what was actually sent to OpenClaw)
-- OpenClaw response captured in response events (what came back, what action was taken)
-- AskUserQuestion lifecycle visibility (questions, options, which option selected)
+- Single complete record per hook invocation — accumulate all lifecycle data, write once at end
+- Full wake message body captured (what was actually sent to OpenClaw)
+- OpenClaw response captured (what came back, what action was taken, outcome)
+- AskUserQuestion lifecycle — question forwarded + answer selected linked by tool_use_id
 - Per-session JSONL log files in skill logs/ directory
+- duration_ms, logrotate, diagnose-hooks.sh JSONL compat
 
 ## Requirements
 
@@ -49,12 +50,10 @@ Reliable, intelligent agent session lifecycle — launch, recover, and respond t
 
 <!-- Current scope. Building toward these. -->
 
-- [ ] Structured JSONL event schema for hook interactions (v3.0)
-- [ ] Shared JSONL logging library replacing debug_log (v3.0)
-- [ ] Paired request/response events with correlation_id (v3.0)
-- [ ] Full wake message capture in request events (v3.0)
-- [ ] OpenClaw response capture in response events (v3.0)
-- [ ] AskUserQuestion lifecycle logging (v3.0)
+- [ ] Shared JSONL logging library in lib/hook-utils.sh (JSONL-01 through JSONL-05)
+- [ ] All 6 hook scripts migrated to JSONL records (HOOK-12 through HOOK-17)
+- [ ] AskUserQuestion full lifecycle: question forwarded + answer selected (ASK-04 through ASK-06)
+- [ ] duration_ms, logrotate, diagnose-hooks.sh JSONL compat (OPS-01 through OPS-03)
 
 ### Out of Scope
 
@@ -95,9 +94,9 @@ Reliable, intelligent agent session lifecycle — launch, recover, and respond t
 | Transcript-based extraction over pane scraping | transcript_path JSONL provides exact response text, no tmux noise | Confirmed |
 | PreToolUse hook for AskUserQuestion | Notification hooks don't include question data; PreToolUse does via tool_input | Confirmed |
 | Diff-based pane delivery | Git-style delta reduces token waste and signal-to-noise for orchestrator | Confirmed |
-| Structured JSONL over plain-text logs | Machine-parseable, dashboard-renderable, full lifecycle capture | — Pending |
-| Paired events with correlation_id | Async hooks can't capture request+response in one record; paired events with shared ID links them | — Pending |
-| Skill logs/ directory (not OpenClaw sessions/) | Separation of concerns; avoids coupling to OpenClaw internal format and pruning | — Pending |
+| Structured JSONL over plain-text logs | Machine-parseable, dashboard-renderable, full lifecycle capture | Confirmed |
+| Single record per invocation (not paired events) | Simpler — accumulate data during execution, write once at end. No correlation_id needed. Background subshell writes after async response. | Confirmed |
+| Skill logs/ directory (not OpenClaw sessions/) | Separation of concerns; avoids coupling to OpenClaw internal format and pruning | Confirmed |
 
 ---
 *Last updated: 2026-02-18 after v3.0 milestone start*

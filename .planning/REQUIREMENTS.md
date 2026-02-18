@@ -105,14 +105,44 @@ Requirements for milestone v2.0: Smart Hook Delivery. Replaces noisy 120-line ra
 
 - [x] **DOCS-03**: SKILL.md updated with v2.0 architecture (lib, pre-tool-use-hook.sh, v2 wake format)
 
+## v3 Requirements
+
+Requirements for milestone v3.0: Structured Hook Observability. Replaces plain-text debug_log with structured JSONL event logging — one complete record per hook invocation with full lifecycle data.
+
+**Design decision:** Single-record-per-invocation approach — accumulate all lifecycle data (trigger, state, content, wake message, response, outcome, duration) during hook execution and write one JSONL record at the end. No correlation_id needed; no paired events to link. Background subshell writes the record after async response arrives.
+
+### JSONL Foundation
+
+- [ ] **JSONL-01**: Single complete JSONL record per hook invocation containing all accumulated lifecycle data (trigger, state, content source, wake message, response, outcome, duration)
+- [ ] **JSONL-02**: Per-session `.jsonl` log files at `logs/{SESSION_NAME}.jsonl` alongside existing `.log` files
+- [ ] **JSONL-03**: All string fields safely escaped via `jq --arg` — wake messages containing newlines, quotes, ANSI codes, embedded JSON produce valid JSONL
+- [ ] **JSONL-04**: All JSONL appends use `flock` for atomic writes under concurrent hook fires (records >4KB exceed POSIX O_APPEND guarantee)
+- [ ] **JSONL-05**: Shared `write_hook_event_record()` function in `lib/hook-utils.sh` — DRY foundation all six hooks source; single write point, single fix point
+
+### Hook Migration
+
+- [ ] **HOOK-12**: stop-hook.sh emits structured JSONL record replacing plain-text debug_log — includes full wake message body and OpenClaw response
+- [ ] **HOOK-13**: pre-tool-use-hook.sh emits structured JSONL record replacing plain-text debug_log — includes AskUserQuestion data forwarded
+- [ ] **HOOK-14**: notification-idle-hook.sh emits structured JSONL record replacing plain-text debug_log
+- [ ] **HOOK-15**: notification-permission-hook.sh emits structured JSONL record replacing plain-text debug_log
+- [ ] **HOOK-16**: session-end-hook.sh emits structured JSONL record replacing plain-text debug_log
+- [ ] **HOOK-17**: pre-compact-hook.sh emits structured JSONL record replacing plain-text debug_log
+
+### AskUserQuestion Lifecycle
+
+- [ ] **ASK-04**: PreToolUse JSONL record includes `questions_forwarded` field showing what questions, options, and headers were sent to OpenClaw agent
+- [ ] **ASK-05**: PostToolUse hook (`post-tool-use-hook.sh`) emits JSONL record showing which answer OpenClaw agent selected and how TUI was controlled to achieve that decision
+- [ ] **ASK-06**: PreToolUse and PostToolUse records share `tool_use_id` field enabling question-to-answer lifecycle linking
+
+### Operational
+
+- [ ] **OPS-01**: Every JSONL record includes `duration_ms` field — time from hook entry to record write
+- [ ] **OPS-02**: logrotate config at `/etc/logrotate.d/gsd-code-skill` prevents unbounded disk growth with `copytruncate` (safe for open `>>` file descriptors)
+- [ ] **OPS-03**: `diagnose-hooks.sh` parses JSONL log files with `jq` for meaningful diagnostic output
+
 ## Future Requirements
 
-Deferred beyond v2.0. Tracked but not in current roadmap.
-
-### Observability
-
-- **OBS-01**: Hook scripts log execution metrics (latency, registry hit/miss) to tmp file
-- **OBS-02**: Dashboard integration for hook-driven agent activity
+Deferred beyond v3.0. Tracked but not in current roadmap.
 
 ### Resilience
 
@@ -125,11 +155,15 @@ Deferred beyond v2.0. Tracked but not in current roadmap.
 - **ADV-02**: Registry caching in /tmp for 20+ concurrent sessions
 - **ADV-03**: Per-hook dedup mode settings in hook_settings (measure actual rates first)
 - **ADV-04**: Transcript diff delivery (conversation delta instead of pane delta)
-- **ADV-05**: PostToolUse hook for AskUserQuestion (forward which answer was selected)
 
 ### Validation
 
 - **VAL-01**: Registry validation script (config/validate-registry.sh) for pre-deploy confidence
+
+### Observability (beyond v3.0)
+
+- **OBS-03**: Cross-session query tooling (`query-logs.sh`) for log analysis
+- **OBS-04**: Remove plain-text `debug_log()` entirely after JSONL coverage confirmed complete
 
 ## Out of Scope
 
@@ -139,10 +173,10 @@ Deferred beyond v2.0. Tracked but not in current roadmap.
 | Plugin-based hooks | Known bug in Claude Code (GitHub #10875) — JSON output not captured. Use inline settings.json. |
 | Global PreToolUse matcher (`"*"`) | Fires on every tool call — extreme overhead. Use specific `"AskUserQuestion"` matcher. |
 | Blocking PreToolUse hook | AskUserQuestion is for interactive user input; blocking adds latency to TUI. Forward async only. |
-| Backward compat with v1 wake format | Clean break — v1 code removed, not maintained alongside v2. |
 | Python or Node.js for JSONL parsing | `tail + jq` is 2ms; Python/Node adds 50ms startup + dependency. |
-| Full transcript content in wake message | Transcripts grow to hundreds of KB; last assistant message is sufficient. |
-| Unified diff format (`diff -u`) | Includes `+`/`-` markers and context lines; send only new lines with `--new-line-format`. |
+| Dashboard rendering/UI | warden.kingdom.lv integration is separate work — v3.0 is log structure only. |
+| OTLP/OpenTelemetry export | Only if a local collector is ever deployed on this host. |
+| JSONL for guard exits (no TMUX, no registry) | jq overhead (5-15ms) on every non-managed session is unacceptable. Guard exits use plain printf or are omitted. |
 
 ## Traceability
 
@@ -180,12 +214,24 @@ Which phases cover which requirements. Updated during roadmap creation.
 | REG-02 | Phase 7 | Done |
 | DOCS-03 | Phase 7 | Done |
 
+### v3.0 (Active)
+
+| Requirement | Phase | Status |
+|-------------|-------|--------|
+| JSONL-01 through JSONL-05 | Phase 8 | Pending |
+| HOOK-12 through HOOK-17 | Phase 9 | Pending |
+| ASK-04 | Phase 9 | Pending |
+| ASK-05, ASK-06 | Phase 10 | Pending |
+| OPS-01 | Phase 8 | Pending |
+| OPS-02, OPS-03 | Phase 11 | Pending |
+
 **Coverage:**
 - v1 requirements: 38 total, all done
 - v2 requirements: 14 total, all done
-- Mapped to phases: 14 (Phase 6: 11, Phase 7: 3)
+- v3 requirements: 17 total, all pending
+- Mapped to phases: 17 (Phase 8: 6, Phase 9: 7, Phase 10: 2, Phase 11: 2)
 - Unmapped: 0
 
 ---
 *Requirements defined: 2026-02-17*
-*Last updated: 2026-02-18 — v2.0 milestone complete*
+*Last updated: 2026-02-18 — v3.0 requirements added*

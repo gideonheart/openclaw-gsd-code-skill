@@ -4,6 +4,7 @@
 
 - ✅ **v1.0 Hook-Driven Agent Control** - Phases 1-5 (shipped 2026-02-17)
 - ✅ **v2.0 Smart Hook Delivery** - Phases 6-7 (shipped 2026-02-18)
+- 🔵 **v3.0 Structured Hook Observability** - Phases 8-11
 
 ## Phases
 
@@ -139,6 +140,60 @@ Plans:
 - [x] 07-01-PLAN.md -- Registration and cleanup: PreToolUse hook in register-hooks.sh, /tmp state file cleanup in session-end-hook.sh
 - [x] 07-02-PLAN.md -- Documentation: Update SKILL.md and docs/hooks.md with v2.0 architecture
 
+### v3.0 Structured Hook Observability
+
+**Milestone Goal:** Replace plain-text debug_log with structured JSONL event logging — one complete record per hook invocation with full lifecycle data (trigger, state, wake message, response, outcome, duration). Single-record-per-invocation design: accumulate data during execution, write once at the end.
+
+### Phase 8: JSONL Logging Foundation
+**Goal**: Extend lib/hook-utils.sh with shared JSONL logging functions — the DRY foundation all 6 hook scripts will source. All correctness rules (jq --arg, flock, explicit parameter passing, /dev/null) established here before any hook uses them.
+**Depends on**: Phase 7
+**Requirements**: JSONL-01, JSONL-02, JSONL-03, JSONL-04, JSONL-05, OPS-01
+**Success Criteria** (what must be TRUE):
+  1. `write_hook_event_record()` function in lib/hook-utils.sh writes a single complete JSONL record per hook invocation
+  2. All string fields use `jq -cn --arg` — wake messages with newlines, quotes, ANSI codes, embedded JSON produce valid JSONL
+  3. All JSONL appends use `flock -x -w 2` on `${LOG_FILE}.lock` for atomic writes under concurrent hook fires
+  4. `deliver_async_with_logging()` wrapper replaces bare `openclaw ... &` — captures response in background subshell, writes complete record after response arrives
+  5. Background subshell uses explicit `</dev/null` to prevent stdin inheritance hangs
+  6. Per-session `.jsonl` log files routed to `logs/{SESSION_NAME}.jsonl`
+  7. Every record includes `duration_ms` from hook entry to record write
+  8. Functions testable in isolation (bash unit test without running Claude Code session)
+**Plans**: TBD
+
+### Phase 9: Hook Script Migration
+**Goal**: All 6 hook scripts emit structured JSONL records — source lib at top, accumulate lifecycle data, replace debug_log with structured logging, replace bare openclaw calls with delivery wrapper
+**Depends on**: Phase 8
+**Requirements**: HOOK-12, HOOK-13, HOOK-14, HOOK-15, HOOK-16, HOOK-17, ASK-04
+**Success Criteria** (what must be TRUE):
+  1. stop-hook.sh writes one JSONL record containing: trigger, state, content source, full wake message body, OpenClaw response, outcome, duration
+  2. pre-tool-use-hook.sh writes one JSONL record with `questions_forwarded` field showing questions, options, headers sent to OpenClaw
+  3. notification-idle-hook.sh, notification-permission-hook.sh, session-end-hook.sh, pre-compact-hook.sh each write one JSONL record per invocation
+  4. All 6 scripts source lib/hook-utils.sh at top of script (before any guard exit)
+  5. Plain-text `.log` files continue in parallel for backward compatibility during transition
+  6. Guard exits (no TMUX, no registry match) do NOT emit JSONL — zero jq overhead for non-managed sessions
+**Plans**: TBD
+
+### Phase 10: AskUserQuestion Lifecycle Completion
+**Goal**: Full question-to-answer audit trail — see what OpenClaw received, what it decided, and how it controlled the TUI
+**Depends on**: Phase 9
+**Requirements**: ASK-05, ASK-06
+**Success Criteria** (what must be TRUE):
+  1. New `post-tool-use-hook.sh` fires after AskUserQuestion completes and emits JSONL record with `answer_selected` field
+  2. PostToolUse hook registered in settings.json via register-hooks.sh
+  3. `answer_selected` record includes which option was chosen and TUI control action taken (menu-driver command)
+  4. PreToolUse and PostToolUse records share `tool_use_id` enabling question-to-answer lifecycle linking
+  5. PostToolUse stdin schema empirically validated before schema is committed
+**Plans**: TBD
+
+### Phase 11: Operational Hardening
+**Goal**: Production-grade log management and diagnostic tooling for JSONL logs
+**Depends on**: Phase 9
+**Requirements**: OPS-02, OPS-03
+**Success Criteria** (what must be TRUE):
+  1. logrotate config at `/etc/logrotate.d/gsd-code-skill` with `copytruncate` prevents unbounded disk growth
+  2. `diagnose-hooks.sh` parses JSONL log files with `jq` for meaningful diagnostic output (recent events, error counts, outcome distribution)
+  3. Log rotation verified safe with open `>>` file descriptors (copytruncate pattern)
+**Plans**: TBD
+
 ## Phase Details
 
 ### Phase 6: Core Extraction and Delivery Engine
@@ -175,7 +230,7 @@ Plans:
 ## Progress
 
 **Execution Order:**
-Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7
+Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 → 9 → 10 → 11
 
 | Phase | Milestone | Plans Complete | Status | Completed |
 |-------|-----------|----------------|--------|-----------|
@@ -186,3 +241,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7
 | 5. Documentation | v1.0 | 2/2 | Complete | 2026-02-17 |
 | 6. Core Extraction and Delivery Engine | v2.0 | 3/3 | Complete | 2026-02-18 |
 | 7. Registration, Deployment, and Documentation | v2.0 | 2/2 | Complete | 2026-02-18 |
+| 8. JSONL Logging Foundation | v3.0 | 0/? | Pending | — |
+| 9. Hook Script Migration | v3.0 | 0/? | Pending | — |
+| 10. AskUserQuestion Lifecycle Completion | v3.0 | 0/? | Pending | — |
+| 11. Operational Hardening | v3.0 | 0/? | Pending | — |
