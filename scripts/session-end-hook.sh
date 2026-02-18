@@ -84,4 +84,11 @@ debug_log "DELIVERING: mode=async (always) session_id=$OPENCLAW_SESSION_ID"
 openclaw agent --session-id "$OPENCLAW_SESSION_ID" --message "$WAKE_MESSAGE" >> "$GSD_HOOK_LOG" 2>&1 &
 debug_log "DELIVERED (async, bg PID=$!)"
 
+# 7. Clean up /tmp pane state files for THIS session only
+# Only this session's files — other sessions may still be running
+# rm -f: silent if files don't exist (pane diff fallback may never have triggered)
+rm -f "/tmp/gsd-pane-prev-${SESSION_NAME}.txt"
+rm -f "/tmp/gsd-pane-lock-${SESSION_NAME}"
+debug_log "Cleaned up /tmp pane state files for session=$SESSION_NAME"
+
 exit 0
