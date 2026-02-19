@@ -186,10 +186,10 @@ Requirements for milestone v3.2: Per-Hook TUI Instruction Prompts. Replaces gene
 - [ ] **HOOK-18**: stop-hook.sh replaces [AVAILABLE ACTIONS] with [ACTION REQUIRED] loaded via load_hook_prompt("response-complete")
 - [ ] **HOOK-19**: notification-idle-hook.sh replaces [AVAILABLE ACTIONS] with [ACTION REQUIRED] loaded via load_hook_prompt("idle-prompt")
 - [ ] **HOOK-20**: notification-permission-hook.sh replaces [AVAILABLE ACTIONS] with [ACTION REQUIRED] loaded via load_hook_prompt("permission-prompt")
-- [ ] **HOOK-21**: pre-compact-hook.sh replaces [AVAILABLE ACTIONS] with [ACTION REQUIRED] loaded via load_hook_prompt("pre-compact")
-- [ ] **HOOK-22**: pre-tool-use-hook.sh replaces [AVAILABLE ACTIONS] with [ACTION REQUIRED] loaded via load_hook_prompt("ask-user-question")
-- [ ] **HOOK-23**: post-tool-use-hook.sh adds [ACTION REQUIRED] from load_hook_prompt("answer-submitted") (currently has no action section)
-- [ ] **HOOK-24**: session-end-hook.sh adds [ACTION REQUIRED] from load_hook_prompt("session-end") (currently has no action section)
+- [x] **HOOK-21**: pre-compact-hook.sh replaces [AVAILABLE ACTIONS] with [ACTION REQUIRED] loaded via load_hook_prompt("pre-compact")
+- [x] **HOOK-22**: pre-tool-use-hook.sh replaces [AVAILABLE ACTIONS] with [ACTION REQUIRED] loaded via load_hook_prompt("ask-user-question")
+- [x] **HOOK-23**: post-tool-use-hook.sh adds [ACTION REQUIRED] from load_hook_prompt("answer-submitted") (currently has no action section)
+- [x] **HOOK-24**: session-end-hook.sh adds [ACTION REQUIRED] from load_hook_prompt("session-end") (currently has no action section)
 
 ### TUI Enhancement
 
@@ -321,10 +321,10 @@ Which phases cover which requirements. Updated during roadmap creation.
 | HOOK-18 | Phase 16 | Pending |
 | HOOK-19 | Phase 16 | Pending |
 | HOOK-20 | Phase 16 | Pending |
-| HOOK-21 | Phase 16 | Pending |
-| HOOK-22 | Phase 16 | Pending |
-| HOOK-23 | Phase 16 | Pending |
-| HOOK-24 | Phase 16 | Pending |
+| HOOK-21 | Phase 16 | Complete |
+| HOOK-22 | Phase 16 | Complete |
+| HOOK-23 | Phase 16 | Complete |
+| HOOK-24 | Phase 16 | Complete |
 | DOCS-04 | Phase 17 | Pending |
 | DOCS-05 | Phase 17 | Pending |
 | DOCS-06 | Phase 17 | Pending |

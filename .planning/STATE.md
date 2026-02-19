@@ -10,11 +10,11 @@ See: .planning/PROJECT.md (updated 2026-02-19)
 ## Current Position
 
 Phase: 16 of 17 (Hook Migration)
-Plan: 0 of 2 in current phase
-Status: Ready to plan
-Last activity: 2026-02-19 — Phase 15 complete (3/3 plans)
+Plan: 2 of 2 in current phase
+Status: Phase complete
+Last activity: 2026-02-19 — Phase 16 complete (2/2 plans): all 7 hooks migrated to load_hook_prompt, zero [AVAILABLE ACTIONS] remain
 
-Progress: [███████████████░░] 91% (30/33 plans complete)
+Progress: [████████████████░] 97% (32/33 plans complete)
 
 ## Performance Metrics
 
@@ -40,6 +40,7 @@ Progress: [███████████████░░] 91% (30/33 plans
 | 15 (v3.2) | 3 | ~5 min | ~1.7 min |
 
 *Updated after each plan completion*
+| Phase 16-hook-migration P02 | 2 | 2 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -63,6 +64,16 @@ Phase 15 decisions (confirmed and shipped):
 - sed pipe delimiter for placeholder substitution (paths contain forward slashes)
 - lib/hook-utils.sh now has 10 functions: 9 previous + load_hook_prompt
 - Each template lists only trigger-relevant commands (no generic all-commands listing)
+
+Phase 16 Plan 01 decisions (confirmed and shipped):
+- Template name per hook: stop-hook uses response-complete, idle-hook uses idle-prompt, permission-hook uses permission-prompt
+- ACTION_PROMPT computed before WAKE_MESSAGE heredoc — clean separation of template loading and message construction
+- [ACTION REQUIRED] replaces [AVAILABLE ACTIONS] as the action section label across all three primary hooks
+
+Phase 16 Plan 02 decisions (confirmed and shipped):
+- post-tool-use and session-end hooks gain [ACTION REQUIRED] sections for consistency even though their templates say "no action needed"
+- [ACTION REQUIRED] header placement: appended at end of WAKE_MESSAGE after [STATE HINT] for newly-added hooks
+- All 7 hooks now use load_hook_prompt() — migration complete, zero [AVAILABLE ACTIONS] blocks remain
 
 ### Pending Todos
 
@@ -89,5 +100,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-19
-Stopped at: Phase 15 complete — ready to plan Phase 16 (Hook Migration)
+Stopped at: Completed 16-02-PLAN.md — Phase 16 complete, all 7 hooks migrated to load_hook_prompt()
 Resume file: None

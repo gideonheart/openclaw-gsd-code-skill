@@ -268,7 +268,7 @@ Plans:
 **Milestone Goal:** Replace generic [AVAILABLE ACTIONS] (identical across all hooks) with hook-specific [ACTION REQUIRED] sections loaded from external prompt templates — each hook tells the driving agent exactly what to do for that trigger type.
 
 - [x] **Phase 15: Prompt Template Foundation** - load_hook_prompt() function, multi-select TUI actions, and all 7 hook prompt template files (completed 2026-02-19)
-- [ ] **Phase 16: Hook Migration** - Wire all 7 hooks to use [ACTION REQUIRED] from their template via load_hook_prompt()
+- [x] **Phase 16: Hook Migration** - Wire all 7 hooks to use [ACTION REQUIRED] from their template via load_hook_prompt() (completed 2026-02-19)
 - [ ] **Phase 17: Documentation** - Update docs/hooks.md, SKILL.md, README.md for prompt template system
 
 ## Phase Details
@@ -417,5 +417,5 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7 -> 8 -> 9 -> 10
 | 13. Coordinated Hook Migration | v3.1 | 3/3 | Complete | 2026-02-18 |
 | 14. Diagnostic Fixes | v3.1 | 1/1 | Complete | 2026-02-18 |
 | 15. Prompt Template Foundation | v3.2 | 3/3 | Complete | 2026-02-19 |
-| 16. Hook Migration | v3.2 | 0/2 | Not started | - |
+| 16. Hook Migration | 2/2 | Complete   | 2026-02-19 | - |
 | 17. Documentation | v3.2 | 0/2 | Not started | - |
