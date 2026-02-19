@@ -5,23 +5,23 @@
 See: .planning/PROJECT.md (updated 2026-02-19)
 
 **Core value:** Reliable, intelligent agent session lifecycle — launch, recover, and respond without human intervention
-**Current focus:** v3.2 Per-Hook TUI Instruction Prompts — Phase 15: Prompt Template Foundation
+**Current focus:** v3.2 Per-Hook TUI Instruction Prompts — Phase 16: Hook Migration
 
 ## Current Position
 
-Phase: 15 of 17 (Prompt Template Foundation)
-Plan: 0 of 3 in current phase
+Phase: 16 of 17 (Hook Migration)
+Plan: 0 of 2 in current phase
 Status: Ready to plan
-Last activity: 2026-02-19 — v3.2 roadmap created (Phases 15-17)
+Last activity: 2026-02-19 — Phase 15 complete (3/3 plans)
 
-Progress: [██████████████░░░] 82% (27/33 plans complete)
+Progress: [███████████████░░] 91% (30/33 plans complete)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 27 (v1.0 phases 1-5 + v2.0 phases 6-7 + v3.0 phases 8-11 + v3.1 phases 12-14)
-- Average duration: ~2.8 min/plan
-- Total execution time: ~75 min
+- Total plans completed: 30 (v1.0 phases 1-5 + v2.0 phases 6-7 + v3.0 phases 8-11 + v3.1 phases 12-14 + v3.2 phase 15)
+- Average duration: ~2.7 min/plan
+- Total execution time: ~80 min
 
 **By Phase:**
 
@@ -37,6 +37,7 @@ Progress: [██████████████░░░] 82% (27/33 plans
 | 12 (v3.1) | 1 | ~4 min | ~4 min |
 | 13 (v3.1) | 3 | ~6 min | ~2 min |
 | 14 (v3.1) | 1 | ~1 min | ~1 min |
+| 15 (v3.2) | 3 | ~5 min | ~1.7 min |
 
 *Updated after each plan completion*
 
@@ -56,9 +57,12 @@ Phase 13 decisions (confirmed and shipped):
 - [PANE CONTENT] label replaced with [CONTENT] across notification-idle, notification-permission, pre-compact
 - All jq piping uses printf '%s' — echo-to-jq patterns eliminated from all 7 hooks
 
-v3.2 key decisions (pending):
+Phase 15 decisions (confirmed and shipped):
 - External prompt templates over hardcoded heredocs — editable without touching hook scripts, git-diffable
 - {SCRIPT_DIR} as third placeholder — enables templates to reference any script (spawn.sh, menu-driver.sh)
+- sed pipe delimiter for placeholder substitution (paths contain forward slashes)
+- lib/hook-utils.sh now has 10 functions: 9 previous + load_hook_prompt
+- Each template lists only trigger-relevant commands (no generic all-commands listing)
 
 ### Pending Todos
 
@@ -85,5 +89,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-19
-Stopped at: v3.2 roadmap created — Phases 15-17 defined, ready to plan Phase 15
+Stopped at: Phase 15 complete — ready to plan Phase 16 (Hook Migration)
 Resume file: None
