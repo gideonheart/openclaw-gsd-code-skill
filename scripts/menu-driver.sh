@@ -10,6 +10,9 @@ Actions:
   snapshot                         Print last ~180 lines from pane
   enter                            Press Enter once
   esc                              Press Esc once
+  arrow_up                         Move cursor up one row (multi-select navigation)
+  arrow_down                       Move cursor down one row (multi-select navigation)
+  space                            Toggle checkbox selection at current row
   clear_then <slash-command>       Run /clear then (after short delay) run slash command
   choose <n>                       Type option number n + Enter
   type <text>                      Type literal freeform text + submit (Tab Enter)
@@ -39,6 +42,15 @@ case "$ACTION" in
     ;;
   esc)
     tmux send-keys -t "$SESSION:0.0" Escape
+    ;;
+  arrow_up)
+    tmux send-keys -t "$SESSION:0.0" Up
+    ;;
+  arrow_down)
+    tmux send-keys -t "$SESSION:0.0" Down
+    ;;
+  space)
+    tmux send-keys -t "$SESSION:0.0" Space
     ;;
   clear_then)
     cmd="${1:-}"
