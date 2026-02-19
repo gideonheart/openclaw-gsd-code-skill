@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# register-all-hooks-logger.sh — Register the hook-event-logger.sh for ALL 15 Claude Code hook events.
-# Additive: preserves all existing GSD hooks, appends logger entries alongside them.
-# Also clears all existing log files in logs/ to provide a clean slate.
+# register-all-hooks-logger.sh — Debug mode: replace ALL hooks with logger-only entries.
+# Removes GSD hooks so only hook-event-logger.sh fires for clean payload capture.
+# Clears all existing log files in logs/ to provide a clean slate.
+# To restore GSD hooks afterwards: bash scripts/register-hooks.sh
 # Usage: bash scripts/register-all-hooks-logger.sh
 
 # ============================================================================
@@ -150,10 +151,10 @@ NOTIFICATION_LOGGER_ELICITATION=$(jq -cn --arg command "$LOGGER_SCRIPT" '{
 
 log_message "Built logger rule: $LOGGER_SCRIPT"
 
-# Single jq invocation: append logger to ALL 15 events, preserving existing entries.
-# Events with existing GSD hooks: Stop, Notification, SessionEnd, PreCompact, PreToolUse, PostToolUse, SessionStart
-# Events with no prior GSD hooks: Setup, UserPromptSubmit, PermissionRequest, PostToolUseFailure,
-#   SubagentStart, SubagentStop, TeammateIdle, TaskCompleted
+# Replaces ALL hook entries with logger-only entries for clean debugging.
+# Removes GSD hooks (stop-hook.sh, session-end-hook.sh, etc.) so only the
+# logger fires. Idempotent — safe to run multiple times without duplication.
+# To restore GSD hooks afterwards: bash scripts/register-hooks.sh
 jq \
   --argjson logger_rule "$LOGGER_RULE" \
   --argjson notification_catchall "$NOTIFICATION_LOGGER_CATCHALL" \
@@ -162,59 +163,30 @@ jq \
   --argjson notification_idle "$NOTIFICATION_LOGGER_IDLE" \
   --argjson notification_elicitation "$NOTIFICATION_LOGGER_ELICITATION" \
 '
-  # Ensure hooks object exists
-  .hooks = (.hooks // {}) |
-
-  # 1. SessionStart — append logger (existing: gsd-check-update.js)
-  .hooks.SessionStart = ((.hooks.SessionStart // []) + [$logger_rule]) |
-
-  # 2. Setup — new logger entry (no prior GSD hook)
-  .hooks.Setup = ((.hooks.Setup // []) + [$logger_rule]) |
-
-  # 3. UserPromptSubmit — new logger entry (no prior GSD hook)
-  .hooks.UserPromptSubmit = ((.hooks.UserPromptSubmit // []) + [$logger_rule]) |
-
-  # 4. PreToolUse — append catch-all logger (existing: AskUserQuestion matcher)
-  .hooks.PreToolUse = ((.hooks.PreToolUse // []) + [$logger_rule]) |
-
-  # 5. PermissionRequest — new logger entry (no prior GSD hook)
-  .hooks.PermissionRequest = ((.hooks.PermissionRequest // []) + [$logger_rule]) |
-
-  # 6. PostToolUse — append catch-all logger (existing: AskUserQuestion matcher)
-  .hooks.PostToolUse = ((.hooks.PostToolUse // []) + [$logger_rule]) |
-
-  # 7. PostToolUseFailure — new logger entry (no prior GSD hook)
-  .hooks.PostToolUseFailure = ((.hooks.PostToolUseFailure // []) + [$logger_rule]) |
-
-  # 8. Notification — append all four subtype matchers + catch-all alongside existing GSD hooks
-  .hooks.Notification = ((.hooks.Notification // []) + [
-    $notification_auth,
-    $notification_permission,
-    $notification_idle,
-    $notification_elicitation,
-    $notification_catchall
-  ]) |
-
-  # 9. SubagentStart — new logger entry (no prior GSD hook)
-  .hooks.SubagentStart = ((.hooks.SubagentStart // []) + [$logger_rule]) |
-
-  # 10. SubagentStop — new logger entry (no prior GSD hook)
-  .hooks.SubagentStop = ((.hooks.SubagentStop // []) + [$logger_rule]) |
-
-  # 11. Stop — append logger (existing: stop-hook.sh)
-  .hooks.Stop = ((.hooks.Stop // []) + [$logger_rule]) |
-
-  # 12. TeammateIdle — new logger entry (no prior GSD hook)
-  .hooks.TeammateIdle = ((.hooks.TeammateIdle // []) + [$logger_rule]) |
-
-  # 13. TaskCompleted — new logger entry (no prior GSD hook)
-  .hooks.TaskCompleted = ((.hooks.TaskCompleted // []) + [$logger_rule]) |
-
-  # 14. PreCompact — append logger (existing: pre-compact-hook.sh)
-  .hooks.PreCompact = ((.hooks.PreCompact // []) + [$logger_rule]) |
-
-  # 15. SessionEnd — append logger (existing: session-end-hook.sh)
-  .hooks.SessionEnd = ((.hooks.SessionEnd // []) + [$logger_rule])
+  # Replace every event with ONLY the logger — no GSD hooks
+  .hooks = {
+    SessionStart:       [$logger_rule],
+    Setup:              [$logger_rule],
+    UserPromptSubmit:   [$logger_rule],
+    PreToolUse:         [$logger_rule],
+    PermissionRequest:  [$logger_rule],
+    PostToolUse:        [$logger_rule],
+    PostToolUseFailure: [$logger_rule],
+    SubagentStart:      [$logger_rule],
+    SubagentStop:       [$logger_rule],
+    Stop:               [$logger_rule],
+    TeammateIdle:       [$logger_rule],
+    TaskCompleted:      [$logger_rule],
+    PreCompact:         [$logger_rule],
+    SessionEnd:         [$logger_rule],
+    Notification: [
+      $notification_auth,
+      $notification_permission,
+      $notification_idle,
+      $notification_elicitation,
+      $notification_catchall
+    ]
+  }
 ' "$SETTINGS_FILE" > "${SETTINGS_FILE}.tmp"
 
 # ============================================================================

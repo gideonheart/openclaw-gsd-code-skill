@@ -1,3 +1,4 @@
 # Real config contains session IDs and secrets
 config/recovery-registry.json
+config/recovery-registry.json.lock
 logs/
