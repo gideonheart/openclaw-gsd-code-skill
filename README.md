@@ -526,12 +526,13 @@ journalctl -u recover-openclaw-agents.service -n 50 --no-pager
 | `config/recovery-registry.json` | Live registry (gitignored, contains session UUIDs). |
 | `config/recovery-registry.example.json` | Template registry with annotated schema. |
 | `config/default-system-prompt.txt` | Default system prompt for all agents. Minimal GSD workflow guidance. |
+| `scripts/prompts/*.md` | Per-hook instruction templates (7 files). Each template contains trigger-specific [ACTION REQUIRED] content loaded by hooks via `load_hook_prompt()`. Placeholders: `{SESSION_NAME}`, `{MENU_DRIVER_PATH}`, `{SCRIPT_DIR}`. Editable without modifying hook scripts. |
 
 ### Shared Libraries
 
 | File | Description |
 |------|-------------|
-| `lib/hook-utils.sh` | Shared library (9 functions) sourced by all hook scripts. No side effects on source. |
+| `lib/hook-utils.sh` | Shared library (10 functions) sourced by all hook scripts. No side effects on source. |
 
 ### systemd Units
 
