@@ -5,16 +5,16 @@
 See: .planning/PROJECT.md (updated 2026-02-19)
 
 **Core value:** Reliable, intelligent agent session lifecycle — launch, recover, and respond without human intervention
-**Current focus:** v3.2 Per-Hook TUI Instruction Prompts — Phase 17: Documentation (complete)
+**Current focus:** v3.2 Per-Hook TUI Instruction Prompts — Phase 17: Documentation
 
 ## Current Position
 
 Phase: 17 of 17 (Documentation)
-Plan: 2 of 2 in current phase
-Status: Project complete
-Last activity: 2026-02-19 — Phase 17 complete (2/2 plans): README.md updated with prompt template config entry and corrected function count
+Plan: 1 of 2 in current phase (Plan 01 complete)
+Status: In progress — Plan 02 remaining
+Last activity: 2026-02-19 — Phase 17 Plan 01 complete: docs/hooks.md and SKILL.md updated with v3.2 prompt template system (load_hook_prompt(), [ACTION REQUIRED], 7 template files)
 
-Progress: [█████████████████] 100% (33/33 plans complete)
+Progress: [████████████████░] 97% (32/33 plans complete)
 
 ## Performance Metrics
 
@@ -41,7 +41,7 @@ Progress: [█████████████████] 100% (33/33 plan
 
 *Updated after each plan completion*
 | Phase 16-hook-migration P02 | 2 | 2 tasks | 4 files |
-| Phase 17-documentation P02 | 1 | 1 task | 1 file |
+| Phase 17-documentation P01 | ~3min | 2 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -76,8 +76,10 @@ Phase 16 Plan 02 decisions (confirmed and shipped):
 - [ACTION REQUIRED] header placement: appended at end of WAKE_MESSAGE after [STATE HINT] for newly-added hooks
 - All 7 hooks now use load_hook_prompt() — migration complete, zero [AVAILABLE ACTIONS] blocks remain
 
-Phase 17 Plan 02 decisions (confirmed and shipped):
-- menu-driver.sh actions not listed inline in README (only brief description row) — step 3 of task correctly skipped, SKILL.md is the authoritative source
+Phase 17 Plan 01 decisions (confirmed and shipped):
+- Zero occurrences of [AVAILABLE ACTIONS] required: v3.2 update note in docs/hooks.md uses "generic actions block" phrasing to avoid literal reference
+- Per-Hook Prompt Templates section placed between Wake Format v2 and Log File Lifecycle for logical grouping
+- v3.2 Changes section added to SKILL.md after v3.0 Changes to maintain chronological version history
 
 ### Pending Todos
 
@@ -104,5 +106,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-19
-Stopped at: Completed 17-02-PLAN.md — Phase 17 complete, all documentation updated for v3.2 prompt template system
+Stopped at: Completed 17-01-PLAN.md — docs/hooks.md and SKILL.md updated with v3.2 prompt template system
 Resume file: None
