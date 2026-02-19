@@ -5,44 +5,58 @@
 See: .planning/PROJECT.md (updated 2026-02-19)
 
 **Core value:** When Claude Code fires any hook event, the right agent wakes up with the right context and knows exactly which GSD slash command to type next
-**Current focus:** v4.0 Event-Driven Hook Architecture
+**Current focus:** Phase 1 — Cleanup
 
 ## Current Position
 
-Phase: Not started (defining requirements)
-Plan: —
-Status: Defining requirements
-Last activity: 2026-02-19 — Milestone v4.0 started
+Phase: 1 of 5 (Cleanup)
+Plan: 0 of TBD in current phase
+Status: Ready to plan
+Last activity: 2026-02-19 — Roadmap adjusted: TUI merged into event phases (5 phases)
+
+Progress: [░░░░░░░░░░] 0%
+
+## Performance Metrics
+
+**Velocity:**
+- Total plans completed: 0
+- Average duration: —
+- Total execution time: 0 hours
+
+**By Phase:**
+
+| Phase | Plans | Total | Avg/Plan |
+|-------|-------|-------|----------|
+| — | — | — | — |
+
+**Recent Trend:** —
+
+*Updated after each plan completion*
 
 ## Accumulated Context
 
 ### Decisions
 
-- v4.0 is a clean rewrite — all v1.0-v3.2 hook code will be deleted
-- `agent-registry.json` replaces `recovery-registry.json`
-- Event-folder architecture: `events/{event_name}/` with handler + prompt per event
-- `last_assistant_message` from JSON replaces pane scraping, transcript parsing, and state regex
-- PreToolUse → PostToolUse verification loop for AskUserQuestion
-- Cross-platform using only OpenClaw dependencies
+Decisions are logged in PROJECT.md Key Decisions table.
+Recent decisions affecting current work:
 
-### What Stays (from v1.0-v3.2)
+- v4.0 start: Rewrite from scratch — v1-v3 hook system replaced by clean JSON-based handlers
+- v4.0 start: agent-registry.json replaces recovery-registry.json (clearer name, focused purpose)
+- v4.0 start: last_assistant_message is primary content source (no pane scraping or transcript parsing)
+- v4.0 start: Node.js for all event handlers (cross-platform; bash only where tmux requires it)
+- v4.0 start: PreToolUse to PostToolUse verification loop for AskUserQuestion closed-loop control
+- v4.0 roadmap: Full-stack per event (handler + prompt + TUI driver) — test end-to-end before next event
 
-- spawn.sh, recover-openclaw-agents.sh, menu-driver.sh, sync-recovery-registry-session-ids.sh
-- systemd timer for auto-recovery
-- install.sh (will be updated for new structure)
-- hook-event-logger.sh (debugging tool)
-- diagnose-hooks.sh (will be updated)
+### Pending Todos
 
-### What Gets Deleted
+None yet.
 
-- All 7 hook scripts (stop-hook.sh, notification-idle-hook.sh, etc.)
-- lib/hook-preamble.sh, lib/hook-utils.sh (rewrite)
-- scripts/prompts/*.md (replaced by events/*/prompt_*.md)
-- PRD.md (outdated, v4.0 scope is in PROJECT.md)
-- docs/v3-retrospective.md (historical, not needed)
-- register-hooks.sh (rewrite for new structure)
-- test-hook-prompts.sh (rewrite for new structure)
-- tests/ (rewrite for new structure)
+### Blockers/Concerns
 
----
-*Last updated: 2026-02-19 after v4.0 milestone start*
+None yet.
+
+## Session Continuity
+
+Last session: 2026-02-19
+Stopped at: Roadmap written, ready to plan Phase 1 (Cleanup)
+Resume file: None

@@ -13,13 +13,16 @@ When Claude Code fires any hook event, the right agent wakes up with the right c
 **Goal:** Rewrite the hook system from scratch with an event-folder architecture where each Claude Code hook event maps to a `./events/{event_name}/` folder containing a handler script and agent prompt template.
 
 **Target features:**
-- `events/{event_name}/event_{descriptive_name}.sh` handler scripts that read Claude Code's structured JSON stdin
-- `events/{event_name}/prompt_{descriptive_name}.md` templates that tell the agent what to do with the event
+- `events/{event_type}/{subtype}/` nested folder structure matching Claude Code's event + matcher hierarchy
+- `event_{descriptive_name}.sh` handler scripts that read Claude Code's structured JSON stdin
+- `prompt_{descriptive_name}.md` templates that tell the agent what to do with the event
 - Agent resolution from `session` field in hook JSON via `agent-registry.json` (renamed from recovery-registry.json)
-- OpenClaw gateway delivery: wake agent with `last_assistant_message` content + event-specific prompt
-- Tool-aware handlers for PreToolUse (e.g., AskUserQuestion with `multiSelect` awareness)
+- OpenClaw gateway delivery: wake agent with content + event-specific prompt
+- TUI driver per event type — routine actions handled by script, agent woken only for decisions
+- PreToolUse → PostToolUse verification loop (agent decides answer, then confirms it was submitted correctly)
+- Subtype routing: PreToolUse by `tool_name`, Notification by `notification_type`, SubagentStart/Stop by `agent_type`
 - Shared lib for DRY agent resolution, gateway delivery, and JSON extraction
-- Hook registration script for `~/.claude/settings.json`
+- Hook registration script for `~/.claude/settings.json` with proper matchers
 - Cross-platform: works on Windows, macOS, Linux using only OpenClaw dependencies (no additional)
 
 ## Requirements
@@ -88,6 +91,8 @@ When Claude Code fires any hook event, the right agent wakes up with the right c
 | `last_assistant_message` as primary content source | Claude Code provides the full response text in structured JSON — no need for pane scraping or transcript parsing | — Pending |
 | Tool-specific PreToolUse handlers (e.g., AskUserQuestion) | PreToolUse JSON includes `tool_name` and `tool_input` — prompt should teach agent how to interact with specific TUI element (multiSelect awareness) | — Pending |
 | PreToolUse → PostToolUse verification loop | PreToolUse: agent reads question, decides answer, sends keystrokes. PostToolUse: agent confirms submitted answer matches decision. Closed-loop control. | — Pending |
+| Full-stack delivery per event | Each event phase delivers all 3 files (handler + prompt + TUI driver) and validates end-to-end before moving on. No separate TUI phase. | — Pending |
+| Node.js for all handlers and TUI drivers | Cross-platform (Windows/macOS/Linux). TUI drivers use child_process.execSync for tmux send-keys. | — Pending |
 
 ---
 *Last updated: 2026-02-19 after v4.0 milestone start*

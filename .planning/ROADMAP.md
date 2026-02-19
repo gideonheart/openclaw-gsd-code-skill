@@ -1,0 +1,103 @@
+# Roadmap: gsd-code-skill
+
+## Overview
+
+v4.0 rewrites the hook system from scratch with an event-folder architecture. Five phases deliver this in dependency order: delete the old code first (clean slate), build the shared lib foundation, wire up the Stop event with all three files (handler + prompt + TUI driver) and validate end-to-end, do the same for AskUserQuestion lifecycle, then register everything and document. Each event phase delivers a testable, complete capability before moving to the next.
+
+## Milestones
+
+- [x] v1.0 Hook-Driven Agent Control (shipped 2026-02-17)
+- [x] v2.0 Smart Hook Delivery (shipped 2026-02-18)
+- [x] v3.0 Structured Hook Observability (shipped 2026-02-18)
+- [x] v3.1 Hook Refactoring and Migration (shipped 2026-02-18)
+- [x] v3.2 Per-Hook TUI Instruction Prompts (shipped 2026-02-19)
+- [ ] **v4.0 Event-Driven Hook Architecture** (Phases 1-5, in progress)
+
+---
+
+## v4.0 Phases
+
+### Phase Checklist
+
+- [ ] **Phase 1: Cleanup** - Delete all v1-v3 hook scripts, old lib, old prompts, dead docs, rename registry
+- [ ] **Phase 2: Shared Library** - Build the Node.js shared lib with agent resolution, gateway delivery, and JSON extraction
+- [ ] **Phase 3: Stop Event (Full Stack)** - Build event folder, handler, prompt, and TUI driver for Stop — test end-to-end
+- [ ] **Phase 4: AskUserQuestion Lifecycle (Full Stack)** - PreToolUse and PostToolUse handlers, prompts, and TUI driver — test end-to-end
+- [ ] **Phase 5: Registration and Documentation** - Register all handlers in settings.json, update install.sh, SKILL.md, README.md
+
+## Phase Details
+
+### Phase 1: Cleanup
+**Goal**: The repository contains zero v1-v3 artifacts — old hook scripts, old lib files, old prompt directories, dead documentation, and monolithic menu-driver.sh are gone; agent-registry.json replaces recovery-registry.json in config and .gitignore
+**Depends on**: Nothing (first phase)
+**Requirements**: CLEAN-01, CLEAN-02, CLEAN-03, CLEAN-04, CLEAN-05, CLEAN-08
+**Success Criteria** (what must be TRUE):
+  1. None of the seven old hook bash scripts exist anywhere in the scripts/ directory
+  2. The old lib/hook-preamble.sh and lib/hook-utils.sh files do not exist
+  3. The scripts/prompts/ directory does not exist
+  4. PRD.md, docs/v3-retrospective.md, and old test scripts do not exist
+  5. .gitignore references agent-registry.json (not recovery-registry.json)
+**Plans**: TBD
+
+### Phase 2: Shared Library
+**Goal**: A Node.js shared lib exists at lib/ with agent resolution, gateway delivery, and JSON field extraction — importable by any event handler, with no code duplication across handlers
+**Depends on**: Phase 1
+**Requirements**: ARCH-01, ARCH-02, ARCH-03, ARCH-05, ARCH-06
+**Success Criteria** (what must be TRUE):
+  1. Running `node -e "require('./lib')"` succeeds without error
+  2. `resolveAgentFromSession()` reads agent-registry.json and returns the correct agent for a known session value
+  3. `wakeAgentViaGateway()` invokes `openclaw agent --session-id` with content and prompt arguments
+  4. `extractJsonField()` safely returns a named field from valid hook JSON and returns null for missing fields
+  5. A single shared entry point exists that event handlers can import to get all three functions pre-wired
+**Plans**: TBD
+
+### Phase 3: Stop Event (Full Stack)
+**Goal**: The complete Stop event works end-to-end — handler extracts `last_assistant_message`, resolves agent, wakes it with prompt, and TUI driver types the chosen GSD slash command in the tmux pane. Testable and validated before proceeding.
+**Depends on**: Phase 2
+**Requirements**: ARCH-04, STOP-01, STOP-02, STOP-03, TUI-01, TUI-02, TUI-05
+**Success Criteria** (what must be TRUE):
+  1. The folder events/stop/ exists with event_stop.js, prompt_stop.md, and tui_driver_stop.js
+  2. Piping a Stop hook JSON payload to node events/stop/event_stop.js triggers an OpenClaw gateway call
+  3. Piping a payload where stop_hook_active is true results in no gateway call and exit with no error
+  4. tui_driver_stop.js accepts a slash command argument and types it, tab-completes, and presses enter in the tmux pane
+  5. prompt_stop.md instructs the agent to read the response, decide the GSD command, and call tui_driver_stop.js
+**Plans**: TBD
+
+### Phase 4: AskUserQuestion Lifecycle (Full Stack)
+**Goal**: The full PreToolUse → PostToolUse verification loop works end-to-end — PreToolUse handler extracts questions/options/multiSelect, wakes agent with prompt, TUI driver navigates and submits the answer, PostToolUse handler verifies the answer matches. Testable and validated before proceeding.
+**Depends on**: Phase 2
+**Requirements**: ASK-01, ASK-02, ASK-03, ASK-04, TUI-03, TUI-04
+**Success Criteria** (what must be TRUE):
+  1. events/pre_tool_use/ask_user_question/ exists with event_ask_user_question.js, prompt_ask_user_question.md, and tui_driver_ask_user_question.js
+  2. Piping a PreToolUse(AskUserQuestion) JSON payload triggers a gateway call that includes questions array and multiSelect flag
+  3. tui_driver_ask_user_question.js navigates with arrow keys, selects with space (multiSelect) or enter (single-select), and submits
+  4. events/post_tool_use/ask_user_question/ exists with event_post_ask_user_question.js and prompt_post_ask_user_question.md
+  5. PostToolUse prompt instructs agent to compare submitted answer against its decision and report mismatch
+**Plans**: TBD
+
+### Phase 5: Registration and Documentation
+**Goal**: All v4.0 event handlers are registered in ~/.claude/settings.json via an idempotent script; install.sh reflects the new event-folder structure; SKILL.md and README.md describe v4.0 architecture accurately
+**Depends on**: Phase 3, Phase 4
+**Requirements**: REG-01, REG-02, REG-03, CLEAN-06, CLEAN-07
+**Success Criteria** (what must be TRUE):
+  1. Running the registration script once writes the Stop handler and both AskUserQuestion handlers to ~/.claude/settings.json with correct matchers
+  2. Running the registration script a second time does not duplicate any entries
+  3. install.sh correctly sets up the event-folder structure when run on a clean system
+  4. SKILL.md frontmatter and description accurately reflect v4.0 event-folder architecture
+  5. README.md explains the events/ folder structure and how to add a new event handler
+**Plans**: TBD
+
+## Progress
+
+**Execution Order:** 1 → 2 → 3 → 4 → 5
+
+| Phase | Plans Complete | Status | Completed |
+|-------|----------------|--------|-----------|
+| 1. Cleanup | 0/TBD | Not started | - |
+| 2. Shared Library | 0/TBD | Not started | - |
+| 3. Stop Event (Full Stack) | 0/TBD | Not started | - |
+| 4. AskUserQuestion Lifecycle (Full Stack) | 0/TBD | Not started | - |
+| 5. Registration and Documentation | 0/TBD | Not started | - |
+
+---
+*Roadmap created: 2026-02-19 for v4.0 Event-Driven Hook Architecture*

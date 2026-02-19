@@ -87,41 +87,41 @@ Requirements for v4.0 Event-Driven Hook Architecture. Each maps to roadmap phase
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| ARCH-01 | — | Pending |
-| ARCH-02 | — | Pending |
-| ARCH-03 | — | Pending |
-| ARCH-04 | — | Pending |
-| ARCH-05 | — | Pending |
-| ARCH-06 | — | Pending |
-| TUI-01 | — | Pending |
-| TUI-02 | — | Pending |
-| TUI-03 | — | Pending |
-| TUI-04 | — | Pending |
-| TUI-05 | — | Pending |
-| STOP-01 | — | Pending |
-| STOP-02 | — | Pending |
-| STOP-03 | — | Pending |
-| ASK-01 | — | Pending |
-| ASK-02 | — | Pending |
-| ASK-03 | — | Pending |
-| ASK-04 | — | Pending |
-| REG-01 | — | Pending |
-| REG-02 | — | Pending |
-| REG-03 | — | Pending |
-| CLEAN-01 | — | Pending |
-| CLEAN-02 | — | Pending |
-| CLEAN-03 | — | Pending |
-| CLEAN-04 | — | Pending |
-| CLEAN-05 | — | Pending |
-| CLEAN-06 | — | Pending |
-| CLEAN-07 | — | Pending |
-| CLEAN-08 | — | Pending |
+| ARCH-01 | Phase 2 | Pending |
+| ARCH-02 | Phase 2 | Pending |
+| ARCH-03 | Phase 2 | Pending |
+| ARCH-04 | Phase 3 | Pending |
+| ARCH-05 | Phase 2 | Pending |
+| ARCH-06 | Phase 2 | Pending |
+| TUI-01 | Phase 3 | Pending |
+| TUI-02 | Phase 3 | Pending |
+| TUI-03 | Phase 4 | Pending |
+| TUI-04 | Phase 4 | Pending |
+| TUI-05 | Phase 3 | Pending |
+| STOP-01 | Phase 3 | Pending |
+| STOP-02 | Phase 3 | Pending |
+| STOP-03 | Phase 3 | Pending |
+| ASK-01 | Phase 4 | Pending |
+| ASK-02 | Phase 4 | Pending |
+| ASK-03 | Phase 4 | Pending |
+| ASK-04 | Phase 4 | Pending |
+| REG-01 | Phase 5 | Pending |
+| REG-02 | Phase 5 | Pending |
+| REG-03 | Phase 5 | Pending |
+| CLEAN-01 | Phase 1 | Pending |
+| CLEAN-02 | Phase 1 | Pending |
+| CLEAN-03 | Phase 1 | Pending |
+| CLEAN-04 | Phase 1 | Pending |
+| CLEAN-05 | Phase 1 | Pending |
+| CLEAN-06 | Phase 5 | Pending |
+| CLEAN-07 | Phase 5 | Pending |
+| CLEAN-08 | Phase 1 | Pending |
 
 **Coverage:**
 - v4.0 requirements: 29 total
-- Mapped to phases: 0
-- Unmapped: 29
+- Mapped to phases: 29
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-02-19*
-*Last updated: 2026-02-19 after TUI driver and Node.js additions*
+*Last updated: 2026-02-19 — traceability updated: TUI merged into event phases (5 phases total)*
