@@ -101,6 +101,9 @@ fi
 # ============================================================================
 # 9. BUILD STRUCTURED WAKE MESSAGE
 # ============================================================================
+MENU_DRIVER_PATH="${_GSD_SKILL_ROOT}/scripts/menu-driver.sh"
+SCRIPT_DIR="${_GSD_SKILL_ROOT}/scripts"
+ACTION_PROMPT=$(load_hook_prompt "idle-prompt" "$SESSION_NAME" "$MENU_DRIVER_PATH" "$SCRIPT_DIR")
 TIMESTAMP=$(date -u +'%Y-%m-%dT%H:%M:%SZ')
 
 WAKE_MESSAGE="[SESSION IDENTITY]
@@ -120,14 +123,8 @@ ${PANE_CONTENT}
 [CONTEXT PRESSURE]
 ${CONTEXT_PRESSURE}
 
-[AVAILABLE ACTIONS]
-menu-driver.sh ${SESSION_NAME} choose <n>
-menu-driver.sh ${SESSION_NAME} type <text>
-menu-driver.sh ${SESSION_NAME} clear_then <command>
-menu-driver.sh ${SESSION_NAME} enter
-menu-driver.sh ${SESSION_NAME} esc
-menu-driver.sh ${SESSION_NAME} submit
-menu-driver.sh ${SESSION_NAME} snapshot"
+[ACTION REQUIRED]
+${ACTION_PROMPT}"
 
 # ============================================================================
 # 10. HYBRID MODE DELIVERY
