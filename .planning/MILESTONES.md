@@ -1,19 +1,36 @@
 # Milestones: gsd-code-skill
 
-## v3.1 Hook Refactoring & Migration Completion (In Progress)
+## v3.2 Per-Hook TUI Instruction Prompts (In Progress)
+
+**Goal:** Replace generic [AVAILABLE ACTIONS] (identical across all hooks) with hook-specific [ACTION REQUIRED] sections loaded from external prompt templates.
+
+**Started:** 2026-02-19
+**Phases:** 3 (Phase 15: Prompt Template Foundation, Phase 16: Hook Migration, Phase 17: Documentation)
+**Requirements:** 20 total (8 prompt templates, 7 hook migration, 2 TUI enhancement, 3 documentation)
+
+**Target:**
+- scripts/prompts/*.md — 7 per-hook instruction templates with placeholder substitution
+- load_hook_prompt() shared function (#10) in lib/hook-utils.sh
+- menu-driver.sh multi-select checkbox support (arrow_up, arrow_down, space)
+- All 7 hooks use [ACTION REQUIRED] with only their relevant commands
+- post-tool-use and session-end gain [ACTION REQUIRED] sections
+
+## v3.1 Hook Refactoring & Migration Completion (Shipped)
 
 **Goal:** Extract shared code from duplicated hook preambles, unify divergent patterns, and complete the v2.0 [CONTENT] migration left incomplete in v3.0.
 
 **Started:** 2026-02-18
-**Phases:** TBD (defining roadmap)
+**Completed:** 2026-02-18
+**Phases:** 3 (Phase 12: Shared Library Foundation, Phase 13: Coordinated Hook Migration, Phase 14: Diagnostic Fixes)
 **Requirements:** 12 total (5 refactoring, 3 migration, 3 diagnostic fixes, 1 code quality)
 
-**Target:**
-- hook-preamble.sh replacing 27-line preamble duplicated across 7 hooks
+**What shipped:**
+- hook-preamble.sh shared bootstrap with BASH_SOURCE[1] identity and source guards
 - extract_hook_settings() and detect_session_state() shared functions in lib/hook-utils.sh
+- All 7 hooks source hook-preamble.sh as single entry point — 320+ lines removed
 - [CONTENT] migration completed for notification-idle, notification-permission, pre-compact
-- diagnose-hooks.sh prefix-match fix and complete script list
-- echo to printf '%s' sweep for escape sequence safety
+- diagnose-hooks.sh prefix-match fix and complete 7-script list
+- printf '%s' for all jq piping across all 7 hooks
 
 ## v3.0 Structured Hook Observability (Shipped)
 
@@ -66,4 +83,4 @@
 - Updated SKILL.md and docs/hooks.md
 
 ---
-*Last updated: 2026-02-18 after v3.1 milestone start*
+*Last updated: 2026-02-19 after v3.2 milestone start*
