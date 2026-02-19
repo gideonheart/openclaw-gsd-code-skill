@@ -52,7 +52,7 @@ Requirements for v4.0 Event-Driven Hook Architecture. Each maps to roadmap phase
 - [x] **CLEAN-05**: Delete monolithic menu-driver.sh (replaced by per-event TUI drivers)
 - [ ] **CLEAN-06**: Update install.sh for new event-folder structure and Node.js handlers
 - [ ] **CLEAN-07**: Update SKILL.md and README.md with v4.0 architecture documentation
-- [ ] **CLEAN-08**: Update .gitignore: rename recovery-registry.json entry to agent-registry.json
+- [x] **CLEAN-08**: Update .gitignore: rename recovery-registry.json entry to agent-registry.json
 
 ## Future Requirements
 
@@ -115,7 +115,7 @@ Requirements for v4.0 Event-Driven Hook Architecture. Each maps to roadmap phase
 | CLEAN-05 | Phase 1 | Complete |
 | CLEAN-06 | Phase 5 | Pending |
 | CLEAN-07 | Phase 5 | Pending |
-| CLEAN-08 | Phase 1 | Pending |
+| CLEAN-08 | Phase 1 | Complete |
 
 **Coverage:**
 - v4.0 requirements: 29 total
