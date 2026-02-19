@@ -263,7 +263,7 @@ Plans:
 
 </details>
 
-### 🚧 v3.2 Per-Hook TUI Instruction Prompts (Active)
+### v3.2 Per-Hook TUI Instruction Prompts (Active)
 
 **Milestone Goal:** Replace generic [AVAILABLE ACTIONS] (identical across all hooks) with hook-specific [ACTION REQUIRED] sections loaded from external prompt templates — each hook tells the driving agent exactly what to do for that trigger type.
 
@@ -361,9 +361,9 @@ Plans:
 **Plans**: 3 plans
 
 Plans:
-- [ ] 15-01-PLAN.md -- load_hook_prompt() in lib/hook-utils.sh with placeholder substitution and graceful fallback
-- [ ] 15-02-PLAN.md -- menu-driver.sh arrow_up, arrow_down, space actions for multi-select checkbox navigation
-- [ ] 15-03-PLAN.md -- All 7 prompt template files in scripts/prompts/ with hook-specific command subsets
+- [x] 15-01-PLAN.md -- load_hook_prompt() in lib/hook-utils.sh with placeholder substitution and graceful fallback
+- [x] 15-02-PLAN.md -- menu-driver.sh arrow_up, arrow_down, space actions for multi-select checkbox navigation
+- [x] 15-03-PLAN.md -- All 7 prompt template files in scripts/prompts/ with hook-specific command subsets
 
 ### Phase 16: Hook Migration
 **Goal**: All 7 hook scripts emit [ACTION REQUIRED] sections using load_hook_prompt() — generic [AVAILABLE ACTIONS] replaced by hook-specific instructions, post-tool-use and session-end hooks gain action sections they currently lack
@@ -375,11 +375,11 @@ Plans:
   3. post-tool-use-hook.sh and session-end-hook.sh wake messages each include an [ACTION REQUIRED] section — these hooks previously sent no action instructions at all
   4. When a template file is missing, the hook still fires and sends the wake message — load_hook_prompt() fallback prevents hook failure
   5. All 7 hook scripts call load_hook_prompt() with their correct template name — no hook hardcodes action instructions inline
-**Plans**: TBD
+**Plans**: 2 plans
 
 Plans:
-- [ ] 16-01: Migrate stop-hook.sh, notification-idle-hook.sh, notification-permission-hook.sh to load_hook_prompt()
-- [ ] 16-02: Migrate pre-compact-hook.sh, pre-tool-use-hook.sh, post-tool-use-hook.sh, session-end-hook.sh to load_hook_prompt()
+- [ ] 16-01-PLAN.md -- Migrate stop-hook.sh, notification-idle-hook.sh, notification-permission-hook.sh to load_hook_prompt()
+- [ ] 16-02-PLAN.md -- Migrate pre-compact-hook.sh, pre-tool-use-hook.sh, post-tool-use-hook.sh, session-end-hook.sh to load_hook_prompt()
 
 ### Phase 17: Documentation
 **Goal**: Skill documentation reflects the prompt template system — docs/hooks.md, SKILL.md, and README.md all describe [ACTION REQUIRED] format, template files, and load_hook_prompt()
@@ -398,7 +398,7 @@ Plans:
 ## Progress
 
 **Execution Order:**
-Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 → 9 → 10 → 11 → 12 → 13 → 14 → 15 → 16 → 17
+Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7 -> 8 -> 9 -> 10 -> 11 -> 12 -> 13 -> 14 -> 15 -> 16 -> 17
 
 | Phase | Milestone | Plans Complete | Status | Completed |
 |-------|-----------|----------------|--------|-----------|
@@ -416,6 +416,6 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 12. Shared Library Foundation | v3.1 | 1/1 | Complete | 2026-02-18 |
 | 13. Coordinated Hook Migration | v3.1 | 3/3 | Complete | 2026-02-18 |
 | 14. Diagnostic Fixes | v3.1 | 1/1 | Complete | 2026-02-18 |
-| 15. Prompt Template Foundation | 3/3 | Complete    | 2026-02-19 | - |
+| 15. Prompt Template Foundation | v3.2 | 3/3 | Complete | 2026-02-19 |
 | 16. Hook Migration | v3.2 | 0/2 | Not started | - |
 | 17. Documentation | v3.2 | 0/2 | Not started | - |
