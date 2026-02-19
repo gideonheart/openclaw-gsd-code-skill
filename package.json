@@ -1,0 +1,7 @@
+{
+  "name": "gsd-code-skill",
+  "version": "4.0.0",
+  "type": "module",
+  "description": "Event-driven hook system for Claude Code agent lifecycle management",
+  "private": true
+}
