@@ -1,0 +1,27 @@
+{
+  "_comment": "Copy this file to agent-registry.json and fill in real values. agent-registry.json is gitignored — it contains secrets (openclaw_session_id).",
+  "agents": [
+    {
+      "_comment_agent_id": "Unique identifier for this agent. Must match the agent name used in tmux session naming and OpenClaw routing.",
+      "agent_id": "gideon",
+      "_comment_enabled": "Set to false to disable all hook event handling for this agent without removing the entry.",
+      "enabled": true,
+      "_comment_session_name": "The tmux session name where Claude Code runs for this agent.",
+      "session_name": "gideon-main",
+      "_comment_working_directory": "Absolute path to the agent's workspace. Claude Code will be launched in this directory.",
+      "working_directory": "/home/forge/.openclaw/workspace",
+      "_comment_openclaw_session_id": "OpenClaw session UUID used for gateway message delivery. Obtain from OpenClaw dashboard or API.",
+      "openclaw_session_id": "00000000-0000-0000-0000-000000000001",
+      "_comment_system_prompt_file": "Path to the system prompt file, relative to the gsd-code-skill root directory. Used when launching Claude Code via bin/launch-session.mjs.",
+      "system_prompt_file": "config/default-system-prompt.md"
+    },
+    {
+      "agent_id": "warden",
+      "enabled": true,
+      "session_name": "warden-main",
+      "working_directory": "/home/forge/my-project",
+      "openclaw_session_id": "00000000-0000-0000-0000-000000000002",
+      "system_prompt_file": "config/default-system-prompt.md"
+    }
+  ]
+}

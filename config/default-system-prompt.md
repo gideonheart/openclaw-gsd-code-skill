@@ -1,13 +1,13 @@
 This Claude Code session uses the GSD (Get Shit Done) workflow for project management.
 
-GSD Workflow Commands:
+### GSD Workflow Commands:
 - /gsd:resume-work - Resume work on the current project or phase
 - /gsd:new-project - Initialize a new project with PRD and roadmap
 - /gsd:help - Show available GSD commands and workflow guidance
 - /gsd:execute-plan - Execute a specific plan from the roadmap
 - /gsd:research-phase - Research and gather context for a phase
 
-Context Management:
+### Context Management:
 - /clear - Clear conversation context to free up space
 - /compact - Compact context to reduce token usage
 - /resume - Resume from a saved conversation state

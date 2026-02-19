@@ -1,4 +1,6 @@
-# Real config contains session IDs and secrets
-config/recovery-registry.json
-config/recovery-registry.json.lock
+# config/agent-registry.json contains secrets (openclaw_session_id values).
+# Use config/agent-registry.example.json as a template — copy and fill in real values.
+config/agent-registry.json
+
+# Runtime log output — ephemeral, not versioned.
 logs/
