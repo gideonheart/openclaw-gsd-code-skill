@@ -358,12 +358,12 @@ Plans:
   3. All 7 template files exist at scripts/prompts/: ask-user-question.md, response-complete.md, idle-prompt.md, permission-prompt.md, pre-compact.md, session-end.md, answer-submitted.md
   4. ask-user-question.md includes explicit multi-select checkbox instructions (arrow_up/arrow_down to navigate, space to toggle, enter to confirm) consistent with the new TUI actions
   5. Each template file contains only commands relevant to its trigger type — no template lists commands that belong to a different hook context
-**Plans**: TBD
+**Plans**: 3 plans
 
 Plans:
-- [ ] 15-01: load_hook_prompt() in lib/hook-utils.sh with placeholder substitution and graceful fallback
-- [ ] 15-02: menu-driver.sh arrow_up, arrow_down, space actions for multi-select checkbox navigation
-- [ ] 15-03: All 7 prompt template files in scripts/prompts/ with hook-specific command subsets
+- [ ] 15-01-PLAN.md -- load_hook_prompt() in lib/hook-utils.sh with placeholder substitution and graceful fallback
+- [ ] 15-02-PLAN.md -- menu-driver.sh arrow_up, arrow_down, space actions for multi-select checkbox navigation
+- [ ] 15-03-PLAN.md -- All 7 prompt template files in scripts/prompts/ with hook-specific command subsets
 
 ### Phase 16: Hook Migration
 **Goal**: All 7 hook scripts emit [ACTION REQUIRED] sections using load_hook_prompt() — generic [AVAILABLE ACTIONS] replaced by hook-specific instructions, post-tool-use and session-end hooks gain action sections they currently lack
