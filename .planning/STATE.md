@@ -12,7 +12,7 @@ See: .planning/PROJECT.md (updated 2026-02-19)
 Phase: 17 of 17 (Documentation)
 Plan: 1 of 2 in current phase (Plan 01 complete)
 Status: In progress — Plan 02 remaining
-Last activity: 2026-02-19 — Quick Task 15: fix detect_session_state() regex false positives (status bar, allow, error patterns)
+Last activity: 2026-02-19 — Quick Task 16: create hook-event-logger.sh and register-all-hooks-logger.sh for all 15 Claude Code hook events
 
 Progress: [████████████████░] 97% (32/33 plans complete)
 
@@ -104,9 +104,10 @@ None.
 | 13 | Update SKILL.md, README.md, docs/hooks.md for Quick-12 additions (9 functions, deliver_with_mode specs) | 2026-02-18 | 92452d7 | [13-update-skill-md-readme-md-and-docs-hooks](./quick/13-update-skill-md-readme-md-and-docs-hooks/) |
 | 14 | Create automated test script for v3.2 hook prompt verification (stop hook JSONL, [ACTION REQUIRED]) | 2026-02-19 | 0f28797 | [14-test-hooks-send-correct-prompts-to-openc](./quick/14-test-hooks-send-correct-prompts-to-openc/) |
 | 15 | Fix detect_session_state() false positives from Claude Code status bar "bypass permissions" text | 2026-02-19 | 1a26b80 | [15-fix-detect-session-state-regex-false-pos](./quick/15-fix-detect-session-state-regex-false-pos/) |
+| 16 | Create hook-event-logger.sh and register-all-hooks-logger.sh for all 15 Claude Code hook events | 2026-02-19 | df2a8b9 | [16-create-hook-event-logger-script-for-all-](./quick/16-create-hook-event-logger-script-for-all-/) |
 
 ## Session Continuity
 
 Last session: 2026-02-19
-Stopped at: Quick Task 15 complete — detect_session_state() false positives fixed, all 6 tests pass
+Stopped at: Quick Task 16 complete — hook-event-logger.sh and register-all-hooks-logger.sh created, all 15 events registered in settings.json
 Resume file: None
