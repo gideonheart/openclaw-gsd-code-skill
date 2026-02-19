@@ -35,7 +35,7 @@ The session starts in tmux with GSD system prompt, auto-detects the first comman
 
 Sessions follow this flow: **spawn** -> **hooks control session** -> **crash/reboot** -> **systemd timer** -> **recovery** -> **agents resume**.
 
-Hooks fire on Claude Code events (Stop, Notification, SessionEnd, PreCompact, PreToolUse, PostToolUse) and send structured wake messages to the OpenClaw agent. The agent inspects session state, decides next action, and drives the TUI using `menu-driver.sh`.
+Hooks fire on Claude Code events (Stop, Notification, SessionEnd, PreCompact, PreToolUse, PostToolUse) and send structured wake messages to the OpenClaw agent. Each hook's wake message includes an [ACTION REQUIRED] section with trigger-specific instructions loaded from per-hook prompt templates in `scripts/prompts/`. The agent inspects session state, decides next action, and drives the TUI using `menu-driver.sh`.
 
 After reboot or OOM, the systemd timer runs recovery, which restores tmux sessions, relaunches Claude Code, wakes OpenClaw agents, and resumes work automatically.
 
@@ -111,7 +111,7 @@ All 7 hooks:
 
 **lib/hook-utils.sh** - Shared functions sourced by all hook scripts
 
-Contains 9 functions: `lookup_agent_in_registry`, `extract_last_assistant_response`, `extract_pane_diff`, `format_ask_user_questions`, `write_hook_event_record`, `deliver_async_with_logging`, `deliver_with_mode`, `extract_hook_settings`, `detect_session_state`. No side effects on source.
+Contains 10 functions: `lookup_agent_in_registry`, `extract_last_assistant_response`, `extract_pane_diff`, `format_ask_user_questions`, `write_hook_event_record`, `deliver_async_with_logging`, `deliver_with_mode`, `extract_hook_settings`, `detect_session_state`, `load_hook_prompt`. No side effects on source.
 
 ### Utilities
 
@@ -185,6 +185,16 @@ Replacement model: per-agent `system_prompt` in registry replaces default entire
 **Diagnostics:** `scripts/diagnose-hooks.sh` now includes JSONL log analysis (Step 10) showing recent events, outcome distribution, hook script distribution, non-delivered event detection, and duration stats.
 
 **Minimum Claude Code version:** >= 2.0.76 (PostToolUse hook support added in same version as PreToolUse).
+
+## v3.2 Changes
+
+**Per-hook prompt templates:** All 7 hooks now load trigger-specific [ACTION REQUIRED] instructions from external markdown templates in `scripts/prompts/` via `load_hook_prompt()`. The generic actions block (identical across all hooks) has been replaced by hook-specific action guidance tailored to each trigger context.
+
+**Template placeholder substitution:** Templates support three placeholders (`{SESSION_NAME}`, `{MENU_DRIVER_PATH}`, `{SCRIPT_DIR}`) substituted at load time. Missing templates cause graceful fallback (empty string), never hook failure.
+
+**Multi-select TUI actions:** `menu-driver.sh` now supports `arrow_up`, `arrow_down`, and `space` actions for navigating and toggling multi-select checkboxes in AskUserQuestion prompts.
+
+**Minimum Claude Code version:** >= 2.0.76 (unchanged from v3.0).
 
 ## Notes
 
