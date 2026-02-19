@@ -54,6 +54,9 @@ fi
 
 # 5. Build minimal wake message (HOOK-09)
 TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+MENU_DRIVER_PATH="${_GSD_SKILL_ROOT}/scripts/menu-driver.sh"
+SCRIPT_DIR="${_GSD_SKILL_ROOT}/scripts"
+ACTION_PROMPT=$(load_hook_prompt "session-end" "$SESSION_NAME" "$MENU_DRIVER_PATH" "$SCRIPT_DIR")
 
 WAKE_MESSAGE="[SESSION IDENTITY]
 agent_id: ${AGENT_ID}
@@ -64,7 +67,10 @@ timestamp: ${TIMESTAMP}
 type: session_end
 
 [STATE HINT]
-state: terminated"
+state: terminated
+
+[ACTION REQUIRED]
+${ACTION_PROMPT}"
 
 # 6. Deliver notification (always async)
 # SessionEnd is always async -- session is terminating, bidirectional mode is meaningless

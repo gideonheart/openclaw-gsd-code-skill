@@ -84,6 +84,9 @@ debug_log "tool_use_id_length=${#TOOL_USE_ID} answer_selected_length=${#ANSWER_S
 # 6. BUILD STRUCTURED WAKE MESSAGE (PostToolUse answer notification format)
 # ============================================================================
 TIMESTAMP=$(date -u +'%Y-%m-%dT%H:%M:%SZ')
+MENU_DRIVER_PATH="${_GSD_SKILL_ROOT}/scripts/menu-driver.sh"
+SCRIPT_DIR="${_GSD_SKILL_ROOT}/scripts"
+ACTION_PROMPT=$(load_hook_prompt "answer-submitted" "$SESSION_NAME" "$MENU_DRIVER_PATH" "$SCRIPT_DIR")
 
 WAKE_MESSAGE="[SESSION IDENTITY]
 agent_id: ${AGENT_ID}
@@ -98,7 +101,10 @@ tool_use_id: ${TOOL_USE_ID}
 answer: ${ANSWER_SELECTED}
 
 [STATE HINT]
-state: answer_submitted"
+state: answer_submitted
+
+[ACTION REQUIRED]
+${ACTION_PROMPT}"
 
 # ============================================================================
 # 7. ASYNC DELIVERY (ALWAYS background, ALWAYS exit 0)
