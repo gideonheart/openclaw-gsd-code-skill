@@ -389,11 +389,11 @@ Plans:
   1. docs/hooks.md describes [ACTION REQUIRED] format, lists all 7 template files with their trigger context, and includes load_hook_prompt() in the shared library function table
   2. SKILL.md version history includes v3.2 entry, function count reflects addition of load_hook_prompt() (now 10 functions), and lifecycle overview mentions per-hook prompt templates
   3. README.md config files table includes scripts/prompts/*.md with description of per-hook instruction templates and placeholder variables
-**Plans**: TBD
+**Plans**: 2 plans
 
 Plans:
-- [ ] 17-01: Update docs/hooks.md and SKILL.md for prompt template system
-- [ ] 17-02: Update README.md config files table and version history
+- [ ] 17-01-PLAN.md -- Update docs/hooks.md and SKILL.md with prompt template system (load_hook_prompt, [ACTION REQUIRED], template files table)
+- [ ] 17-02-PLAN.md -- Update README.md config files table and shared libraries function count
 
 ## Progress
 
