@@ -5,7 +5,8 @@
 - ✅ **v1.0 Hook-Driven Agent Control** - Phases 1-5 (shipped 2026-02-17)
 - ✅ **v2.0 Smart Hook Delivery** - Phases 6-7 (shipped 2026-02-18)
 - ✅ **v3.0 Structured Hook Observability** - Phases 8-11 (shipped 2026-02-18)
-- **v3.1 Hook Refactoring & Migration Completion** - Phases 12-14 (active)
+- ✅ **v3.1 Hook Refactoring & Migration Completion** - Phases 12-14 (shipped 2026-02-18)
+- 🚧 **v3.2 Per-Hook TUI Instruction Prompts** - Phases 15-17 (active)
 
 ## Phases
 
@@ -106,9 +107,8 @@ Plans:
 
 </details>
 
-### ✅ v2.0 Smart Hook Delivery (Complete — 2026-02-18)
-
-**Milestone Goal:** Replace noisy 120-line raw pane dumps with clean content: transcript extraction (primary), pane diff fallback, and structured AskUserQuestion forwarding via PreToolUse.
+<details>
+<summary>✅ v2.0 Smart Hook Delivery (Phases 6-7) - SHIPPED 2026-02-18</summary>
 
 ### Phase 6: Core Extraction and Delivery Engine
 **Goal**: Gideon receives clean extracted content — Claude's response from transcript JSONL (primary) or pane diff (fallback), plus structured AskUserQuestion data forwarded before TUI renders
@@ -141,9 +141,10 @@ Plans:
 - [x] 07-01-PLAN.md -- Registration and cleanup: PreToolUse hook in register-hooks.sh, /tmp state file cleanup in session-end-hook.sh
 - [x] 07-02-PLAN.md -- Documentation: Update SKILL.md and docs/hooks.md with v2.0 architecture
 
-### v3.0 Structured Hook Observability
+</details>
 
-**Milestone Goal:** Replace plain-text debug_log with structured JSONL event logging — one complete record per hook invocation with full lifecycle data (trigger, state, wake message, response, outcome, duration). Single-record-per-invocation design: accumulate data during execution, write once at the end.
+<details>
+<summary>✅ v3.0 Structured Hook Observability (Phases 8-11) - SHIPPED 2026-02-18</summary>
 
 ### Phase 8: JSONL Logging Foundation
 **Goal**: Extend lib/hook-utils.sh with shared JSONL logging functions — the DRY foundation all 6 hook scripts will source. All correctness rules (jq --arg, flock, explicit parameter passing, /dev/null) established here before any hook uses them.
@@ -211,13 +212,64 @@ Plans:
 - [x] 11-01-PLAN.md -- Logrotate config template and install script (copytruncate for open >> fd safety)
 - [x] 11-02-PLAN.md -- diagnose-hooks.sh Step 10: JSONL log analysis with jq diagnostic queries
 
-### v3.1 Hook Refactoring & Migration Completion
+</details>
 
-**Milestone Goal:** Extract shared code from duplicated hook preambles, unify divergent patterns, and complete the v2.0 [CONTENT] migration left incomplete in v3.0. Zero new user-facing behavior — pure maintenance refactoring eliminating copy-paste debt.
+<details>
+<summary>✅ v3.1 Hook Refactoring & Migration Completion (Phases 12-14) - SHIPPED 2026-02-18</summary>
 
-- [x] **Phase 12: Shared Library Foundation** - Create hook-preamble.sh and extend hook-utils.sh with extract_hook_settings() and detect_session_state() (completed 2026-02-18)
-- [x] **Phase 13: Coordinated Hook Migration** - Apply preamble sourcing, settings function, [CONTENT] labels, printf sweep, and session-end guards across all 7 hooks in one pass (completed 2026-02-18)
-- [x] **Phase 14: Diagnostic Fixes** - Align diagnose-hooks.sh Step 7 (prefix-match) and Step 2 (complete 7-script list) with actual hook behavior (completed 2026-02-18)
+### Phase 12: Shared Library Foundation
+**Goal**: lib/hook-preamble.sh and two new shared functions in lib/hook-utils.sh exist as stable, tested interfaces before any hook script is modified
+**Depends on**: Phase 11
+**Requirements**: REFAC-01, REFAC-02, REFAC-04, REFAC-05
+**Success Criteria** (what must be TRUE):
+  1. lib/hook-preamble.sh exists and when sourced from a hook script sets HOOK_SCRIPT_NAME to the calling hook's name (not "hook-preamble.sh"), confirming BASH_SOURCE[1] correctness
+  2. lib/hook-preamble.sh includes a source guard that prevents double-sourcing and rejects direct execution with a clear error message
+  3. extract_hook_settings() in lib/hook-utils.sh accepts registry_path and agent_data_json, sets PANE_CAPTURE_LINES, CONTEXT_PRESSURE_THRESHOLD, and HOOK_MODE in caller scope with three-tier fallback (per-agent > global > hardcoded defaults)
+  4. detect_session_state() in lib/hook-utils.sh returns consistent state names across all hook event types using case-insensitive extended regex patterns
+  5. Sourcing lib/hook-preamble.sh from a test caller makes all lib/hook-utils.sh functions callable without any additional source statement
+**Plans**: 1 plan
+
+Plans:
+- [x] 12-01-PLAN.md -- Create hook-preamble.sh, add extract_hook_settings() and detect_session_state() to hook-utils.sh, verify integration
+
+### Phase 13: Coordinated Hook Migration
+**Goal**: All 7 hook scripts are thinned and consistent — one source statement replaces the 27-line preamble block, four hooks call extract_hook_settings() instead of duplicating the 12-line settings block, three hooks use [CONTENT] label, all hooks use printf '%s' for jq piping, and session-end jq guards are in place
+**Depends on**: Phase 12
+**Requirements**: REFAC-03, MIGR-01, MIGR-02, MIGR-03, FIX-03, QUAL-01
+**Success Criteria** (what must be TRUE):
+  1. Every hook script contains exactly one source statement for the library chain (source lib/hook-preamble.sh) and zero direct source statements for lib/hook-utils.sh — grep confirms no hook scripts source hook-utils.sh directly
+  2. notification-idle-hook.sh, notification-permission-hook.sh, and pre-compact-hook.sh wake messages contain [CONTENT] section header — no hook wake message contains [PANE CONTENT] anywhere in the codebase
+  3. All jq pipeline inputs across all 7 hooks use printf '%s' "$variable" instead of echo "$variable" — grep confirms zero echo-to-jq patterns remain
+  4. session-end-hook.sh jq calls include 2>/dev/null error guards — session cleanup does not abort on malformed registry data
+  5. A hook fired against a non-managed session still exits in under 5ms — preamble sourcing adds no measurable overhead to the fast-path guard exits
+**Plans**: 3 plans
+
+Plans:
+- [x] 13-01-PLAN.md -- Migrate notification-idle-hook.sh and notification-permission-hook.sh (preamble, settings, state, [CONTENT] label, printf sweep)
+- [x] 13-02-PLAN.md -- Migrate pre-compact-hook.sh and session-end-hook.sh (preamble, settings, state normalization, [CONTENT] label, jq guards, printf sweep)
+- [x] 13-03-PLAN.md -- Migrate stop-hook.sh, pre-tool-use-hook.sh, post-tool-use-hook.sh (preamble, settings, state, printf sweep, cross-hook verification)
+
+### Phase 14: Diagnostic Fixes
+**Goal**: diagnose-hooks.sh accurately reflects production hook behavior — Step 7 uses prefix-match lookup and Step 2 checks all 7 hook scripts
+**Depends on**: Phase 12
+**Requirements**: FIX-01, FIX-02
+**Success Criteria** (what must be TRUE):
+  1. diagnose-hooks.sh Step 7 uses startswith(agent_id + "-") prefix-match — a session named "gideon-2" correctly resolves to agent "gideon" instead of reporting a lookup failure
+  2. diagnose-hooks.sh Step 2 checks all 7 hook scripts including pre-tool-use-hook.sh and post-tool-use-hook.sh — a missing hook script is flagged as FAIL rather than silently ignored
+**Plans**: 1 plan
+
+Plans:
+- [x] 14-01-PLAN.md -- Fix Step 7 prefix-match lookup and Step 2 complete 7-script list
+
+</details>
+
+### 🚧 v3.2 Per-Hook TUI Instruction Prompts (Active)
+
+**Milestone Goal:** Replace generic [AVAILABLE ACTIONS] (identical across all hooks) with hook-specific [ACTION REQUIRED] sections loaded from external prompt templates — each hook tells the driving agent exactly what to do for that trigger type.
+
+- [ ] **Phase 15: Prompt Template Foundation** - load_hook_prompt() function, multi-select TUI actions, and all 7 hook prompt template files
+- [ ] **Phase 16: Hook Migration** - Wire all 7 hooks to use [ACTION REQUIRED] from their template via load_hook_prompt()
+- [ ] **Phase 17: Documentation** - Update docs/hooks.md, SKILL.md, README.md for prompt template system
 
 ## Phase Details
 
@@ -296,11 +348,57 @@ Plans:
 Plans:
 - [x] 14-01-PLAN.md -- Fix Step 7 prefix-match lookup and Step 2 complete 7-script list
 
+### Phase 15: Prompt Template Foundation
+**Goal**: load_hook_prompt() function exists in lib/hook-utils.sh, menu-driver.sh supports multi-select checkbox navigation, and all 7 hook-specific prompt template files exist in scripts/prompts/ with correct placeholders
+**Depends on**: Phase 14
+**Requirements**: PROMPT-01, PROMPT-02, PROMPT-03, PROMPT-04, PROMPT-05, PROMPT-06, PROMPT-07, PROMPT-08, TUI-01, TUI-02
+**Success Criteria** (what must be TRUE):
+  1. load_hook_prompt() in lib/hook-utils.sh loads scripts/prompts/{name}.md, substitutes {SESSION_NAME}, {MENU_DRIVER_PATH}, {SCRIPT_DIR} placeholders, and returns the rendered content — a missing template file causes a graceful fallback, never a crash
+  2. menu-driver.sh accepts arrow_up, arrow_down, and space as valid actions — an agent can navigate and toggle multi-select checkboxes without typing literal keys
+  3. All 7 template files exist at scripts/prompts/: ask-user-question.md, response-complete.md, idle-prompt.md, permission-prompt.md, pre-compact.md, session-end.md, answer-submitted.md
+  4. ask-user-question.md includes explicit multi-select checkbox instructions (arrow_up/arrow_down to navigate, space to toggle, enter to confirm) consistent with the new TUI actions
+  5. Each template file contains only commands relevant to its trigger type — no template lists commands that belong to a different hook context
+**Plans**: TBD
+
+Plans:
+- [ ] 15-01: load_hook_prompt() in lib/hook-utils.sh with placeholder substitution and graceful fallback
+- [ ] 15-02: menu-driver.sh arrow_up, arrow_down, space actions for multi-select checkbox navigation
+- [ ] 15-03: All 7 prompt template files in scripts/prompts/ with hook-specific command subsets
+
+### Phase 16: Hook Migration
+**Goal**: All 7 hook scripts emit [ACTION REQUIRED] sections using load_hook_prompt() — generic [AVAILABLE ACTIONS] replaced by hook-specific instructions, post-tool-use and session-end hooks gain action sections they currently lack
+**Depends on**: Phase 15
+**Requirements**: HOOK-18, HOOK-19, HOOK-20, HOOK-21, HOOK-22, HOOK-23, HOOK-24
+**Success Criteria** (what must be TRUE):
+  1. Every wake message from all 7 hooks contains [ACTION REQUIRED] (not [AVAILABLE ACTIONS]) — grep confirms zero [AVAILABLE ACTIONS] occurrences in hook scripts
+  2. stop-hook.sh wake message [ACTION REQUIRED] section contains only response-complete commands (not idle or permission commands)
+  3. post-tool-use-hook.sh and session-end-hook.sh wake messages each include an [ACTION REQUIRED] section — these hooks previously sent no action instructions at all
+  4. When a template file is missing, the hook still fires and sends the wake message — load_hook_prompt() fallback prevents hook failure
+  5. All 7 hook scripts call load_hook_prompt() with their correct template name — no hook hardcodes action instructions inline
+**Plans**: TBD
+
+Plans:
+- [ ] 16-01: Migrate stop-hook.sh, notification-idle-hook.sh, notification-permission-hook.sh to load_hook_prompt()
+- [ ] 16-02: Migrate pre-compact-hook.sh, pre-tool-use-hook.sh, post-tool-use-hook.sh, session-end-hook.sh to load_hook_prompt()
+
+### Phase 17: Documentation
+**Goal**: Skill documentation reflects the prompt template system — docs/hooks.md, SKILL.md, and README.md all describe [ACTION REQUIRED] format, template files, and load_hook_prompt()
+**Depends on**: Phase 16
+**Requirements**: DOCS-04, DOCS-05, DOCS-06
+**Success Criteria** (what must be TRUE):
+  1. docs/hooks.md describes [ACTION REQUIRED] format, lists all 7 template files with their trigger context, and includes load_hook_prompt() in the shared library function table
+  2. SKILL.md version history includes v3.2 entry, function count reflects addition of load_hook_prompt() (now 10 functions), and lifecycle overview mentions per-hook prompt templates
+  3. README.md config files table includes scripts/prompts/*.md with description of per-hook instruction templates and placeholder variables
+**Plans**: TBD
+
+Plans:
+- [ ] 17-01: Update docs/hooks.md and SKILL.md for prompt template system
+- [ ] 17-02: Update README.md config files table and version history
+
 ## Progress
 
 **Execution Order:**
-Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 → 9 → 10 → 11 → 12 → 13 → 14
-Phase 14 depends on Phase 12 (not Phase 13) — can run in parallel with Phase 13 or after.
+Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 → 9 → 10 → 11 → 12 → 13 → 14 → 15 → 16 → 17
 
 | Phase | Milestone | Plans Complete | Status | Completed |
 |-------|-----------|----------------|--------|-----------|
@@ -318,3 +416,6 @@ Phase 14 depends on Phase 12 (not Phase 13) — can run in parallel with Phase 1
 | 12. Shared Library Foundation | v3.1 | 1/1 | Complete | 2026-02-18 |
 | 13. Coordinated Hook Migration | v3.1 | 3/3 | Complete | 2026-02-18 |
 | 14. Diagnostic Fixes | v3.1 | 1/1 | Complete | 2026-02-18 |
+| 15. Prompt Template Foundation | v3.2 | 0/3 | Not started | - |
+| 16. Hook Migration | v3.2 | 0/2 | Not started | - |
+| 17. Documentation | v3.2 | 0/2 | Not started | - |

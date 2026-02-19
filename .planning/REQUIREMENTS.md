@@ -308,26 +308,26 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| PROMPT-01 | TBD | Pending |
-| PROMPT-02 | TBD | Pending |
-| PROMPT-03 | TBD | Pending |
-| PROMPT-04 | TBD | Pending |
-| PROMPT-05 | TBD | Pending |
-| PROMPT-06 | TBD | Pending |
-| PROMPT-07 | TBD | Pending |
-| PROMPT-08 | TBD | Pending |
-| HOOK-18 | TBD | Pending |
-| HOOK-19 | TBD | Pending |
-| HOOK-20 | TBD | Pending |
-| HOOK-21 | TBD | Pending |
-| HOOK-22 | TBD | Pending |
-| HOOK-23 | TBD | Pending |
-| HOOK-24 | TBD | Pending |
-| TUI-01 | TBD | Pending |
-| TUI-02 | TBD | Pending |
-| DOCS-04 | TBD | Pending |
-| DOCS-05 | TBD | Pending |
-| DOCS-06 | TBD | Pending |
+| PROMPT-01 | Phase 15 | Pending |
+| PROMPT-02 | Phase 15 | Pending |
+| PROMPT-03 | Phase 15 | Pending |
+| PROMPT-04 | Phase 15 | Pending |
+| PROMPT-05 | Phase 15 | Pending |
+| PROMPT-06 | Phase 15 | Pending |
+| PROMPT-07 | Phase 15 | Pending |
+| PROMPT-08 | Phase 15 | Pending |
+| TUI-01 | Phase 15 | Pending |
+| TUI-02 | Phase 15 | Pending |
+| HOOK-18 | Phase 16 | Pending |
+| HOOK-19 | Phase 16 | Pending |
+| HOOK-20 | Phase 16 | Pending |
+| HOOK-21 | Phase 16 | Pending |
+| HOOK-22 | Phase 16 | Pending |
+| HOOK-23 | Phase 16 | Pending |
+| HOOK-24 | Phase 16 | Pending |
+| DOCS-04 | Phase 17 | Pending |
+| DOCS-05 | Phase 17 | Pending |
+| DOCS-06 | Phase 17 | Pending |
 
 **Coverage:**
 - v1 requirements: 38 total, all done
@@ -335,9 +335,9 @@ Which phases cover which requirements. Updated during roadmap creation.
 - v3 requirements: 17 total, all done
 - v3.1 requirements: 12 total, all done
 - v3.2 requirements: 20 total, 0 done
-- Mapped to phases: 0
-- Unmapped: 20
+- Mapped to phases: 20
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-02-17*
-*Last updated: 2026-02-19 — v3.2 requirements defined*
+*Last updated: 2026-02-19 — v3.2 traceability mapped to Phases 15-17*
