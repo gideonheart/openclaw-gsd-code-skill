@@ -5,14 +5,14 @@
 See: .planning/PROJECT.md (updated 2026-02-18)
 
 **Core value:** Reliable, intelligent agent session lifecycle — launch, recover, and respond without human intervention
-**Current focus:** v3.1 complete — all 12 requirements shipped
+**Current focus:** v3.2 Per-Hook TUI Instruction Prompts
 
 ## Current Position
 
-Phase: 14 — Diagnostic Fixes (COMPLETE)
-Plan: 1/1 complete
-Status: Milestone v3.1 complete — all phases finished
-Last activity: 2026-02-18 - Completed quick task 13: Update SKILL.md, README.md, and docs/hooks.md for Quick-12 v3.1 fixes
+Phase: Not started (defining requirements)
+Plan: —
+Status: Defining requirements
+Last activity: 2026-02-19 — Milestone v3.2 started
 
 ## Performance Metrics
 

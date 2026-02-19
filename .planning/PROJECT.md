@@ -8,17 +8,16 @@ A multi-agent Claude Code session management skill for OpenClaw. It launches Cla
 
 Reliable, intelligent agent session lifecycle — launch, recover, and respond to Claude Code sessions without human intervention.
 
-## Current Milestone: v3.1 Hook Refactoring & Migration Completion
+## Current Milestone: v3.2 Per-Hook TUI Instruction Prompts
 
-**Goal:** Extract shared code from duplicated hook preambles, unify divergent patterns, and complete the v2.0 [CONTENT] migration left incomplete in v3.0.
+**Goal:** Replace generic [AVAILABLE ACTIONS] (identical across all hooks) with hook-specific [ACTION REQUIRED] sections loaded from external prompt templates — each hook tells the driving agent exactly what to do for that trigger type.
 
 **Target features:**
-- hook-preamble.sh extracted from 27-line preamble duplicated across 7 hooks
-- extract_hook_settings() shared function replacing 4x duplicated hook_settings extraction
-- v2.0 [CONTENT] migration completed for notification-idle, notification-permission, pre-compact hooks
-- State detection unified — pre-compact uses same patterns as other hooks
-- diagnose-hooks.sh Step 7 fixed to use prefix-match (matching actual hook behavior)
-- echo replaced with printf '%s' for all jq piping (escape sequence safety)
+- scripts/prompts/*.md — 7 per-hook instruction templates with {SESSION_NAME}, {MENU_DRIVER_PATH}, {SCRIPT_DIR} placeholders
+- load_hook_prompt() shared function (#10) in lib/hook-utils.sh for template loading and substitution
+- All 7 hooks use [ACTION REQUIRED] with only their relevant commands (not generic menu-driver listing)
+- post-tool-use and session-end get [ACTION REQUIRED] sections (currently have none)
+- Documentation updated (docs/hooks.md, SKILL.md, README.md)
 
 ## Requirements
 
@@ -59,7 +58,10 @@ Reliable, intelligent agent session lifecycle — launch, recover, and respond t
 
 <!-- Current scope. Building toward these. -->
 
-(None -- v3.1 milestone complete)
+- [ ] Per-hook prompt templates replacing generic [AVAILABLE ACTIONS]
+- [ ] load_hook_prompt() shared library function
+- [ ] Hook-specific [ACTION REQUIRED] in all 7 hook wake messages
+- [ ] Documentation updates for prompt template system
 
 ### Out of Scope
 
@@ -108,5 +110,8 @@ Reliable, intelligent agent session lifecycle — launch, recover, and respond t
 | Pre-compact state name normalization | idle_prompt->idle, active->working to match detect_session_state() canonical names | Confirmed |
 | printf '%s' for all jq piping | echo can expand escape sequences (\n, \t) corrupting JSON; printf '%s' is literal | Confirmed |
 
+| External prompt templates over hardcoded heredocs | Editable without touching hook scripts, per-hook command subsets, git-diffable | — Pending |
+| {SCRIPT_DIR} as third placeholder | Enables prompt templates to reference any script (spawn.sh, menu-driver.sh) | — Pending |
+
 ---
-*Last updated: 2026-02-18 after Phase 14 — v3.1 milestone complete*
+*Last updated: 2026-02-19 after v3.2 milestone start*
