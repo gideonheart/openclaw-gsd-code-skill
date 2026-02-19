@@ -102,9 +102,10 @@ None.
 | 11 | Verify Quick Task 10 retrospective claims against actual code | 2026-02-18 | 29392e5 | [11-verify-quick-task-10-retrospective-claim](./quick/11-verify-quick-task-10-retrospective-claim/) |
 | 12 | Fix 4 remaining v3.1 retrospective issues: delivery triplication, JSON injection, jq duplication, stale comment | 2026-02-18 | 741e48c | [12-fix-4-remaining-v3-1-retrospective-issue](./quick/12-fix-4-remaining-v3-1-retrospective-issue/) |
 | 13 | Update SKILL.md, README.md, docs/hooks.md for Quick-12 additions (9 functions, deliver_with_mode specs) | 2026-02-18 | 92452d7 | [13-update-skill-md-readme-md-and-docs-hooks](./quick/13-update-skill-md-readme-md-and-docs-hooks/) |
+| 14 | Create automated test script for v3.2 hook prompt verification (stop hook JSONL, [ACTION REQUIRED]) | 2026-02-19 | 0f28797 | [14-test-hooks-send-correct-prompts-to-openc](./quick/14-test-hooks-send-correct-prompts-to-openc/) |
 
 ## Session Continuity
 
 Last session: 2026-02-19
-Stopped at: Completed 17-01-PLAN.md — docs/hooks.md and SKILL.md updated with v3.2 prompt template system
+Stopped at: Quick Task 14 complete — scripts/test-hook-prompts.sh created, registry updated to warden-main-4; awaiting human verify (Task 3 checkpoint)
 Resume file: None
