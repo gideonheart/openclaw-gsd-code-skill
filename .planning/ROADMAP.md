@@ -37,7 +37,9 @@ v4.0 rewrites the hook system from scratch with an event-folder architecture. Fi
   3. The scripts/prompts/ directory does not exist
   4. PRD.md, docs/v3-retrospective.md, and old test scripts do not exist
   5. .gitignore references agent-registry.json (not recovery-registry.json)
-**Plans**: TBD
+**Plans:** 2 plans
+- [ ] 01-01-PLAN.md — Purge all v1-v3 artifacts (scripts/, lib/, docs/, tests/, systemd/, PRD.md) and relocate logger to bin/
+- [ ] 01-02-PLAN.md — Rename registry to agent-registry, create package.json and session launcher
 
 ### Phase 2: Shared Library
 **Goal**: A Node.js shared lib exists at lib/ with agent resolution, gateway delivery, and JSON field extraction — importable by any event handler, with no code duplication across handlers
@@ -93,7 +95,7 @@ v4.0 rewrites the hook system from scratch with an event-folder architecture. Fi
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Cleanup | 0/TBD | Not started | - |
+| 1. Cleanup | 0/2 | Planned | - |
 | 2. Shared Library | 0/TBD | Not started | - |
 | 3. Stop Event (Full Stack) | 0/TBD | Not started | - |
 | 4. AskUserQuestion Lifecycle (Full Stack) | 0/TBD | Not started | - |
