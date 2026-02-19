@@ -417,5 +417,5 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7 -> 8 -> 9 -> 10
 | 13. Coordinated Hook Migration | v3.1 | 3/3 | Complete | 2026-02-18 |
 | 14. Diagnostic Fixes | v3.1 | 1/1 | Complete | 2026-02-18 |
 | 15. Prompt Template Foundation | v3.2 | 3/3 | Complete | 2026-02-19 |
-| 16. Hook Migration | 2/2 | Complete   | 2026-02-19 | - |
+| 16. Hook Migration | 2/2 | Complete    | 2026-02-19 | - |
 | 17. Documentation | v3.2 | 0/2 | Not started | - |
