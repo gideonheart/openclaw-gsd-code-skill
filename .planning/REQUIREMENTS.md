@@ -183,9 +183,9 @@ Requirements for milestone v3.2: Per-Hook TUI Instruction Prompts. Replaces gene
 
 ### Hook Migration
 
-- [ ] **HOOK-18**: stop-hook.sh replaces [AVAILABLE ACTIONS] with [ACTION REQUIRED] loaded via load_hook_prompt("response-complete")
-- [ ] **HOOK-19**: notification-idle-hook.sh replaces [AVAILABLE ACTIONS] with [ACTION REQUIRED] loaded via load_hook_prompt("idle-prompt")
-- [ ] **HOOK-20**: notification-permission-hook.sh replaces [AVAILABLE ACTIONS] with [ACTION REQUIRED] loaded via load_hook_prompt("permission-prompt")
+- [x] **HOOK-18**: stop-hook.sh replaces [AVAILABLE ACTIONS] with [ACTION REQUIRED] loaded via load_hook_prompt("response-complete")
+- [x] **HOOK-19**: notification-idle-hook.sh replaces [AVAILABLE ACTIONS] with [ACTION REQUIRED] loaded via load_hook_prompt("idle-prompt")
+- [x] **HOOK-20**: notification-permission-hook.sh replaces [AVAILABLE ACTIONS] with [ACTION REQUIRED] loaded via load_hook_prompt("permission-prompt")
 - [x] **HOOK-21**: pre-compact-hook.sh replaces [AVAILABLE ACTIONS] with [ACTION REQUIRED] loaded via load_hook_prompt("pre-compact")
 - [x] **HOOK-22**: pre-tool-use-hook.sh replaces [AVAILABLE ACTIONS] with [ACTION REQUIRED] loaded via load_hook_prompt("ask-user-question")
 - [x] **HOOK-23**: post-tool-use-hook.sh adds [ACTION REQUIRED] from load_hook_prompt("answer-submitted") (currently has no action section)
@@ -318,9 +318,9 @@ Which phases cover which requirements. Updated during roadmap creation.
 | PROMPT-08 | Phase 15 | Pending |
 | TUI-01 | Phase 15 | Pending |
 | TUI-02 | Phase 15 | Pending |
-| HOOK-18 | Phase 16 | Pending |
-| HOOK-19 | Phase 16 | Pending |
-| HOOK-20 | Phase 16 | Pending |
+| HOOK-18 | Phase 16 | Complete |
+| HOOK-19 | Phase 16 | Complete |
+| HOOK-20 | Phase 16 | Complete |
 | HOOK-21 | Phase 16 | Complete |
 | HOOK-22 | Phase 16 | Complete |
 | HOOK-23 | Phase 16 | Complete |
