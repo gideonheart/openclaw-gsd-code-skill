@@ -454,3 +454,51 @@ detect_session_state() {
     printf 'working'
   fi
 }
+
+# ==========================================================================
+# load_hook_prompt
+# ==========================================================================
+# Loads a per-hook prompt template file from scripts/prompts/{name}.md and
+# substitutes placeholder variables with caller-provided values. Returns the
+# rendered content for inclusion in wake messages as [ACTION REQUIRED].
+#
+# Template files are plain text with three supported placeholders:
+#   {SESSION_NAME}      - tmux session name
+#   {MENU_DRIVER_PATH}  - full path to menu-driver.sh
+#   {SCRIPT_DIR}        - full path to scripts/ directory
+#
+# Arguments:
+#   $1 - template_name:     basename without extension (e.g., "response-complete")
+#   $2 - session_name:      tmux session name for {SESSION_NAME} substitution
+#   $3 - menu_driver_path:  full path to menu-driver.sh for {MENU_DRIVER_PATH} substitution
+#   $4 - script_directory:  full path to scripts/ directory for {SCRIPT_DIR} substitution
+# Returns:
+#   Rendered template content on stdout.
+#   Empty string if template file is missing (graceful fallback, never crashes).
+#   Always returns 0.
+# ==========================================================================
+load_hook_prompt() {
+  local template_name="$1"
+  local session_name="$2"
+  local menu_driver_path="$3"
+  local script_directory="$4"
+
+  local template_path="${_GSD_SKILL_ROOT}/scripts/prompts/${template_name}.md"
+
+  if [ ! -f "$template_path" ]; then
+    printf ''
+    return 0
+  fi
+
+  local rendered_content
+  rendered_content=$(cat "$template_path" 2>/dev/null | \
+    sed "s|{SESSION_NAME}|${session_name}|g" | \
+    sed "s|{MENU_DRIVER_PATH}|${menu_driver_path}|g" | \
+    sed "s|{SCRIPT_DIR}|${script_directory}|g" 2>/dev/null) || {
+    printf ''
+    return 0
+  }
+
+  printf '%s' "$rendered_content"
+  return 0
+}
