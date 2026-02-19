@@ -166,9 +166,45 @@ Requirements for milestone v3.1: Hook Refactoring & Migration Completion. Extrac
 
 - [x] **QUAL-01**: All jq piping across all 7 hooks uses printf '%s' instead of echo for escape sequence safety
 
+## v3.2 Requirements
+
+Requirements for milestone v3.2: Per-Hook TUI Instruction Prompts. Replaces generic [AVAILABLE ACTIONS] with hook-specific [ACTION REQUIRED] sections loaded from external prompt templates.
+
+### Prompt Templates
+
+- [ ] **PROMPT-01**: load_hook_prompt() function in lib/hook-utils.sh loads scripts/prompts/{name}.md and substitutes {SESSION_NAME}, {MENU_DRIVER_PATH}, {SCRIPT_DIR} placeholders
+- [ ] **PROMPT-02**: scripts/prompts/ask-user-question.md instructs agent to answer Claude Code questions (choose, type, snapshot) with multi-select checkbox handling
+- [ ] **PROMPT-03**: scripts/prompts/response-complete.md instructs agent on next action after Claude finishes responding
+- [ ] **PROMPT-04**: scripts/prompts/idle-prompt.md instructs agent to provide input when Claude is waiting
+- [ ] **PROMPT-05**: scripts/prompts/permission-prompt.md instructs agent to approve/deny tool permissions
+- [ ] **PROMPT-06**: scripts/prompts/pre-compact.md instructs agent about context compaction (informational + optional action)
+- [ ] **PROMPT-07**: scripts/prompts/session-end.md instructs agent to restart session if needed
+- [ ] **PROMPT-08**: scripts/prompts/answer-submitted.md informs agent that answer was already submitted (no TUI action needed)
+
+### Hook Migration
+
+- [ ] **HOOK-18**: stop-hook.sh replaces [AVAILABLE ACTIONS] with [ACTION REQUIRED] loaded via load_hook_prompt("response-complete")
+- [ ] **HOOK-19**: notification-idle-hook.sh replaces [AVAILABLE ACTIONS] with [ACTION REQUIRED] loaded via load_hook_prompt("idle-prompt")
+- [ ] **HOOK-20**: notification-permission-hook.sh replaces [AVAILABLE ACTIONS] with [ACTION REQUIRED] loaded via load_hook_prompt("permission-prompt")
+- [ ] **HOOK-21**: pre-compact-hook.sh replaces [AVAILABLE ACTIONS] with [ACTION REQUIRED] loaded via load_hook_prompt("pre-compact")
+- [ ] **HOOK-22**: pre-tool-use-hook.sh replaces [AVAILABLE ACTIONS] with [ACTION REQUIRED] loaded via load_hook_prompt("ask-user-question")
+- [ ] **HOOK-23**: post-tool-use-hook.sh adds [ACTION REQUIRED] from load_hook_prompt("answer-submitted") (currently has no action section)
+- [ ] **HOOK-24**: session-end-hook.sh adds [ACTION REQUIRED] from load_hook_prompt("session-end") (currently has no action section)
+
+### TUI Enhancement
+
+- [ ] **TUI-01**: menu-driver.sh supports multi-select checkbox interaction (arrow_up, arrow_down, space toggle actions)
+- [ ] **TUI-02**: ask-user-question.md includes multi-select checkbox instructions using arrow/space/enter pattern
+
+### Documentation
+
+- [ ] **DOCS-04**: docs/hooks.md updated with [ACTION REQUIRED] format, prompt templates section, load_hook_prompt() in shared library table
+- [ ] **DOCS-05**: SKILL.md updated with function count, v3.2 version history, lifecycle overview
+- [ ] **DOCS-06**: README.md updated with scripts/prompts/*.md in config files table
+
 ## Future Requirements
 
-Deferred beyond v3.1. Tracked but not in current roadmap.
+Deferred beyond v3.2. Tracked but not in current roadmap.
 
 ### Resilience
 
@@ -251,7 +287,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | OPS-01 | Phase 8 | Done |
 | OPS-02, OPS-03 | Phase 11 | Done |
 
-### v3.1 (Active)
+### v3.1 (Shipped)
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
@@ -268,14 +304,40 @@ Which phases cover which requirements. Updated during roadmap creation.
 | FIX-01 | Phase 14 | Done |
 | FIX-02 | Phase 14 | Done |
 
+### v3.2 (Active)
+
+| Requirement | Phase | Status |
+|-------------|-------|--------|
+| PROMPT-01 | TBD | Pending |
+| PROMPT-02 | TBD | Pending |
+| PROMPT-03 | TBD | Pending |
+| PROMPT-04 | TBD | Pending |
+| PROMPT-05 | TBD | Pending |
+| PROMPT-06 | TBD | Pending |
+| PROMPT-07 | TBD | Pending |
+| PROMPT-08 | TBD | Pending |
+| HOOK-18 | TBD | Pending |
+| HOOK-19 | TBD | Pending |
+| HOOK-20 | TBD | Pending |
+| HOOK-21 | TBD | Pending |
+| HOOK-22 | TBD | Pending |
+| HOOK-23 | TBD | Pending |
+| HOOK-24 | TBD | Pending |
+| TUI-01 | TBD | Pending |
+| TUI-02 | TBD | Pending |
+| DOCS-04 | TBD | Pending |
+| DOCS-05 | TBD | Pending |
+| DOCS-06 | TBD | Pending |
+
 **Coverage:**
 - v1 requirements: 38 total, all done
 - v2 requirements: 14 total, all done
 - v3 requirements: 17 total, all done
-- v3.1 requirements: 12 total, 12 done (all complete)
-- Mapped to phases: 12
-- Unmapped: 0
+- v3.1 requirements: 12 total, all done
+- v3.2 requirements: 20 total, 0 done
+- Mapped to phases: 0
+- Unmapped: 20
 
 ---
 *Requirements defined: 2026-02-17*
-*Last updated: 2026-02-18 — Phase 14 complete, all v3.1 requirements done*
+*Last updated: 2026-02-19 — v3.2 requirements defined*
