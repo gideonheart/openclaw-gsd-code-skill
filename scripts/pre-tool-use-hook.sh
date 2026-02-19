@@ -82,6 +82,9 @@ debug_log "formatted_questions_length=${#FORMATTED_QUESTIONS}"
 # 7. BUILD STRUCTURED WAKE MESSAGE (v2 AskUserQuestion format)
 # ============================================================================
 TIMESTAMP=$(date -u +'%Y-%m-%dT%H:%M:%SZ')
+MENU_DRIVER_PATH="${_GSD_SKILL_ROOT}/scripts/menu-driver.sh"
+SCRIPT_DIR="${_GSD_SKILL_ROOT}/scripts"
+ACTION_PROMPT=$(load_hook_prompt "ask-user-question" "$SESSION_NAME" "$MENU_DRIVER_PATH" "$SCRIPT_DIR")
 
 WAKE_MESSAGE="[SESSION IDENTITY]
 agent_id: ${AGENT_ID}
@@ -97,14 +100,8 @@ ${FORMATTED_QUESTIONS}
 [STATE HINT]
 state: awaiting_user_input
 
-[AVAILABLE ACTIONS]
-menu-driver.sh ${SESSION_NAME} choose <n>
-menu-driver.sh ${SESSION_NAME} type <text>
-menu-driver.sh ${SESSION_NAME} clear_then <command>
-menu-driver.sh ${SESSION_NAME} enter
-menu-driver.sh ${SESSION_NAME} esc
-menu-driver.sh ${SESSION_NAME} submit
-menu-driver.sh ${SESSION_NAME} snapshot"
+[ACTION REQUIRED]
+${ACTION_PROMPT}"
 
 # ============================================================================
 # 8. ASYNC DELIVERY (ALWAYS background, ALWAYS exit 0)

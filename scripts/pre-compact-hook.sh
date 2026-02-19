@@ -79,6 +79,9 @@ debug_log "state=$STATE"
 
 # 9. Build structured wake message
 TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+MENU_DRIVER_PATH="${_GSD_SKILL_ROOT}/scripts/menu-driver.sh"
+SCRIPT_DIR="${_GSD_SKILL_ROOT}/scripts"
+ACTION_PROMPT=$(load_hook_prompt "pre-compact" "$SESSION_NAME" "$MENU_DRIVER_PATH" "$SCRIPT_DIR")
 
 WAKE_MESSAGE="[SESSION IDENTITY]
 agent_id: ${AGENT_ID}
@@ -97,14 +100,8 @@ ${PANE_CONTENT}
 [CONTEXT PRESSURE]
 ${CONTEXT_PRESSURE}
 
-[AVAILABLE ACTIONS]
-menu-driver.sh ${SESSION_NAME} choose <n>
-menu-driver.sh ${SESSION_NAME} type <text>
-menu-driver.sh ${SESSION_NAME} clear_then <command>
-menu-driver.sh ${SESSION_NAME} enter
-menu-driver.sh ${SESSION_NAME} esc
-menu-driver.sh ${SESSION_NAME} submit
-menu-driver.sh ${SESSION_NAME} snapshot"
+[ACTION REQUIRED]
+${ACTION_PROMPT}"
 
 # 10. Hybrid mode delivery
 TRIGGER="pre_compact"
