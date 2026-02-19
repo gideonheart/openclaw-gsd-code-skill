@@ -200,7 +200,7 @@ Requirements for milestone v3.2: Per-Hook TUI Instruction Prompts. Replaces gene
 
 - [ ] **DOCS-04**: docs/hooks.md updated with [ACTION REQUIRED] format, prompt templates section, load_hook_prompt() in shared library table
 - [ ] **DOCS-05**: SKILL.md updated with function count, v3.2 version history, lifecycle overview
-- [ ] **DOCS-06**: README.md updated with scripts/prompts/*.md in config files table
+- [x] **DOCS-06**: README.md updated with scripts/prompts/*.md in config files table
 
 ## Future Requirements
 
@@ -327,7 +327,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | HOOK-24 | Phase 16 | Complete |
 | DOCS-04 | Phase 17 | Pending |
 | DOCS-05 | Phase 17 | Pending |
-| DOCS-06 | Phase 17 | Pending |
+| DOCS-06 | Phase 17 | Complete |
 
 **Coverage:**
 - v1 requirements: 38 total, all done
