@@ -172,14 +172,14 @@ Requirements for milestone v3.2: Per-Hook TUI Instruction Prompts. Replaces gene
 
 ### Prompt Templates
 
-- [ ] **PROMPT-01**: load_hook_prompt() function in lib/hook-utils.sh loads scripts/prompts/{name}.md and substitutes {SESSION_NAME}, {MENU_DRIVER_PATH}, {SCRIPT_DIR} placeholders
-- [ ] **PROMPT-02**: scripts/prompts/ask-user-question.md instructs agent to answer Claude Code questions (choose, type, snapshot) with multi-select checkbox handling
-- [ ] **PROMPT-03**: scripts/prompts/response-complete.md instructs agent on next action after Claude finishes responding
-- [ ] **PROMPT-04**: scripts/prompts/idle-prompt.md instructs agent to provide input when Claude is waiting
-- [ ] **PROMPT-05**: scripts/prompts/permission-prompt.md instructs agent to approve/deny tool permissions
-- [ ] **PROMPT-06**: scripts/prompts/pre-compact.md instructs agent about context compaction (informational + optional action)
-- [ ] **PROMPT-07**: scripts/prompts/session-end.md instructs agent to restart session if needed
-- [ ] **PROMPT-08**: scripts/prompts/answer-submitted.md informs agent that answer was already submitted (no TUI action needed)
+- [x] **PROMPT-01**: load_hook_prompt() function in lib/hook-utils.sh loads scripts/prompts/{name}.md and substitutes {SESSION_NAME}, {MENU_DRIVER_PATH}, {SCRIPT_DIR} placeholders
+- [x] **PROMPT-02**: scripts/prompts/ask-user-question.md instructs agent to answer Claude Code questions (choose, type, snapshot) with multi-select checkbox handling
+- [x] **PROMPT-03**: scripts/prompts/response-complete.md instructs agent on next action after Claude finishes responding
+- [x] **PROMPT-04**: scripts/prompts/idle-prompt.md instructs agent to provide input when Claude is waiting
+- [x] **PROMPT-05**: scripts/prompts/permission-prompt.md instructs agent to approve/deny tool permissions
+- [x] **PROMPT-06**: scripts/prompts/pre-compact.md instructs agent about context compaction (informational + optional action)
+- [x] **PROMPT-07**: scripts/prompts/session-end.md instructs agent to restart session if needed
+- [x] **PROMPT-08**: scripts/prompts/answer-submitted.md informs agent that answer was already submitted (no TUI action needed)
 
 ### Hook Migration
 
@@ -193,8 +193,8 @@ Requirements for milestone v3.2: Per-Hook TUI Instruction Prompts. Replaces gene
 
 ### TUI Enhancement
 
-- [ ] **TUI-01**: menu-driver.sh supports multi-select checkbox interaction (arrow_up, arrow_down, space toggle actions)
-- [ ] **TUI-02**: ask-user-question.md includes multi-select checkbox instructions using arrow/space/enter pattern
+- [x] **TUI-01**: menu-driver.sh supports multi-select checkbox interaction (arrow_up, arrow_down, space toggle actions)
+- [x] **TUI-02**: ask-user-question.md includes multi-select checkbox instructions using arrow/space/enter pattern
 
 ### Documentation
 
@@ -308,16 +308,16 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| PROMPT-01 | Phase 15 | Pending |
-| PROMPT-02 | Phase 15 | Pending |
-| PROMPT-03 | Phase 15 | Pending |
-| PROMPT-04 | Phase 15 | Pending |
-| PROMPT-05 | Phase 15 | Pending |
-| PROMPT-06 | Phase 15 | Pending |
-| PROMPT-07 | Phase 15 | Pending |
-| PROMPT-08 | Phase 15 | Pending |
-| TUI-01 | Phase 15 | Pending |
-| TUI-02 | Phase 15 | Pending |
+| PROMPT-01 | Phase 15 | Done |
+| PROMPT-02 | Phase 15 | Done |
+| PROMPT-03 | Phase 15 | Done |
+| PROMPT-04 | Phase 15 | Done |
+| PROMPT-05 | Phase 15 | Done |
+| PROMPT-06 | Phase 15 | Done |
+| PROMPT-07 | Phase 15 | Done |
+| PROMPT-08 | Phase 15 | Done |
+| TUI-01 | Phase 15 | Done |
+| TUI-02 | Phase 15 | Done |
 | HOOK-18 | Phase 16 | Complete |
 | HOOK-19 | Phase 16 | Complete |
 | HOOK-20 | Phase 16 | Complete |
@@ -334,10 +334,10 @@ Which phases cover which requirements. Updated during roadmap creation.
 - v2 requirements: 14 total, all done
 - v3 requirements: 17 total, all done
 - v3.1 requirements: 12 total, all done
-- v3.2 requirements: 20 total, 0 done
+- v3.2 requirements: 20 total, all done
 - Mapped to phases: 20
 - Unmapped: 0
 
 ---
 *Requirements defined: 2026-02-17*
-*Last updated: 2026-02-19 — v3.2 traceability mapped to Phases 15-17*
+*Last updated: 2026-02-19 — v3.2 milestone audit passed, all requirements done*

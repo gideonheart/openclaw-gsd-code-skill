@@ -61,8 +61,8 @@ Reliable, intelligent agent session lifecycle — launch, recover, and respond t
 
 <!-- Current scope. Building toward these. -->
 
-- [ ] Hook-specific [ACTION REQUIRED] in all 7 hook wake messages (Phase 16)
-- [ ] Documentation updates for prompt template system (Phase 17)
+- [x] Hook-specific [ACTION REQUIRED] in all 7 hook wake messages (Phase 16)
+- [x] Documentation updates for prompt template system (Phase 17)
 
 ### Out of Scope
 
