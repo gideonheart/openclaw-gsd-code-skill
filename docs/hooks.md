@@ -33,7 +33,7 @@ These hooks notify the OpenClaw agent when Claude Code needs attention.
    - `error` if pane contains "error", "failed", or "exception" (excluding "error handling")
    - `working` otherwise
 10. Extract context pressure: parse last 5 lines for `N%`, classify as CRITICAL (>=80%), WARNING (>=threshold), or OK
-11. Build structured wake message with session identity, trigger type, state hint, pane content, context pressure, and available `menu-driver.sh` actions
+11. Build structured wake message with session identity, trigger type, state hint, pane content, context pressure, and [ACTION REQUIRED] section loaded from response-complete.md template via load_hook_prompt()
 12. Deliver message via `deliver_with_mode` from `lib/hook-utils.sh`:
     - **Async mode** (default): delegates to `deliver_async_with_logging` which backgrounds `openclaw agent` call, exit immediately
     - **Bidirectional mode**: waits for OpenClaw response, writes JSONL record, parses for `decision: "block"`, emits JSON-safe output via `jq -cn --arg` (no string-interpolated JSON), returns decision to Claude Code, exits 0
@@ -81,7 +81,7 @@ Defaults: `pane_capture_lines=100`, `context_pressure_threshold=50`, `hook_mode=
 8. Capture pane content: `tmux capture-pane -pt <session> -S -<lines>`
 9. Detect session state (same pattern matching as stop-hook.sh)
 10. Extract context pressure (same logic as stop-hook.sh)
-11. Build structured wake message with `type: idle_prompt`
+11. Build structured wake message with `type: idle_prompt` and [ACTION REQUIRED] section loaded from idle-prompt.md template via load_hook_prompt()
 12. Deliver message via `deliver_with_mode` (async or bidirectional mode)
 
 **Configuration (hook_settings):**
@@ -106,7 +106,7 @@ Same as stop-hook.sh: `pane_capture_lines`, `context_pressure_threshold`, `hook_
 
 **What It Does:**
 
-1-12. Identical flow to notification-idle-hook.sh, except wake message uses `type: permission_prompt`. Delivery via `deliver_with_mode`.
+1-12. Identical flow to notification-idle-hook.sh, except wake message uses `type: permission_prompt` and [ACTION REQUIRED] section loaded from permission-prompt.md template via load_hook_prompt(). Delivery via `deliver_with_mode`.
 
 **Configuration (hook_settings):**
 
@@ -138,7 +138,7 @@ Same as stop-hook.sh: `pane_capture_lines`, `context_pressure_threshold`, `hook_
 5. Exit if no match (non-managed session)
 6. Extract `tool_input` from stdin JSON (contains question data)
 7. Source `lib/hook-utils.sh` and call `format_ask_user_questions` to format structured question data
-8. Build wake message with `[ASK USER QUESTION]` section containing formatted questions, options, and multi-select flags
+8. Build wake message with `[ASK USER QUESTION]` section containing formatted questions, options, and multi-select flags; append [ACTION REQUIRED] section from ask-user-question.md template via load_hook_prompt()
 9. Deliver wake message asynchronously (always backgrounded, never blocks TUI)
 10. Exit 0 (never denies AskUserQuestion -- notification-only)
 
@@ -175,7 +175,7 @@ None. PreToolUse hook ignores `hook_mode` (always async, never bidirectional). T
 7. Extract `tool_use_id` from stdin JSON
 8. Extract `answer_selected` from stdin JSON using defensive multi-shape extractor (handles object with `.content`/`.text` and plain string shapes)
 9. Build wake message with `[ANSWER SELECTED]` section containing tool_use_id and answer
-10. Deliver wake message asynchronously via `deliver_async_with_logging` with JSONL record containing `tool_use_id` and `answer_selected` extra fields
+10. Deliver wake message asynchronously via `deliver_async_with_logging` with JSONL record containing `tool_use_id` and `answer_selected` extra fields; [ACTION REQUIRED] section from answer-submitted.md template via load_hook_prompt() appended to wake message
 11. Exit 0 (always -- PostToolUse fires after tool ran, cannot block)
 
 **Configuration (hook_settings):**
@@ -212,7 +212,7 @@ These hooks track session state without notifying agents.
 3. Extract tmux session name via `tmux display-message -p '#S'`
 4. Lookup agent entry in registry by matching `tmux_session_name`
 5. Exit if no match (non-managed session)
-6. Build minimal wake message with session identity, `type: session_end`, `state: terminated`
+6. Build minimal wake message with session identity, `type: session_end`, `state: terminated`; append [ACTION REQUIRED] section from session-end.md template via load_hook_prompt()
 7. **No pane capture** (session is terminating)
 8. **No context pressure extraction**
 9. Deliver message **always async** (bidirectional mode is meaningless for terminating sessions)
@@ -253,7 +253,7 @@ Uses default timeout (no custom timeout in settings.json registration). Ignores 
     - `idle_prompt` if pane contains "Continue this conversation"
     - `permission_prompt` if pane contains "permission to"
     - `active` otherwise
-11. Build structured wake message with `type: pre_compact`, state, pane content, context pressure, available actions
+11. Build structured wake message with `type: pre_compact`, state, pane content, context pressure, [ACTION REQUIRED] section from pre-compact.md template via load_hook_prompt()
 12. Deliver message via `deliver_with_mode` (async or bidirectional mode)
 
 **Configuration (hook_settings):**
@@ -358,7 +358,7 @@ The stop hook uses a three-tier fallback to populate the `[CONTENT]` section:
 
 ## Shared Library
 
-`lib/hook-utils.sh` contains 9 functions:
+`lib/hook-utils.sh` contains 10 functions:
 
 | Function | Used By | Purpose |
 |----------|---------|---------|
@@ -371,14 +371,35 @@ The stop hook uses a three-tier fallback to populate the `[CONTENT]` section:
 | `deliver_with_mode` | stop, notification-idle, notification-permission hooks | Encapsulates bidirectional-vs-async delivery; bidirectional emits JSON-safe output via `jq -cn` (not string interpolation); async delegates to deliver_async_with_logging; exits 0 |
 | `extract_hook_settings` | stop, notification-idle, notification-permission, pre-compact hooks | Three-tier fallback settings extraction; returns compact JSON |
 | `detect_session_state` | stop, notification-idle, notification-permission, pre-compact hooks | Case-insensitive pane pattern matching; returns menu/permission_prompt/idle/error/working |
+| `load_hook_prompt` | all hooks | Load per-hook prompt template from scripts/prompts/{name}.md, substitute {SESSION_NAME}, {MENU_DRIVER_PATH}, {SCRIPT_DIR} placeholders; graceful empty-string fallback on missing template |
 
 The library is sourced (not executed) -- no side effects, no output on source.
 
 ## Wake Format v2
 
-Section order: `[SESSION IDENTITY]`, `[TRIGGER]`, `[CONTENT]`, `[STATE HINT]`, `[CONTEXT PRESSURE]`, `[AVAILABLE ACTIONS]`
+Section order: `[SESSION IDENTITY]`, `[TRIGGER]`, `[CONTENT]`, `[STATE HINT]`, `[CONTEXT PRESSURE]`, `[ACTION REQUIRED]`
 
 **Breaking change:** `[PANE CONTENT]` (v1) replaced by `[CONTENT]` (v2). Downstream parsers must update.
+
+**v3.2 update:** The generic actions block (identical across all hooks) has been replaced by `[ACTION REQUIRED]` in v3.2. Content is now loaded from per-hook templates via `load_hook_prompt()` — each hook's action guidance is tailored to its specific trigger context.
+
+## Per-Hook Prompt Templates
+
+All 7 hooks load trigger-specific action instructions from external markdown templates via `load_hook_prompt()`. Templates live in `scripts/prompts/` and are substituted with three placeholders: `{SESSION_NAME}`, `{MENU_DRIVER_PATH}`, `{SCRIPT_DIR}`.
+
+| Template File | Hook Script | Trigger Context |
+|---------------|-------------|-----------------|
+| `response-complete.md` | stop-hook.sh | Agent finished responding (Stop event) |
+| `idle-prompt.md` | notification-idle-hook.sh | Agent waiting for input (idle_prompt) |
+| `permission-prompt.md` | notification-permission-hook.sh | Permission dialog (permission_prompt) |
+| `ask-user-question.md` | pre-tool-use-hook.sh | AskUserQuestion about to render |
+| `answer-submitted.md` | post-tool-use-hook.sh | AskUserQuestion answer received |
+| `pre-compact.md` | pre-compact-hook.sh | Context compaction imminent |
+| `session-end.md` | session-end-hook.sh | Session terminating |
+
+If a template file is missing, `load_hook_prompt()` returns an empty string. The hook still fires and sends its wake message without the [ACTION REQUIRED] section content.
+
+Templates are plain text (no markdown headers) designed for embedding inside wake messages.
 
 ## Log File Lifecycle
 
