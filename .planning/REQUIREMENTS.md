@@ -45,11 +45,11 @@ Requirements for v4.0 Event-Driven Hook Architecture. Each maps to roadmap phase
 
 ### Cleanup and Infrastructure
 
-- [ ] **CLEAN-01**: Delete all v1.0-v3.2 hook scripts (stop-hook.sh, notification-idle-hook.sh, notification-permission-hook.sh, pre-tool-use-hook.sh, post-tool-use-hook.sh, pre-compact-hook.sh, session-end-hook.sh)
-- [ ] **CLEAN-02**: Delete old lib/ files (hook-preamble.sh, hook-utils.sh) and replace with new Node.js shared lib
-- [ ] **CLEAN-03**: Delete old scripts/prompts/ directory (replaced by events/*/prompt_*.md)
-- [ ] **CLEAN-04**: Delete PRD.md, docs/v3-retrospective.md, old test scripts, and other v1-v3 artifacts
-- [ ] **CLEAN-05**: Delete monolithic menu-driver.sh (replaced by per-event TUI drivers)
+- [x] **CLEAN-01**: Delete all v1.0-v3.2 hook scripts (stop-hook.sh, notification-idle-hook.sh, notification-permission-hook.sh, pre-tool-use-hook.sh, post-tool-use-hook.sh, pre-compact-hook.sh, session-end-hook.sh)
+- [x] **CLEAN-02**: Delete old lib/ files (hook-preamble.sh, hook-utils.sh) and replace with new Node.js shared lib
+- [x] **CLEAN-03**: Delete old scripts/prompts/ directory (replaced by events/*/prompt_*.md)
+- [x] **CLEAN-04**: Delete PRD.md, docs/v3-retrospective.md, old test scripts, and other v1-v3 artifacts
+- [x] **CLEAN-05**: Delete monolithic menu-driver.sh (replaced by per-event TUI drivers)
 - [ ] **CLEAN-06**: Update install.sh for new event-folder structure and Node.js handlers
 - [ ] **CLEAN-07**: Update SKILL.md and README.md with v4.0 architecture documentation
 - [ ] **CLEAN-08**: Update .gitignore: rename recovery-registry.json entry to agent-registry.json
@@ -108,11 +108,11 @@ Requirements for v4.0 Event-Driven Hook Architecture. Each maps to roadmap phase
 | REG-01 | Phase 5 | Pending |
 | REG-02 | Phase 5 | Pending |
 | REG-03 | Phase 5 | Pending |
-| CLEAN-01 | Phase 1 | Pending |
-| CLEAN-02 | Phase 1 | Pending |
-| CLEAN-03 | Phase 1 | Pending |
-| CLEAN-04 | Phase 1 | Pending |
-| CLEAN-05 | Phase 1 | Pending |
+| CLEAN-01 | Phase 1 | Complete |
+| CLEAN-02 | Phase 1 | Complete |
+| CLEAN-03 | Phase 1 | Complete |
+| CLEAN-04 | Phase 1 | Complete |
+| CLEAN-05 | Phase 1 | Complete |
 | CLEAN-06 | Phase 5 | Pending |
 | CLEAN-07 | Phase 5 | Pending |
 | CLEAN-08 | Phase 1 | Pending |
