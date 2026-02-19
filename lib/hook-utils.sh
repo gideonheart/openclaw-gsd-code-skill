@@ -425,11 +425,16 @@ extract_hook_settings() {
 # case-insensitive extended regex patterns. Returns a consistent state name
 # across all hook event types that use standard pane pattern matching.
 #
+# Filtering step: Claude Code's status bar always contains
+# "bypass permissions on (shift+tab to cycle)" when skipDangerousModePermissionPrompt
+# is true. This line is stripped from pane_content before any pattern matching
+# to prevent false positives on the word "permissions".
+#
 # State names (in detection priority order):
 #   menu             — Claude Code option selection screen
-#   permission_prompt — permission or allow dialog
+#   permission_prompt — actual permission dialog (Do you want to allow, Approve/Deny, y/n prompt)
 #   idle             — Claude waiting for user input
-#   error            — error/failure detected in pane
+#   error            — genuine error indicator (Error:, command not found, fatal:, Traceback)
 #   working          — default (no specific pattern matched)
 #
 # Arguments:
@@ -441,14 +446,17 @@ extract_hook_settings() {
 detect_session_state() {
   local pane_content="$1"
 
-  if printf '%s\n' "$pane_content" | grep -Eiq 'Enter to select|numbered.*option' 2>/dev/null; then
+  local filtered_content
+  filtered_content=$(printf '%s\n' "$pane_content" \
+    | grep -Eiv 'bypass permissions|shift.tab to cycle' 2>/dev/null || true)
+
+  if printf '%s\n' "$filtered_content" | grep -Eiq 'Enter to select|numbered.*option' 2>/dev/null; then
     printf 'menu'
-  elif printf '%s\n' "$pane_content" | grep -Eiq 'permission|allow|dangerous' 2>/dev/null; then
+  elif printf '%s\n' "$filtered_content" | grep -Eiq 'Do you want to allow|Allow this action|\(y/n\)|Approve|Deny' 2>/dev/null; then
     printf 'permission_prompt'
-  elif printf '%s\n' "$pane_content" | grep -Eiq 'What can I help|waiting for' 2>/dev/null; then
+  elif printf '%s\n' "$filtered_content" | grep -Eiq 'What can I help|waiting for' 2>/dev/null; then
     printf 'idle'
-  elif printf '%s\n' "$pane_content" | grep -Ei 'error|failed|exception' 2>/dev/null \
-    | grep -v 'error handling' >/dev/null 2>&1; then
+  elif printf '%s\n' "$filtered_content" | grep -Eiq '^Error:|^ERROR:|Command failed|command not found|fatal:|Traceback' 2>/dev/null; then
     printf 'error'
   else
     printf 'working'
