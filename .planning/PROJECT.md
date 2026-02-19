@@ -53,15 +53,16 @@ Reliable, intelligent agent session lifecycle — launch, recover, and respond t
 
 - diagnose-hooks.sh Step 7 prefix-match fix matching actual hook lookup behavior (v3.1, Phase 14)
 - diagnose-hooks.sh Step 2 checks all 7 hook scripts including tool-use hooks (v3.1, Phase 14)
+- load_hook_prompt() shared library function #10 with sed-based placeholder substitution (v3.2, Phase 15)
+- menu-driver.sh arrow_up, arrow_down, space actions for multi-select TUI navigation (v3.2, Phase 15)
+- 7 per-hook prompt template files in scripts/prompts/ with context-specific command subsets (v3.2, Phase 15)
 
 ### Active
 
 <!-- Current scope. Building toward these. -->
 
-- [ ] Per-hook prompt templates replacing generic [AVAILABLE ACTIONS]
-- [ ] load_hook_prompt() shared library function
-- [ ] Hook-specific [ACTION REQUIRED] in all 7 hook wake messages
-- [ ] Documentation updates for prompt template system
+- [ ] Hook-specific [ACTION REQUIRED] in all 7 hook wake messages (Phase 16)
+- [ ] Documentation updates for prompt template system (Phase 17)
 
 ### Out of Scope
 
@@ -73,7 +74,7 @@ Reliable, intelligent agent session lifecycle — launch, recover, and respond t
 ## Context
 
 - **Host:** Ubuntu 24 on Vultr, managed by Laravel Forge, user `forge`
-- **Current scripts:** 13 bash scripts (7 hooks + 6 core), all production-quality
+- **Current scripts:** 13 bash scripts (7 hooks + 6 core) + 7 prompt templates, all production-quality
 - **Agent architecture:** Gideon (orchestrator), Warden (coding), Forge (infra) — each with tmux sessions
 - **Integration points:** Claude Code (`--append-system-prompt`, hooks API), OpenClaw (`openclaw agent --session-id`), tmux, systemd
 - **Prior investigation:** Warden idle bug (resolved) — spawn.sh now uses `--append-system-prompt` correctly
@@ -110,8 +111,9 @@ Reliable, intelligent agent session lifecycle — launch, recover, and respond t
 | Pre-compact state name normalization | idle_prompt->idle, active->working to match detect_session_state() canonical names | Confirmed |
 | printf '%s' for all jq piping | echo can expand escape sequences (\n, \t) corrupting JSON; printf '%s' is literal | Confirmed |
 
-| External prompt templates over hardcoded heredocs | Editable without touching hook scripts, per-hook command subsets, git-diffable | — Pending |
-| {SCRIPT_DIR} as third placeholder | Enables prompt templates to reference any script (spawn.sh, menu-driver.sh) | — Pending |
+| External prompt templates over hardcoded heredocs | Editable without touching hook scripts, per-hook command subsets, git-diffable | Confirmed |
+| {SCRIPT_DIR} as third placeholder | Enables prompt templates to reference any script (spawn.sh, menu-driver.sh) | Confirmed |
+| sed pipe delimiter for placeholder substitution | Paths contain forward slashes; pipe delimiter avoids escaping | Confirmed |
 
 ---
-*Last updated: 2026-02-19 after v3.2 milestone start*
+*Last updated: 2026-02-19 after Phase 15*
