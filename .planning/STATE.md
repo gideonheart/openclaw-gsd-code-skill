@@ -2,7 +2,7 @@
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-02-19)
+See: .planning/PROJECT.md (updated 2026-02-20)
 
 **Core value:** When Claude Code fires any hook event, the right agent wakes up with the right context and knows exactly which GSD slash command to type next
 **Current focus:** Phase 03 complete — All 3 plans done. Ready for Phase 04 (PreToolUse/PostToolUse AskUserQuestion handlers)
@@ -112,9 +112,10 @@ None yet.
 | 9 | Fix all 6 Phase 03 code review findings: readHookContext DRY, debug logging, retryWithBackoff, sendKeysToTmux API, SKILL_ROOT promptFilePath, queue overwrite warning | 2026-02-20 | 8c26008 | [9-fix-all-6-phase-03-code-review-findings-](./quick/9-fix-all-6-phase-03-code-review-findings-/) |
 | 10 | Extract wakeAgentWithRetry helper — DRY refactor for 5 retryWithBackoff+gateway call sites across 3 handlers | 2026-02-20 | 7de9f06 | [10-extract-wakeagentwithretry-helper-dry-re](./quick/10-extract-wakeagentwithretry-helper-dry-re/) |
 | 11 | Update stale README.md and SKILL.md to reflect Phase 03 completion — fix exports, file lists, structure | 2026-02-20 | 80a2536 | [11-update-stale-readme-md-and-skill-md-to-r](./quick/11-update-stale-readme-md-and-skill-md-to-r/) |
+| 12 | Fix 7 stale issues in PROJECT.md (6 fixes: .mjs extension, flock removal, Key Decisions outcomes, requirements checkboxes, date) and REQUIREMENTS.md (REG-01 checkbox) | 2026-02-20 | c715a49 | [12-update-stale-planning-md-files-fix-proje](./quick/12-update-stale-planning-md-files-fix-proje/) |
 
 ## Session Continuity
 
 Last session: 2026-02-20
-Stopped at: Completed quick task 11 — README.md and SKILL.md updated with Phase 03 reality
-Resume file: .planning/quick/11-update-stale-readme-md-and-skill-md-to-r/11-SUMMARY.md
+Stopped at: Completed quick task 12 — PROJECT.md and REQUIREMENTS.md updated with Phase 03 reality
+Resume file: .planning/quick/12-update-stale-planning-md-files-fix-proje/12-SUMMARY.md
