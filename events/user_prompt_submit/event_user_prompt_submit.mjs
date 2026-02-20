@@ -23,7 +23,11 @@ import {
 async function main() {
   const rawStdin = readFileSync('/dev/stdin', 'utf8').trim();
   // UserPromptSubmit payload is read but session resolution uses tmux
-  JSON.parse(rawStdin);
+  try {
+    JSON.parse(rawStdin);
+  } catch {
+    process.exit(0);
+  }
 
   const sessionName = execFileSync('tmux', ['display-message', '-p', '#S'], { encoding: 'utf8' }).trim();
 

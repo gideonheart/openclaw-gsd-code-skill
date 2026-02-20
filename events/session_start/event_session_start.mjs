@@ -27,7 +27,12 @@ import {
 
 async function main() {
   const rawStdin = readFileSync('/dev/stdin', 'utf8').trim();
-  const hookPayload = JSON.parse(rawStdin);
+  let hookPayload;
+  try {
+    hookPayload = JSON.parse(rawStdin);
+  } catch {
+    process.exit(0);
+  }
 
   const sessionName = execFileSync('tmux', ['display-message', '-p', '#S'], { encoding: 'utf8' }).trim();
 

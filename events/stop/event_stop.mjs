@@ -26,7 +26,12 @@ import {
 
 async function main() {
   const rawStdin = readFileSync('/dev/stdin', 'utf8').trim();
-  const hookPayload = JSON.parse(rawStdin);
+  let hookPayload;
+  try {
+    hookPayload = JSON.parse(rawStdin);
+  } catch {
+    process.exit(0);
+  }
 
   if (hookPayload.stop_hook_active === true) {
     process.exit(0);
