@@ -59,15 +59,15 @@ v4.0 rewrites the hook system from scratch with an event-folder architecture. Fi
 **Plans:** 2/2 plans complete
 
 Plans:
-- [ ] 01.1-01-PLAN.md — Refactor hook-event-logger.sh and update project config files (package.json, .gitignore)
-- [ ] 01.1-02-PLAN.md — Refactor launch-session.mjs, clean agent-registry example, create SCHEMA.md, fix SKILL.md and README.md
+- [x] 01.1-01-PLAN.md — Refactor hook-event-logger.sh and update project config files (package.json, .gitignore)
+- [x] 01.1-02-PLAN.md — Refactor launch-session.mjs, clean agent-registry example, create SCHEMA.md, fix SKILL.md and README.md
 
 ### Phase 2: Shared Library
 **Goal**: A Node.js shared lib exists at lib/ with agent resolution, gateway delivery, and JSON field extraction — importable by any event handler, with no code duplication across handlers
 **Depends on**: Phase 1
 **Requirements**: ARCH-01, ARCH-02, ARCH-03, ARCH-05, ARCH-06
 **Success Criteria** (what must be TRUE):
-  1. Running `node -e "require('./lib')"` succeeds without error
+  1. Running `node -e "import('./lib/index.mjs')"` succeeds without error
   2. `resolveAgentFromSession()` reads agent-registry.json and returns the correct agent for a known session value
   3. `wakeAgentViaGateway()` invokes `openclaw agent --session-id` with content and prompt arguments
   4. `extractJsonField()` safely returns a named field from valid hook JSON and returns null for missing fields

@@ -105,7 +105,7 @@ Requirements for v4.0 Event-Driven Hook Architecture. Each maps to roadmap phase
 | ASK-02 | Phase 4 | Pending |
 | ASK-03 | Phase 4 | Pending |
 | ASK-04 | Phase 4 | Pending |
-| REG-01 | Phase 5 | Pending |
+| REG-01 | Phase 1 | Complete |
 | REG-02 | Phase 5 | Pending |
 | REG-03 | Phase 5 | Pending |
 | CLEAN-01 | Phase 1 | Complete |
