@@ -19,15 +19,8 @@
  *   other   -> awaits Stop (safe default)
  */
 
-import { writeFileSync, renameSync, mkdirSync } from 'node:fs';
-import { resolve, dirname } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
-import { typeCommandIntoTmuxSession } from '../lib/tui-common.mjs';
-import { appendJsonlEntry } from '../lib/logger.mjs';
-
-const SKILL_ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
-const QUEUES_DIRECTORY = resolve(SKILL_ROOT, 'logs', 'queues');
+import { writeQueueFileAtomically, resolveQueueFilePath, typeCommandIntoTmuxSession, appendJsonlEntry } from '../lib/index.mjs';
 
 /**
  * Resolve the awaits mapping for a slash command.
@@ -41,19 +34,6 @@ function resolveAwaitsForCommand(commandText) {
   }
 
   return { hook: 'Stop', sub: null };
-}
-
-/**
- * Write queue data atomically: write to .tmp then rename over the target path.
- *
- * @param {string} queueFilePath - Absolute path to the target queue file.
- * @param {Object} queueData - Queue data object to serialize as JSON.
- */
-function writeQueueFileAtomically(queueFilePath, queueData) {
-  mkdirSync(dirname(queueFilePath), { recursive: true });
-  const temporaryFilePath = queueFilePath + '.tmp';
-  writeFileSync(temporaryFilePath, JSON.stringify(queueData, null, 2), 'utf8');
-  renameSync(temporaryFilePath, queueFilePath);
 }
 
 /**
@@ -127,7 +107,7 @@ async function main() {
   }
 
   const queueData = buildQueueData(commandTexts);
-  const queueFilePath = resolve(QUEUES_DIRECTORY, `queue-${sessionName}.json`);
+  const queueFilePath = resolveQueueFilePath(sessionName);
 
   writeQueueFileAtomically(queueFilePath, queueData);
 
