@@ -1,5 +1,9 @@
 {
   "workflow": {
     "research": false
+  },
+  "branching": {
+    "strategy": "phase",
+    "base_branch": "v4.0-full-refactor"
   }
 }
