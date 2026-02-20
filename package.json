@@ -8,6 +8,10 @@
   "engines": {
     "node": ">=22"
   },
+  "exports": {
+    ".": "./lib/index.mjs",
+    "./lib/*": "./lib/*"
+  },
   "bin": {
     "launch-session": "bin/launch-session.mjs"
   },
