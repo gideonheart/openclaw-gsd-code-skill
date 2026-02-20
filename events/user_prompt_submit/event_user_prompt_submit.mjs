@@ -13,8 +13,7 @@ import { resolve } from 'node:path';
 import { SKILL_ROOT } from '../../lib/paths.mjs';
 import {
   readHookContext,
-  retryWithBackoff,
-  wakeAgentViaGateway,
+  wakeAgentWithRetry,
   cancelQueueForSession,
   appendJsonlEntry,
 } from '../../lib/index.mjs';
@@ -43,20 +42,7 @@ async function main() {
 
   const promptFilePath = resolve(SKILL_ROOT, 'events', 'stop', 'prompt_stop.md');
 
-  await retryWithBackoff(
-    () => wakeAgentViaGateway({
-      openclawSessionId: resolvedAgent.openclaw_session_id,
-      messageContent,
-      promptFilePath,
-      eventMetadata: {
-        eventType: 'UserPromptSubmit',
-        sessionName,
-        timestamp: new Date().toISOString(),
-      },
-      sessionName,
-    }),
-    { maxAttempts: 3, initialDelayMilliseconds: 2000, operationLabel: 'wake-on-queue-cancel', sessionName },
-  );
+  await wakeAgentWithRetry({ resolvedAgent, messageContent, promptFilePath, eventType: 'UserPromptSubmit', sessionName });
 
   appendJsonlEntry({
     level: 'info',

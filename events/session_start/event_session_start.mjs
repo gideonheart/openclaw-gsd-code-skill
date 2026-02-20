@@ -17,8 +17,7 @@ import { resolve } from 'node:path';
 import { SKILL_ROOT } from '../../lib/paths.mjs';
 import {
   readHookContext,
-  retryWithBackoff,
-  wakeAgentViaGateway,
+  wakeAgentWithRetry,
   processQueueForHook,
   cleanupStaleQueueForSession,
   appendJsonlEntry,
@@ -42,20 +41,7 @@ async function main() {
     if (queueResult.action === 'queue-complete') {
       const messageContent = JSON.stringify(queueResult.summary, null, 2);
 
-      await retryWithBackoff(
-        () => wakeAgentViaGateway({
-          openclawSessionId: resolvedAgent.openclaw_session_id,
-          messageContent,
-          promptFilePath,
-          eventMetadata: {
-            eventType: 'SessionStart',
-            sessionName,
-            timestamp: new Date().toISOString(),
-          },
-          sessionName,
-        }),
-        { maxAttempts: 3, initialDelayMilliseconds: 2000, operationLabel: 'wake-on-queue-complete', sessionName },
-      );
+      await wakeAgentWithRetry({ resolvedAgent, messageContent, promptFilePath, eventType: 'SessionStart', sessionName });
     }
 
     process.exit(0);
@@ -67,20 +53,7 @@ async function main() {
     if (hadStaleQueue) {
       const messageContent = 'Previous session had unfinished queue. Stale queue archived.';
 
-      await retryWithBackoff(
-        () => wakeAgentViaGateway({
-          openclawSessionId: resolvedAgent.openclaw_session_id,
-          messageContent,
-          promptFilePath,
-          eventMetadata: {
-            eventType: 'SessionStart',
-            sessionName,
-            timestamp: new Date().toISOString(),
-          },
-          sessionName,
-        }),
-        { maxAttempts: 3, initialDelayMilliseconds: 2000, operationLabel: 'wake-on-stale-archive', sessionName },
-      );
+      await wakeAgentWithRetry({ resolvedAgent, messageContent, promptFilePath, eventType: 'SessionStart', sessionName });
 
       appendJsonlEntry({
         level: 'info',

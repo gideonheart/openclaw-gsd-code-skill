@@ -10,15 +10,14 @@
  * marks the active command done and types the next command into tmux.
  *
  * Fresh-wake path: extracts last_assistant_message + suggested commands,
- * builds messageContent, and wakes the agent via wakeAgentViaGateway.
+ * builds messageContent, and wakes the agent via wakeAgentWithRetry.
  */
 
 import { resolve } from 'node:path';
 import { SKILL_ROOT } from '../../lib/paths.mjs';
 import {
   readHookContext,
-  retryWithBackoff,
-  wakeAgentViaGateway,
+  wakeAgentWithRetry,
   processQueueForHook,
   appendJsonlEntry,
 } from '../../lib/index.mjs';
@@ -51,20 +50,7 @@ async function main() {
   if (queueResult.action === 'queue-complete') {
     const messageContent = JSON.stringify(queueResult.summary, null, 2);
 
-    await retryWithBackoff(
-      () => wakeAgentViaGateway({
-        openclawSessionId: resolvedAgent.openclaw_session_id,
-        messageContent,
-        promptFilePath,
-        eventMetadata: {
-          eventType: 'Stop',
-          sessionName,
-          timestamp: new Date().toISOString(),
-        },
-        sessionName,
-      }),
-      { maxAttempts: 3, initialDelayMilliseconds: 2000, operationLabel: 'wake-on-queue-complete', sessionName },
-    );
+    await wakeAgentWithRetry({ resolvedAgent, messageContent, promptFilePath, eventType: 'Stop', sessionName });
 
     process.exit(0);
   }
@@ -92,20 +78,7 @@ async function main() {
       : '_No commands detected in response._',
   ].join('\n');
 
-  await retryWithBackoff(
-    () => wakeAgentViaGateway({
-      openclawSessionId: resolvedAgent.openclaw_session_id,
-      messageContent,
-      promptFilePath,
-      eventMetadata: {
-        eventType: 'Stop',
-        sessionName,
-        timestamp: new Date().toISOString(),
-      },
-      sessionName,
-    }),
-    { maxAttempts: 3, initialDelayMilliseconds: 2000, operationLabel: 'wake-on-stop', sessionName },
-  );
+  await wakeAgentWithRetry({ resolvedAgent, messageContent, promptFilePath, eventType: 'Stop', sessionName });
 
   appendJsonlEntry({
     level: 'info',
