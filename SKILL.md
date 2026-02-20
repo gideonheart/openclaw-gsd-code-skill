@@ -6,13 +6,24 @@ metadata: {"openclaw":{"emoji":"🧭","os":["linux"],"requires":{"bins":["tmux",
 
 # gsd-code-skill
 
-v4.0 event-driven architecture. Each Claude Code hook event has its own folder under `events/` containing a Node.js handler and a prompt template. A shared Node.js library in `lib/` provides common utilities. No bash hook scripts — bash is only used where tmux interaction requires it.
+v4.0 event-driven architecture. Each Claude Code hook event has its own folder under `events/` containing a Node.js handler and a prompt template. A shared Node.js library in `lib/` provides common utilities (agent resolution, gateway delivery, logging, retry, JSON extraction). No bash hook scripts — bash is only used where tmux interaction requires it.
 
 ## Scripts
 
 - `bin/hook-event-logger.sh` — Universal debug logger for all Claude Code hook events. Reads stdin JSON payload and writes structured entries to per-session log files. Self-contained bootstrapping with no external library dependencies.
 - `bin/launch-session.mjs` — Launch a Claude Code session in a named tmux session for a registered agent. Reads agent configuration from config/agent-registry.json, creates the tmux session, starts Claude Code with the agent's system prompt, and optionally sends an initial command after startup.
 
+## Shared Library
+
+Entry point: `lib/index.mjs` — 5 exports across 5 modules.
+
+- `appendJsonlEntry` — Atomic JSONL logging with O_APPEND and discriminated error handling
+- `extractJsonField` — Safe JSON field extraction from hook payloads
+- `retryWithBackoff` — Exponential backoff retry (3 attempts, 2s base delay)
+- `resolveAgentFromSession` — Session-to-agent lookup from agent-registry.json
+- `wakeAgentViaGateway` — Send content and prompt to an agent via OpenClaw gateway
+
 ## Configuration
 
 - `config/agent-registry.json` — Agent registry mapping agent IDs to session config, working directories, and tmux session names
+- `config/SCHEMA.md` — Agent registry field documentation
