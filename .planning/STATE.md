@@ -10,25 +10,25 @@ See: .planning/PROJECT.md (updated 2026-02-19)
 ## Current Position
 
 Phase: 01.1 of 5 (Refactor Phase 1 Code Based on Code Review Findings)
-Plan: 1 of 2 in current phase
-Status: Plan 01 complete
-Last activity: 2026-02-20 - Completed 01.1-01: Refactor hook-event-logger.sh, package.json, .gitignore
+Plan: 2 of 2 in current phase
+Status: Plan 02 complete — Phase 01.1 complete
+Last activity: 2026-02-20 - Completed 01.1-02: Refactor launch-session.mjs, clean registry example, create SCHEMA.md
 
-Progress: [███░░░░░░░] 25%
+Progress: [████░░░░░░] 35%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 3
+- Total plans completed: 4
 - Average duration: 2 min
-- Total execution time: 0.09 hours
+- Total execution time: 0.10 hours
 
 **By Phase:**
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
 | 01-cleanup | 2 | 5 min | 2.5 min |
-| 01.1-refactor | 1 | 1 min | 1 min |
+| 01.1-refactor | 2 | 3 min | 1.5 min |
 
 **Recent Trend:** On track
 
@@ -57,6 +57,10 @@ Recent decisions affecting current work:
 - 01.1-01: Trap moved after stdin read — broken pipe surfaces as error during development, not swallowed
 - 01.1-01: LOG_BLOCK_TIMESTAMP pattern — capture timestamp once per log block, reuse throughout
 - 01.1-01: No test script stub in package.json — empty echo stubs are noise with no value
+- 01.1-02: skip_permissions !== false default — flag included unless explicitly false, backward compatible
+- 01.1-02: Single-quote escaping for tmux send-keys system prompt — handles shell metacharacters safely
+- 01.1-02: Schema docs in SCHEMA.md replaces _comment JSON keys — proper separation of data and documentation
+- 01.1-02: README.md split into Current Structure and Planned Structure — prevents confusion about what exists vs planned
 
 ### Pending Todos
 
@@ -79,5 +83,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-02-20
-Stopped at: Completed .planning/phases/01.1-refactor-phase-1-code-based-on-code-review-findings/01.1-01-PLAN.md
-Resume file: .planning/phases/01.1-refactor-phase-1-code-based-on-code-review-findings/01.1-01-SUMMARY.md
+Stopped at: Completed .planning/phases/01.1-refactor-phase-1-code-based-on-code-review-findings/01.1-02-PLAN.md
+Resume file: .planning/phases/01.1-refactor-phase-1-code-based-on-code-review-findings/01.1-02-SUMMARY.md
