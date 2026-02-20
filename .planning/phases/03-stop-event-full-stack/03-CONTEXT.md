@@ -64,7 +64,8 @@ Claude Code has stopped and is waiting for input.
    - You may use them as-is, reorder them, skip some, or choose entirely different commands.
    - They are suggestions, not instructions.
 3. Decide your command array and call the TUI driver:
-   node bin/tui-driver.mjs '{ "session": "...", "commands": ["/clear", "/gsd:plan-phase 3"] }'
+   node bin/tui-driver.mjs --session warden-main-4 '["/clear", "/gsd:plan-phase 3"]'
+   Note: the session name is provided by the gateway/orchestration layer — use the session from your wake-up payload.
 
 ## Command types and their awaits
 - `/gsd:*` commands -> Claude responds -> awaits Stop
@@ -75,6 +76,12 @@ Claude Code has stopped and is waiting for input.
 - If the work is complete and no next phase exists, respond with no commands.
 - The queue will not be created and the session stays idle.
 ```
+
+### Queue-complete context
+
+When the Stop handler fires after the last command in a queue completes, the agent is NOT given the standard `prompt_stop.md`. Instead, it receives a queue-complete payload (see Section 4) summarizing all results. The agent then decides whether to start a new command sequence or stay idle.
+
+Whether this needs its own prompt file (e.g., `prompt_queue_complete.md`) or is handled inline by the gateway is an implementation decision for Phase 3.
 
 ### Key principles
 - Relevant command subset only — no duplication of full GSD system (agent already has AGENT.md and SOUL.md)
@@ -98,7 +105,7 @@ The TUI driver script handles all TUI mechanics: typing, tab completion, delays,
 
 ### Generic TUI Driver (`bin/tui-driver.mjs`)
 
-- Accepts a JSON argument with session name and command array
+- Accepts a `--session <name>` flag followed by the command array as a JSON string argument
 - Creates the queue file with proper `awaits` per command type
 - Types the first command into tmux via `lib/tui-common.mjs`
 - Exits (fire-and-forget)
@@ -121,7 +128,6 @@ Location: `logs/queues/queue-{session_name}.json` (gitignored, runtime artifact)
       "id": 1,
       "command": "/clear",
       "status": "active",
-      "trigger": { "hook": "Stop", "sub": null },
       "awaits": { "hook": "SessionStart", "sub": "clear" },
       "result": null,
       "completed_at": null
@@ -130,7 +136,6 @@ Location: `logs/queues/queue-{session_name}.json` (gitignored, runtime artifact)
       "id": 2,
       "command": "/gsd:plan-phase 3",
       "status": "pending",
-      "trigger": { "hook": "SessionStart", "sub": "clear" },
       "awaits": { "hook": "Stop", "sub": null },
       "result": null,
       "completed_at": null
@@ -150,7 +155,7 @@ Queue-level status: `cancelled` (when manual input detected via UserPromptSubmit
 ### Queue lifecycle
 
 **Creation:**
-1. Agent calls `node bin/tui-driver.mjs '{ "session": "warden-main-4", "commands": [...] }'`
+1. Agent calls `node bin/tui-driver.mjs --session warden-main-4 '["/clear", "/gsd:plan-phase 3"]'`
 2. TUI driver writes queue file (atomic: write .tmp, rename)
 3. TUI driver marks first command as `active`, types it into tmux
 4. TUI driver exits
@@ -166,8 +171,31 @@ Queue-level status: `cancelled` (when manual input detected via UserPromptSubmit
 10. Queue empty -> wake agent with FYI: "Queue complete. N/N commands executed. Results attached."
 11. The queue file itself is the attachment — agent reads all results
 
+### Queue-complete payload
+
+When all commands are done, the agent is woken with this content structure:
+
+```json
+{
+  "event": "queue-complete",
+  "session": "warden-main-4",
+  "summary": "3/3 commands completed",
+  "commands": [
+    { "id": 1, "command": "/clear", "status": "done", "result": null, "completed_at": "..." },
+    { "id": 2, "command": "/gsd:plan-phase 3", "status": "done", "result": "Plan created...", "completed_at": "..." },
+    { "id": 3, "command": "/gsd:execute-phase 3", "status": "done", "result": "Phase executed...", "completed_at": "..." }
+  ]
+}
+```
+
+The agent receives this via the standard gateway delivery pattern (content + instructions). The queue file itself is also available on disk for full detail.
+
+Agent receives this with a different prompt context than first-wake. First-wake uses `prompt_stop.md` ("decide commands"). Queue-complete is informational — agent reviews results and decides if more work is needed or goes idle.
+
 **Cancellation (manual input):**
 - `UserPromptSubmit` fires while queue exists -> rename queue to `.stale.json`, wake agent: "Queue cancelled by manual input. Completed: X/Y. Remaining: [...]"
+
+**Known trade-off:** Any user input cancels the queue, even a side question like "what time is it?". This is intentionally aggressive for Phase 3 — if the user is typing, the queue should defer to the human. Future refinement could add heuristics (e.g., only cancel if user prompt contains a GSD command), but simplicity wins for now.
 
 **Stale cleanup (session restart):**
 - `SessionStart` fires with `source: "startup"` -> check for existing queue file
@@ -193,9 +221,22 @@ All are thin entry points (~10-15 lines each) that call the shared queue process
 
 | Handler | Hook | Behavior |
 |---------|------|----------|
-| `events/stop/event_stop.js` | Stop | Queue exists? Advance. No queue? Wake agent with content + prompt. |
-| `events/session_start/event_session_start.js` | SessionStart | `source: "clear"` -> advance queue. `source: "startup"` -> stale cleanup. |
-| `events/user_prompt_submit/event_user_prompt_submit.js` | UserPromptSubmit | Queue exists? Cancel it. No queue? Ignore. |
+| `events/stop/event_stop.mjs` | Stop | Queue exists? Advance. No queue? Wake agent with content + prompt. |
+| `events/session_start/event_session_start.mjs` | SessionStart | `source: "clear"` -> advance queue. `source: "startup"` -> stale cleanup. |
+| `events/user_prompt_submit/event_user_prompt_submit.mjs` | UserPromptSubmit | Queue exists? Cancel it. No queue? Ignore. |
+
+### Hook registration (Phase 3 scope)
+
+All three handlers must be registered in `~/.claude/settings.json` to function. Registration is Phase 3 scope — handlers cannot be tested without it.
+
+Required entries:
+- Stop → `node events/stop/event_stop.mjs` (timeout: 30)
+- SessionStart → `node events/session_start/event_session_start.mjs` (timeout: 30)
+- UserPromptSubmit → `node events/user_prompt_submit/event_user_prompt_submit.mjs` (timeout: 10)
+
+Logger hook stays alongside each handler for debugging.
+Phase 3 delivers: manual registration documented in README.
+Phase 5 delivers: automated registration script.
 
 ### Phase 3 adds two new lib modules
 
@@ -223,12 +264,12 @@ bin/
 
 events/
   stop/
-    event_stop.js                        <- Stop hook entry point
+    event_stop.mjs                       <- Stop hook entry point
     prompt_stop.md                       <- agent prompt for Stop events
   session_start/
-    event_session_start.js               <- /clear completion + stale cleanup
+    event_session_start.mjs              <- /clear completion + stale cleanup
   user_prompt_submit/
-    event_user_prompt_submit.js          <- cancel queue on manual input
+    event_user_prompt_submit.mjs         <- cancel queue on manual input
 
 lib/
   queue-processor.mjs                    <- shared: read/advance/complete queue
@@ -263,8 +304,7 @@ Follows existing Phase 2 convention. All ESM, all `.mjs`. No mixing.
 | Item | Target Phase | Notes |
 |------|-------------|-------|
 | AskUserQuestion TUI driver (multiSelect + single-select) | Phase 4 | Complex TUI navigation: arrows, space, free text input, submit |
-| Notification (idle_prompt) queue processing | Phase 4+ | Queue processor is extensible via `awaits` |
-| Hook registration in `~/.claude/settings.json` | Phase 5 | All three Phase 3 handlers need registration |
+| Notification (idle_prompt) handler | Phase 3.5 | May be needed if agent requires a wake-up prompt when session goes idle after queue completes. Evaluate after Phase 3 testing. |
 | Error/failure status in queue | Future | Keep plumbing dumb for now. Agent evaluates results. |
 
 ---
