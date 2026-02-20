@@ -20,6 +20,7 @@
  */
 
 import { parseArgs } from 'node:util';
+import { existsSync } from 'node:fs';
 import { writeQueueFileAtomically, resolveQueueFilePath, typeCommandIntoTmuxSession, appendJsonlEntry } from '../lib/index.mjs';
 
 /**
@@ -108,6 +109,15 @@ async function main() {
 
   const queueData = buildQueueData(commandTexts);
   const queueFilePath = resolveQueueFilePath(sessionName);
+
+  if (existsSync(queueFilePath)) {
+    appendJsonlEntry({
+      level: 'warn',
+      source: 'tui-driver',
+      message: 'Overwriting existing queue — previous queue may have been incomplete',
+      session: sessionName,
+    }, sessionName);
+  }
 
   writeQueueFileAtomically(queueFilePath, queueData);
 
