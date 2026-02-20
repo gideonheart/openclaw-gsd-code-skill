@@ -39,7 +39,7 @@ Requirements for v4.0 Event-Driven Hook Architecture. Each maps to roadmap phase
 
 ### Registry and Registration
 
-- [ ] **REG-01**: `agent-registry.json` replaces `recovery-registry.json` as the agent-to-session mapping file (rename in config/, .gitignore, all references)
+- [x] **REG-01**: `agent-registry.json` replaces `recovery-registry.json` as the agent-to-session mapping file (rename in config/, .gitignore, all references)
 - [ ] **REG-02**: Registration script writes all v4.0 event handlers to `~/.claude/settings.json` with correct matchers (PreToolUse matcher: `AskUserQuestion`, PostToolUse matcher: `AskUserQuestion`, Stop: no matcher)
 - [ ] **REG-03**: Registration script is idempotent — safe to run multiple times without duplicating entries
 
@@ -124,4 +124,4 @@ Requirements for v4.0 Event-Driven Hook Architecture. Each maps to roadmap phase
 
 ---
 *Requirements defined: 2026-02-19*
-*Last updated: 2026-02-19 — traceability updated: TUI merged into event phases (5 phases total)*
+*Last updated: 2026-02-20 — REG-01 checkbox fixed to match traceability table*
