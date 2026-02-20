@@ -20,7 +20,8 @@ v4.0 rewrites the hook system from scratch with an event-folder architecture. Fi
 ### Phase Checklist
 
 - [ ] **Phase 1: Cleanup** - Delete all v1-v3 hook scripts, old lib, old prompts, dead docs, rename registry
-- [ ] **Phase 2: Shared Library** - Build the Node.js shared lib with agent resolution, gateway delivery, and JSON extraction
+- [x] **Phase 2: Shared Library** - Build the Node.js shared lib with agent resolution, gateway delivery, and JSON extraction
+- [ ] **Phase 02.1: Refactor (lib review)** - Fix retry defaults, logger error handling, shared SKILL_ROOT
 - [ ] **Phase 3: Stop Event (Full Stack)** - Build event folder, handler, prompt, and TUI driver for Stop — test end-to-end
 - [ ] **Phase 4: AskUserQuestion Lifecycle (Full Stack)** - PreToolUse and PostToolUse handlers, prompts, and TUI driver — test end-to-end
 - [ ] **Phase 5: Registration and Documentation** - Register all handlers in settings.json, update install.sh, SKILL.md, README.md
@@ -77,9 +78,24 @@ Plans:
 - [ ] 02-01-PLAN.md — Build core lib modules: JSONL logger, JSON field extractor, retry utility, agent resolver
 - [ ] 02-02-PLAN.md — Build gateway delivery module and unified lib/index.mjs entry point
 
+### Phase 02.1: Refactor Phase 2 shared library based on code review findings (INSERTED)
+
+**Goal:** All Phase 2 code review findings are resolved — retry defaults are safe for hook context, logger has discriminated error handling, SKILL_ROOT is shared via lib/paths.mjs, and event handlers can import paths without depth-counting issues
+**Depends on:** Phase 2
+**Requirements:** REV-02-3.2, REV-02-3.3, REV-02-3.5
+**Success Criteria** (what must be TRUE):
+  1. retry.mjs defaults are 3 attempts / 2000ms base (not 10 / 5000ms)
+  2. logger.mjs catch block discriminates expected I/O errors from unexpected ones (stderr fallback for unexpected)
+  3. lib/paths.mjs exports SKILL_ROOT, imported by logger.mjs and agent-resolver.mjs (no duplicate computation)
+  4. All existing lib imports still work (`node -e "import('./lib/index.mjs')"` succeeds)
+**Plans:** 1 plan
+
+Plans:
+- [ ] 02.1-01-PLAN.md — Refactor lib: shared SKILL_ROOT, discriminated logger errors, safe retry defaults
+
 ### Phase 3: Stop Event (Full Stack)
 **Goal**: The complete Stop event works end-to-end — handler extracts `last_assistant_message`, resolves agent, wakes it with prompt, and TUI driver types the chosen GSD slash command in the tmux pane. Testable and validated before proceeding.
-**Depends on**: Phase 2
+**Depends on**: Phase 02.1
 **Requirements**: ARCH-04, STOP-01, STOP-02, STOP-03, TUI-01, TUI-02, TUI-05
 **Success Criteria** (what must be TRUE):
   1. The folder events/stop/ exists with event_stop.js, prompt_stop.md, and tui_driver_stop.js
@@ -115,13 +131,14 @@ Plans:
 
 ## Progress
 
-**Execution Order:** 1 → 01.1 → 2 → 3 → 4 → 5
+**Execution Order:** 1 → 01.1 → 2 → 02.1 → 3 → 4 → 5
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Cleanup | 2/2 | Complete | 2026-02-19 |
-| 01.1. Refactor (code review) | 2/2 | Complete    | 2026-02-20 |
-| 2. Shared Library | 0/2 | Planned | - |
+| 01.1. Refactor (code review) | 2/2 | Complete | 2026-02-20 |
+| 2. Shared Library | 2/2 | Complete | 2026-02-20 |
+| 02.1. Refactor (lib review) | 0/1 | Planned | - |
 | 3. Stop Event (Full Stack) | 0/TBD | Not started | - |
 | 4. AskUserQuestion Lifecycle (Full Stack) | 0/TBD | Not started | - |
 | 5. Registration and Documentation | 0/TBD | Not started | - |
