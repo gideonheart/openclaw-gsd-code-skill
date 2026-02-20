@@ -13,45 +13,30 @@
  * builds messageContent, and wakes the agent via wakeAgentViaGateway.
  */
 
-import { readFileSync } from 'node:fs';
-import { execFileSync } from 'node:child_process';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
-  resolveAgentFromSession,
+  readHookContext,
+  retryWithBackoff,
   wakeAgentViaGateway,
   processQueueForHook,
   appendJsonlEntry,
 } from '../../lib/index.mjs';
 
 async function main() {
-  const rawStdin = readFileSync('/dev/stdin', 'utf8').trim();
-  let hookPayload;
-  try {
-    hookPayload = JSON.parse(rawStdin);
-  } catch {
-    process.exit(0);
-  }
+  const hookContext = readHookContext('event_stop');
+  if (!hookContext) process.exit(0);
+  const { hookPayload, sessionName, resolvedAgent } = hookContext;
 
   if (hookPayload.stop_hook_active === true) {
-    process.exit(0);
-  }
-
-  const sessionName = execFileSync('tmux', ['display-message', '-p', '#S'], { encoding: 'utf8' }).trim();
-
-  if (!sessionName) {
-    process.exit(0);
-  }
-
-  const resolvedAgent = resolveAgentFromSession(sessionName);
-
-  if (!resolvedAgent) {
+    appendJsonlEntry({ level: 'debug', source: 'event_stop', message: 'Re-entrancy guard — stop_hook_active is true', session: sessionName }, sessionName);
     process.exit(0);
   }
 
   const lastAssistantMessage = hookPayload.last_assistant_message;
 
   if (!lastAssistantMessage) {
+    appendJsonlEntry({ level: 'debug', source: 'event_stop', message: 'No last_assistant_message — skipping', session: sessionName }, sessionName);
     process.exit(0);
   }
 
@@ -65,22 +50,31 @@ async function main() {
     const messageContent = JSON.stringify(queueResult.summary, null, 2);
     const promptFilePath = resolve(dirname(fileURLToPath(import.meta.url)), 'prompt_stop.md');
 
-    wakeAgentViaGateway({
-      openclawSessionId: resolvedAgent.openclaw_session_id,
-      messageContent,
-      promptFilePath,
-      eventMetadata: {
-        eventType: 'Stop',
+    await retryWithBackoff(
+      () => wakeAgentViaGateway({
+        openclawSessionId: resolvedAgent.openclaw_session_id,
+        messageContent,
+        promptFilePath,
+        eventMetadata: {
+          eventType: 'Stop',
+          sessionName,
+          timestamp: new Date().toISOString(),
+        },
         sessionName,
-        timestamp: new Date().toISOString(),
-      },
-      sessionName,
-    });
+      }),
+      { maxAttempts: 3, initialDelayMilliseconds: 2000, operationLabel: 'wake-on-queue-complete', sessionName },
+    );
 
     process.exit(0);
   }
 
-  if (queueResult.action === 'awaits-mismatch' || queueResult.action === 'no-active-command') {
+  if (queueResult.action === 'awaits-mismatch') {
+    appendJsonlEntry({ level: 'debug', source: 'event_stop', message: 'Queue awaits-mismatch — skipping', session: sessionName }, sessionName);
+    process.exit(0);
+  }
+
+  if (queueResult.action === 'no-active-command') {
+    appendJsonlEntry({ level: 'debug', source: 'event_stop', message: 'Queue has no active command — skipping', session: sessionName }, sessionName);
     process.exit(0);
   }
 
@@ -99,17 +93,20 @@ async function main() {
 
   const promptFilePath = resolve(dirname(fileURLToPath(import.meta.url)), 'prompt_stop.md');
 
-  wakeAgentViaGateway({
-    openclawSessionId: resolvedAgent.openclaw_session_id,
-    messageContent,
-    promptFilePath,
-    eventMetadata: {
-      eventType: 'Stop',
+  await retryWithBackoff(
+    () => wakeAgentViaGateway({
+      openclawSessionId: resolvedAgent.openclaw_session_id,
+      messageContent,
+      promptFilePath,
+      eventMetadata: {
+        eventType: 'Stop',
+        sessionName,
+        timestamp: new Date().toISOString(),
+      },
       sessionName,
-      timestamp: new Date().toISOString(),
-    },
-    sessionName,
-  });
+    }),
+    { maxAttempts: 3, initialDelayMilliseconds: 2000, operationLabel: 'wake-on-stop', sessionName },
+  );
 
   appendJsonlEntry({
     level: 'info',

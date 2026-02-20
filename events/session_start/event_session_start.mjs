@@ -13,12 +13,11 @@
  * All other source values are silently ignored — no queue interaction needed.
  */
 
-import { readFileSync } from 'node:fs';
-import { execFileSync } from 'node:child_process';
-import { resolve, dirname } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { resolve } from 'node:path';
+import { SKILL_ROOT } from '../../lib/paths.mjs';
 import {
-  resolveAgentFromSession,
+  readHookContext,
+  retryWithBackoff,
   wakeAgentViaGateway,
   processQueueForHook,
   cleanupStaleQueueForSession,
@@ -26,46 +25,37 @@ import {
 } from '../../lib/index.mjs';
 
 async function main() {
-  const rawStdin = readFileSync('/dev/stdin', 'utf8').trim();
-  let hookPayload;
-  try {
-    hookPayload = JSON.parse(rawStdin);
-  } catch {
-    process.exit(0);
-  }
-
-  const sessionName = execFileSync('tmux', ['display-message', '-p', '#S'], { encoding: 'utf8' }).trim();
-
-  if (!sessionName) {
-    process.exit(0);
-  }
-
-  const resolvedAgent = resolveAgentFromSession(sessionName);
-
-  if (!resolvedAgent) {
-    process.exit(0);
-  }
+  const hookContext = readHookContext('event_session_start');
+  if (!hookContext) process.exit(0);
+  const { hookPayload, sessionName, resolvedAgent } = hookContext;
 
   const source = hookPayload.source;
-  const promptFilePath = resolve(dirname(fileURLToPath(import.meta.url)), '..', 'stop', 'prompt_stop.md');
+  const promptFilePath = resolve(SKILL_ROOT, 'events', 'stop', 'prompt_stop.md');
 
   if (source === 'clear') {
     const queueResult = processQueueForHook(sessionName, 'SessionStart', 'clear', null);
 
+    if (queueResult.action === 'awaits-mismatch') {
+      appendJsonlEntry({ level: 'debug', source: 'event_session_start', message: 'Queue awaits-mismatch on clear — skipping wake', session: sessionName }, sessionName);
+    }
+
     if (queueResult.action === 'queue-complete') {
       const messageContent = JSON.stringify(queueResult.summary, null, 2);
 
-      wakeAgentViaGateway({
-        openclawSessionId: resolvedAgent.openclaw_session_id,
-        messageContent,
-        promptFilePath,
-        eventMetadata: {
-          eventType: 'SessionStart',
+      await retryWithBackoff(
+        () => wakeAgentViaGateway({
+          openclawSessionId: resolvedAgent.openclaw_session_id,
+          messageContent,
+          promptFilePath,
+          eventMetadata: {
+            eventType: 'SessionStart',
+            sessionName,
+            timestamp: new Date().toISOString(),
+          },
           sessionName,
-          timestamp: new Date().toISOString(),
-        },
-        sessionName,
-      });
+        }),
+        { maxAttempts: 3, initialDelayMilliseconds: 2000, operationLabel: 'wake-on-queue-complete', sessionName },
+      );
     }
 
     process.exit(0);
@@ -77,17 +67,20 @@ async function main() {
     if (hadStaleQueue) {
       const messageContent = 'Previous session had unfinished queue. Stale queue archived.';
 
-      wakeAgentViaGateway({
-        openclawSessionId: resolvedAgent.openclaw_session_id,
-        messageContent,
-        promptFilePath,
-        eventMetadata: {
-          eventType: 'SessionStart',
+      await retryWithBackoff(
+        () => wakeAgentViaGateway({
+          openclawSessionId: resolvedAgent.openclaw_session_id,
+          messageContent,
+          promptFilePath,
+          eventMetadata: {
+            eventType: 'SessionStart',
+            sessionName,
+            timestamp: new Date().toISOString(),
+          },
           sessionName,
-          timestamp: new Date().toISOString(),
-        },
-        sessionName,
-      });
+        }),
+        { maxAttempts: 3, initialDelayMilliseconds: 2000, operationLabel: 'wake-on-stale-archive', sessionName },
+      );
 
       appendJsonlEntry({
         level: 'info',
@@ -101,6 +94,7 @@ async function main() {
   }
 
   // Any other source value — no queue interaction needed
+  appendJsonlEntry({ level: 'debug', source: 'event_session_start', message: `Unhandled source value '${source}' — skipping`, session: sessionName }, sessionName);
   process.exit(0);
 }
 

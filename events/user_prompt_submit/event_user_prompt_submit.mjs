@@ -9,41 +9,26 @@
  * describing how many commands completed and which commands remain.
  */
 
-import { readFileSync } from 'node:fs';
-import { execFileSync } from 'node:child_process';
-import { resolve, dirname } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { resolve } from 'node:path';
+import { SKILL_ROOT } from '../../lib/paths.mjs';
 import {
-  resolveAgentFromSession,
+  readHookContext,
+  retryWithBackoff,
   wakeAgentViaGateway,
   cancelQueueForSession,
   appendJsonlEntry,
 } from '../../lib/index.mjs';
 
 async function main() {
-  const rawStdin = readFileSync('/dev/stdin', 'utf8').trim();
-  // UserPromptSubmit payload is read but session resolution uses tmux
-  try {
-    JSON.parse(rawStdin);
-  } catch {
-    process.exit(0);
-  }
-
-  const sessionName = execFileSync('tmux', ['display-message', '-p', '#S'], { encoding: 'utf8' }).trim();
-
-  if (!sessionName) {
-    process.exit(0);
-  }
-
-  const resolvedAgent = resolveAgentFromSession(sessionName);
-
-  if (!resolvedAgent) {
-    process.exit(0);
-  }
+  const hookContext = readHookContext('event_user_prompt_submit');
+  if (!hookContext) process.exit(0);
+  // hookPayload is validated by readHookContext but unused — session is resolved via tmux
+  const { sessionName, resolvedAgent } = hookContext;
 
   const cancellationResult = cancelQueueForSession(sessionName);
 
   if (!cancellationResult) {
+    appendJsonlEntry({ level: 'debug', source: 'event_user_prompt_submit', message: 'No active queue to cancel — skipping', session: sessionName }, sessionName);
     process.exit(0);
   }
 
@@ -56,19 +41,22 @@ async function main() {
     `Remaining commands: ${remainingCommandList}`,
   ].join('\n');
 
-  const promptFilePath = resolve(dirname(fileURLToPath(import.meta.url)), '..', 'stop', 'prompt_stop.md');
+  const promptFilePath = resolve(SKILL_ROOT, 'events', 'stop', 'prompt_stop.md');
 
-  wakeAgentViaGateway({
-    openclawSessionId: resolvedAgent.openclaw_session_id,
-    messageContent,
-    promptFilePath,
-    eventMetadata: {
-      eventType: 'UserPromptSubmit',
+  await retryWithBackoff(
+    () => wakeAgentViaGateway({
+      openclawSessionId: resolvedAgent.openclaw_session_id,
+      messageContent,
+      promptFilePath,
+      eventMetadata: {
+        eventType: 'UserPromptSubmit',
+        sessionName,
+        timestamp: new Date().toISOString(),
+      },
       sessionName,
-      timestamp: new Date().toISOString(),
-    },
-    sessionName,
-  });
+    }),
+    { maxAttempts: 3, initialDelayMilliseconds: 2000, operationLabel: 'wake-on-queue-cancel', sessionName },
+  );
 
   appendJsonlEntry({
     level: 'info',
