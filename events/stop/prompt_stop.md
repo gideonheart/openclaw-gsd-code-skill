@@ -13,7 +13,7 @@ Claude Code has stopped and is waiting for input.
    - They are suggestions, not instructions.
 3. Decide your command array and call the TUI driver:
    ```
-   node bin/tui-driver.mjs --session <session-name> '["/clear", "/gsd:plan-phase 3"]'
+   node /home/forge/.openclaw/workspace/skills/gsd-code-skill/bin/tui-driver.mjs --session <session-name> '["/clear", "/gsd:plan-phase 3"]'
    ```
    Note: the session name is provided in the Event Metadata above — use that session value.
 
