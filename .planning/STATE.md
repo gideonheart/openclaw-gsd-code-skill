@@ -12,7 +12,7 @@ See: .planning/PROJECT.md (updated 2026-02-19)
 Phase: 3 of 5 (Stop Event - Full Stack)
 Plan: 3 of 3 in current phase
 Status: Phase 3 complete — all 3 plans done
-Last activity: 2026-02-20 - Completed quick task 9: Fix all 6 Phase 03 code review findings — readHookContext DRY, guard-failure logging, retryWithBackoff, sendKeysToTmux API, promptFilePath coupling, queue-overwrite warning
+Last activity: 2026-02-20 - Completed quick task 10: Extract wakeAgentWithRetry helper — DRY refactor for 5 retryWithBackoff+wakeAgentViaGateway call sites across 3 handlers
 
 Progress: [████████░░] 75%
 
@@ -110,9 +110,10 @@ None yet.
 | 7 | Fix 3 Phase 03 code issues: de-duplicate writeQueueFileAtomically (DRY), guard JSON.parse in event handlers, fix relative path in prompt_stop.md | 2026-02-20 | 8848b7a | [7-fix-phase-03-code-issues-before-phase-04](./quick/7-fix-phase-03-code-issues-before-phase-04/) |
 | 8 | Analyse Phase 03 implementation — comprehensive code review of tui-common, queue-processor, tui-driver, and all 3 event handlers | 2026-02-20 | d5c3b14 | [8-analyse-phase-03-implementation-code-rev](./quick/8-analyse-phase-03-implementation-code-rev/) |
 | 9 | Fix all 6 Phase 03 code review findings: readHookContext DRY, debug logging, retryWithBackoff, sendKeysToTmux API, SKILL_ROOT promptFilePath, queue overwrite warning | 2026-02-20 | 8c26008 | [9-fix-all-6-phase-03-code-review-findings-](./quick/9-fix-all-6-phase-03-code-review-findings-/) |
+| 10 | Extract wakeAgentWithRetry helper — DRY refactor for 5 retryWithBackoff+gateway call sites across 3 handlers | 2026-02-20 | 7de9f06 | [10-extract-wakeagentwithretry-helper-dry-re](./quick/10-extract-wakeagentwithretry-helper-dry-re/) |
 
 ## Session Continuity
 
 Last session: 2026-02-20
-Stopped at: Completed quick task 9 — fixed all 6 Phase 03 code review findings (readHookContext, debug logging, retryWithBackoff, API cleanup)
-Resume file: .planning/quick/9-fix-all-6-phase-03-code-review-findings-/9-SUMMARY.md
+Stopped at: Completed quick task 10 — extracted wakeAgentWithRetry helper, replaced 5 call sites across 3 handlers
+Resume file: .planning/quick/10-extract-wakeagentwithretry-helper-dry-re/10-SUMMARY.md
