@@ -95,9 +95,10 @@ None yet.
 | 3 | Reflect on Phase 02 implementation — DRY, SRP, naming, tradeoffs, Phase 1 alignment | 2026-02-20 | e11add9 | [3-reflect-on-phase-02-implementation-dry-s](./quick/3-reflect-on-phase-02-implementation-dry-s/) |
 | 4 | Refactor Phase 3 CONTEXT.md with 8 targeted improvements (queue schema, TUI driver signature, .mjs extensions, queue-complete payload, hook registration scope) | 2026-02-20 | 1156d2f | [4-refactor-phase-3-context-md-with-8-targe](./quick/4-refactor-phase-3-context-md-with-8-targe/) |
 | 5 | Update ROADMAP.md — fix stale .js extensions to .mjs and tui_driver_stop.js to bin/tui-driver.mjs per CONTEXT.md locked decisions | 2026-02-20 | 98c3f75 | [5-update-roadmap-md-fix-stale-js-extension](./quick/5-update-roadmap-md-fix-stale-js-extension/) |
+| 6 | Fix 6 bugs in Phase 03 plan files (session resolution via tmux display-message, remove Atomics.wait, seconds timeouts, nested settings.json format, complete context refs) | 2026-02-20 | d6df5d0 | [6-fix-6-bugs-in-phase-03-plans-session-id-](./quick/6-fix-6-bugs-in-phase-03-plans-session-id-/) |
 
 ## Session Continuity
 
 Last session: 2026-02-20
-Stopped at: Completed Quick Task 5 — ROADMAP.md + REQUIREMENTS.md stale references fixed
-Resume file: .planning/quick/5-update-roadmap-md-fix-stale-js-extension/5-SUMMARY.md
+Stopped at: Completed Quick Task 6 — Fixed 6 bugs in Phase 03 plan files before execution
+Resume file: .planning/quick/6-fix-6-bugs-in-phase-03-plans-session-id-/6-SUMMARY.md
