@@ -5,14 +5,14 @@
 See: .planning/PROJECT.md (updated 2026-02-19)
 
 **Core value:** When Claude Code fires any hook event, the right agent wakes up with the right context and knows exactly which GSD slash command to type next
-**Current focus:** Phase 02.1 complete — lib refactor done, ready for Phase 03 (stop hook handler)
+**Current focus:** Phase 03 in progress — Plan 01 complete (shared lib modules), ready for Plan 02 (TUI driver + stop handler)
 
 ## Current Position
 
 Phase: 3 of 5 (Stop Event - Full Stack)
-Plan: 0 of TBD in current phase
-Status: Phase 3 planned (3 plans in 3 waves), ready for execution
-Last activity: 2026-02-20 - Completed quick task 6: Fix 6 bugs in Phase 03 plans (session resolution, timeouts, context refs, sleep, exports, settings format)
+Plan: 1 of 3 in current phase
+Status: Phase 3 executing — 1 of 3 plans complete
+Last activity: 2026-02-20 - Completed 03-01-PLAN.md: tui-common.mjs + queue-processor.mjs + index.mjs
 
 Progress: [███████░░░] 60%
 
@@ -35,6 +35,7 @@ Progress: [███████░░░] 60%
 **Recent Trend:** On track
 
 *Updated after each plan completion*
+| Phase 03-stop-event-full-stack P01 | 2 | 2 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -72,6 +73,9 @@ Recent decisions affecting current work:
 - 02.1-01: SKILL_ROOT in paths.mjs is internal lib constant — not re-exported from index.mjs; event handlers import from lib/paths.mjs directly
 - 02.1-01: Discriminated catch in logger: ENOENT/ENOSPC/undefined-code swallowed silently; unexpected system errors emit one stderr line without throwing
 - 02.1-01: Retry defaults 3/2000ms — hook-context safety; blocking 42min is worse than fast-failing in ~6s
+- [Phase 03-stop-event-full-stack]: typeCommandIntoTmuxSession splits /gsd:* at first space: command name gets Tab for autocomplete, arguments typed after
+- [Phase 03-stop-event-full-stack]: processQueueForHook returns discriminant action objects (no-queue, no-active-command, awaits-mismatch, advanced, queue-complete) — caller handles notifications
+- [Phase 03-stop-event-full-stack]: No delays between tmux send-keys — execFileSync blocking provides natural pacing
 
 ### Pending Todos
 
@@ -100,5 +104,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-02-20
-Stopped at: Completed Quick Task 6 — Fixed 6 bugs in Phase 03 plan files before execution
-Resume file: .planning/quick/6-fix-6-bugs-in-phase-03-plans-session-id-/6-SUMMARY.md
+Stopped at: Completed 03-01-PLAN.md — tui-common.mjs + queue-processor.mjs + index.mjs updated
+Resume file: .planning/phases/03-stop-event-full-stack/03-01-SUMMARY.md
