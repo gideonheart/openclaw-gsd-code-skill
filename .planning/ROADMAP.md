@@ -103,7 +103,12 @@ Plans:
   3. Piping a payload where stop_hook_active is true results in no gateway call and exit with no error
   4. bin/tui-driver.mjs accepts a --session flag and JSON command array, creates a queue file, and types the first command into the tmux pane
   5. prompt_stop.md instructs the agent to read the response, decide the GSD command, and call bin/tui-driver.mjs
-**Plans**: TBD
+**Plans:** 3 plans in 2 waves
+
+Plans:
+- [ ] 03-01-PLAN.md — Shared lib foundation: tui-common.mjs (tmux send-keys wrapper) + queue-processor.mjs (hook-agnostic queue read/advance/complete/cancel) + index.mjs update
+- [ ] 03-02-PLAN.md — Stop event handler (event_stop.mjs + prompt_stop.md) and generic TUI driver (bin/tui-driver.mjs)
+- [ ] 03-03-PLAN.md — Supporting event handlers: session_start (queue advance + stale cleanup) and user_prompt_submit (queue cancellation)
 
 ### Phase 4: AskUserQuestion Lifecycle (Full Stack)
 **Goal**: The full PreToolUse → PostToolUse verification loop works end-to-end — PreToolUse handler extracts questions/options/multiSelect, wakes agent with prompt, TUI driver navigates and submits the answer, PostToolUse handler verifies the answer matches. Testable and validated before proceeding.
@@ -139,7 +144,7 @@ Plans:
 | 01.1. Refactor (code review) | 2/2 | Complete | 2026-02-20 |
 | 2. Shared Library | 2/2 | Complete | 2026-02-20 |
 | 02.1. Refactor (lib review) | 1/1 | Complete    | 2026-02-20 |
-| 3. Stop Event (Full Stack) | 0/TBD | Not started | - |
+| 3. Stop Event (Full Stack) | 0/3 | Not started | - |
 | 4. AskUserQuestion Lifecycle (Full Stack) | 0/TBD | Not started | - |
 | 5. Registration and Documentation | 0/TBD | Not started | - |
 
