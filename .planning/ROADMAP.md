@@ -22,7 +22,7 @@ v4.0 rewrites the hook system from scratch with an event-folder architecture. Fi
 - [ ] **Phase 1: Cleanup** - Delete all v1-v3 hook scripts, old lib, old prompts, dead docs, rename registry
 - [x] **Phase 2: Shared Library** - Build the Node.js shared lib with agent resolution, gateway delivery, and JSON extraction
 - [x] **Phase 02.1: Refactor (lib review)** - Fix retry defaults, logger error handling, shared SKILL_ROOT (completed 2026-02-20)
-- [ ] **Phase 3: Stop Event (Full Stack)** - Build event folder, handler, prompt, and TUI driver for Stop — test end-to-end
+- [x] **Phase 3: Stop Event (Full Stack)** - Build event folder, handler, prompt, and TUI driver for Stop — test end-to-end (completed 2026-02-20)
 - [ ] **Phase 4: AskUserQuestion Lifecycle (Full Stack)** - PreToolUse and PostToolUse handlers, prompts, and TUI driver — test end-to-end
 - [ ] **Phase 5: Registration and Documentation** - Register all handlers in settings.json, update install.sh, SKILL.md, README.md
 
@@ -103,7 +103,7 @@ Plans:
   3. Piping a payload where stop_hook_active is true results in no gateway call and exit with no error
   4. bin/tui-driver.mjs accepts a --session flag and JSON command array, creates a queue file, and types the first command into the tmux pane
   5. prompt_stop.md instructs the agent to read the response, decide the GSD command, and call bin/tui-driver.mjs
-**Plans:** 3 plans in 3 waves
+**Plans:** 3/3 plans complete
 
 Plans:
 - [ ] 03-01-PLAN.md — Shared lib foundation: tui-common.mjs (tmux send-keys wrapper) + queue-processor.mjs (hook-agnostic queue read/advance/complete/cancel) + index.mjs update
@@ -144,7 +144,7 @@ Plans:
 | 01.1. Refactor (code review) | 2/2 | Complete | 2026-02-20 |
 | 2. Shared Library | 2/2 | Complete | 2026-02-20 |
 | 02.1. Refactor (lib review) | 1/1 | Complete    | 2026-02-20 |
-| 3. Stop Event (Full Stack) | 0/3 | Not started | - |
+| 3. Stop Event (Full Stack) | 0/3 | Complete    | 2026-02-20 |
 | 4. AskUserQuestion Lifecycle (Full Stack) | 0/TBD | Not started | - |
 | 5. Registration and Documentation | 0/TBD | Not started | - |
 
