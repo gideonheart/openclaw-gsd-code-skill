@@ -98,11 +98,11 @@ Plans:
 **Depends on**: Phase 02.1
 **Requirements**: ARCH-04, STOP-01, STOP-02, STOP-03, TUI-01, TUI-02, TUI-05
 **Success Criteria** (what must be TRUE):
-  1. The folder events/stop/ exists with event_stop.js, prompt_stop.md, and tui_driver_stop.js
-  2. Piping a Stop hook JSON payload to node events/stop/event_stop.js triggers an OpenClaw gateway call
+  1. The folder events/stop/ exists with event_stop.mjs and prompt_stop.md, and the generic bin/tui-driver.mjs exists
+  2. Piping a Stop hook JSON payload to node events/stop/event_stop.mjs triggers an OpenClaw gateway call
   3. Piping a payload where stop_hook_active is true results in no gateway call and exit with no error
-  4. tui_driver_stop.js accepts a slash command argument and types it, tab-completes, and presses enter in the tmux pane
-  5. prompt_stop.md instructs the agent to read the response, decide the GSD command, and call tui_driver_stop.js
+  4. bin/tui-driver.mjs accepts a --session flag and JSON command array, creates a queue file, and types the first command into the tmux pane
+  5. prompt_stop.md instructs the agent to read the response, decide the GSD command, and call bin/tui-driver.mjs
 **Plans**: TBD
 
 ### Phase 4: AskUserQuestion Lifecycle (Full Stack)
@@ -110,10 +110,10 @@ Plans:
 **Depends on**: Phase 2
 **Requirements**: ASK-01, ASK-02, ASK-03, ASK-04, TUI-03, TUI-04
 **Success Criteria** (what must be TRUE):
-  1. events/pre_tool_use/ask_user_question/ exists with event_ask_user_question.js, prompt_ask_user_question.md, and tui_driver_ask_user_question.js
+  1. events/pre_tool_use/ask_user_question/ exists with event_ask_user_question.mjs, prompt_ask_user_question.md, and tui_driver_ask_user_question.mjs
   2. Piping a PreToolUse(AskUserQuestion) JSON payload triggers a gateway call that includes questions array and multiSelect flag
-  3. tui_driver_ask_user_question.js navigates with arrow keys, selects with space (multiSelect) or enter (single-select), and submits
-  4. events/post_tool_use/ask_user_question/ exists with event_post_ask_user_question.js and prompt_post_ask_user_question.md
+  3. tui_driver_ask_user_question.mjs navigates with arrow keys, selects with space (multiSelect) or enter (single-select), and submits
+  4. events/post_tool_use/ask_user_question/ exists with event_post_ask_user_question.mjs and prompt_post_ask_user_question.md
   5. PostToolUse prompt instructs agent to compare submitted answer against its decision and report mismatch
 **Plans**: TBD
 

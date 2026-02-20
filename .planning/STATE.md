@@ -12,7 +12,7 @@ See: .planning/PROJECT.md (updated 2026-02-19)
 Phase: 3 of 5 (Stop Event - Full Stack)
 Plan: 0 of TBD in current phase
 Status: Phase 02.1 complete, Phase 3 not yet planned
-Last activity: 2026-02-20 - Completed quick task 4: Refactor Phase 3 CONTEXT.md with 8 targeted improvements
+Last activity: 2026-02-20 - Completed quick task 5: Update ROADMAP.md — fix stale .js extensions to .mjs and tui_driver_stop.js to bin/tui-driver.mjs per CONTEXT.md locked decisions
 
 Progress: [███████░░░] 60%
 
@@ -94,9 +94,10 @@ None yet.
 | 2 | Audit Phase 01.1 completeness against code review + fix drifted tracking docs | 2026-02-20 | 04998d9 | [2-audit-phase-01-1-completeness-against-co](./quick/2-audit-phase-01-1-completeness-against-co/) |
 | 3 | Reflect on Phase 02 implementation — DRY, SRP, naming, tradeoffs, Phase 1 alignment | 2026-02-20 | e11add9 | [3-reflect-on-phase-02-implementation-dry-s](./quick/3-reflect-on-phase-02-implementation-dry-s/) |
 | 4 | Refactor Phase 3 CONTEXT.md with 8 targeted improvements (queue schema, TUI driver signature, .mjs extensions, queue-complete payload, hook registration scope) | 2026-02-20 | 1156d2f | [4-refactor-phase-3-context-md-with-8-targe](./quick/4-refactor-phase-3-context-md-with-8-targe/) |
+| 5 | Update ROADMAP.md — fix stale .js extensions to .mjs and tui_driver_stop.js to bin/tui-driver.mjs per CONTEXT.md locked decisions | 2026-02-20 | 98c3f75 | [5-update-roadmap-md-fix-stale-js-extension](./quick/5-update-roadmap-md-fix-stale-js-extension/) |
 
 ## Session Continuity
 
 Last session: 2026-02-20
-Stopped at: Completed Quick Task 4 — Phase 3 CONTEXT.md refactored with 8 targeted improvements
-Resume file: .planning/quick/4-refactor-phase-3-context-md-with-8-targe/4-SUMMARY.md
+Stopped at: Completed Quick Task 5 — ROADMAP.md + REQUIREMENTS.md stale references fixed
+Resume file: .planning/quick/5-update-roadmap-md-fix-stale-js-extension/5-SUMMARY.md
