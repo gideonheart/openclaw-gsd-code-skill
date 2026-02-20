@@ -4,3 +4,13 @@ config/agent-registry.json
 
 # Runtime log output — ephemeral, not versioned.
 logs/
+
+# Node.js dependencies — will be created when packages are installed in Phase 2+.
+node_modules/
+
+# Environment files — may contain secrets.
+.env
+.env.*
+
+# Lock files — flock creates these at runtime; they should not be committed.
+*.lock
