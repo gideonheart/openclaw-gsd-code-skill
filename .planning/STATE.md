@@ -111,7 +111,7 @@ None yet.
 | 8 | Analyse Phase 03 implementation — comprehensive code review of tui-common, queue-processor, tui-driver, and all 3 event handlers | 2026-02-20 | d5c3b14 | [8-analyse-phase-03-implementation-code-rev](./quick/8-analyse-phase-03-implementation-code-rev/) |
 | 9 | Fix all 6 Phase 03 code review findings: readHookContext DRY, debug logging, retryWithBackoff, sendKeysToTmux API, SKILL_ROOT promptFilePath, queue overwrite warning | 2026-02-20 | 8c26008 | [9-fix-all-6-phase-03-code-review-findings-](./quick/9-fix-all-6-phase-03-code-review-findings-/) |
 | 10 | Extract wakeAgentWithRetry helper — DRY refactor for 5 retryWithBackoff+gateway call sites across 3 handlers | 2026-02-20 | 7de9f06 | [10-extract-wakeagentwithretry-helper-dry-re](./quick/10-extract-wakeagentwithretry-helper-dry-re/) |
-| 11 | Update stale README.md and SKILL.md to reflect Phase 03 completion — fix exports, file lists, structure | 2026-02-20 |  | [11-update-stale-readme-md-and-skill-md-to-r](./quick/11-update-stale-readme-md-and-skill-md-to-r/) |
+| 11 | Update stale README.md and SKILL.md to reflect Phase 03 completion — fix exports, file lists, structure | 2026-02-20 | 80a2536 | [11-update-stale-readme-md-and-skill-md-to-r](./quick/11-update-stale-readme-md-and-skill-md-to-r/) |
 
 ## Session Continuity
 
