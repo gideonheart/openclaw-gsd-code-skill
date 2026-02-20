@@ -5,16 +5,16 @@
 See: .planning/PROJECT.md (updated 2026-02-19)
 
 **Core value:** When Claude Code fires any hook event, the right agent wakes up with the right context and knows exactly which GSD slash command to type next
-**Current focus:** Phase 02 complete — ready for Phase 03
+**Current focus:** Phase 02.1 complete — lib refactor done, ready for Phase 03 (stop hook handler)
 
 ## Current Position
 
-Phase: 03 of 5 (Stop Event)
-Plan: 0 of ? in current phase
-Status: Phase 02 complete, Phase 03 not started
-Last activity: 2026-02-20 - Completed quick task 3: Reflect on Phase 02 implementation - DRY/SRP audit, alignment with Phase 1 review, progress toward autonomous driving goal
+Phase: 02.1 of 5 (Refactor lib review)
+Plan: 1 of 1 in current phase
+Status: Phase 02.1 complete
+Last activity: 2026-02-20 - Completed Phase 02.1 Plan 01 — lib SKILL_ROOT extraction, logger discriminated catch, retry safe defaults
 
-Progress: [██████░░░░] 55%
+Progress: [███████░░░] 60%
 
 ## Performance Metrics
 
@@ -30,6 +30,7 @@ Progress: [██████░░░░] 55%
 | 01-cleanup | 2 | 5 min | 2.5 min |
 | 01.1-refactor | 2 | 3 min | 1.5 min |
 | 02-shared-library | 2 | 4 min | 2 min |
+| 02.1-refactor | 1 | 1 min | 1 min |
 
 **Recent Trend:** On track
 
@@ -68,6 +69,9 @@ Recent decisions affecting current work:
 - 02-02: Combined message format: metadata first, content second, instructions last — agent sees context before instructions
 - 02-02: Prompt file read at call time (not cached) — prompt edits take effect immediately without restart
 - 02-02: No retry wrapping inside gateway — caller uses retryWithBackoff externally, separation of concerns
+- 02.1-01: SKILL_ROOT in paths.mjs is internal lib constant — not re-exported from index.mjs; event handlers import from lib/paths.mjs directly
+- 02.1-01: Discriminated catch in logger: ENOENT/ENOSPC/undefined-code swallowed silently; unexpected system errors emit one stderr line without throwing
+- 02.1-01: Retry defaults 3/2000ms — hook-context safety; blocking 42min is worse than fast-failing in ~6s
 
 ### Pending Todos
 
@@ -76,6 +80,7 @@ None yet.
 ### Roadmap Evolution
 
 - Phase 01.1 inserted after Phase 1: Refactor Phase 1 code based on code review findings (URGENT)
+- Phase 02.1 inserted after Phase 2: Refactor Phase 2 shared library based on code review findings (URGENT)
 
 ### Blockers/Concerns
 
@@ -92,5 +97,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-02-20
-Stopped at: Completed quick task 3 — Phase 02 implementation review
-Resume file: .planning/quick/3-reflect-on-phase-02-implementation-dry-s/3-SUMMARY.md
+Stopped at: Completed Phase 02.1 Plan 01 — lib SKILL_ROOT extraction, logger discriminated catch, retry safe defaults
+Resume file: .planning/phases/02.1-refactor-phase-2-shared-library-based-on-code-review-findings/02.1-01-SUMMARY.md
