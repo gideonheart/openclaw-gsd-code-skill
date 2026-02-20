@@ -37,9 +37,30 @@ v4.0 rewrites the hook system from scratch with an event-folder architecture. Fi
   3. The scripts/prompts/ directory does not exist
   4. PRD.md, docs/v3-retrospective.md, and old test scripts do not exist
   5. .gitignore references agent-registry.json (not recovery-registry.json)
-**Plans:** 1/2 plans executed
+**Plans:** 2/2 plans executed
 - [x] 01-01-PLAN.md — Purge all v1-v3 artifacts (scripts/, lib/, docs/, tests/, systemd/, PRD.md) and relocate logger to bin/
-- [ ] 01-02-PLAN.md — Rename registry to agent-registry, create package.json and session launcher
+- [x] 01-02-PLAN.md — Rename registry to agent-registry, create package.json and session launcher
+
+### Phase 01.1: Refactor Phase 1 code based on code review findings (INSERTED)
+
+**Goal:** All Phase 1 code review findings are resolved — hook-event-logger.sh has no redundant date calls and correctly scoped trap, launch-session.mjs uses execFileSync/parseArgs/async-await with per-agent permission control, agent-registry example is clean, and project metadata (package.json, .gitignore, SKILL.md, README.md) is accurate and complete
+**Depends on:** Phase 1
+**Requirements:** REV-3.1, REV-3.2, REV-3.3, REV-3.4, REV-3.5, REV-3.6, REV-3.7, REV-3.8, REV-3.9, REV-3.10, REV-3.11
+**Success Criteria** (what must be TRUE):
+  1. hook-event-logger.sh captures the structured log block timestamp once and reuses it (no redundant date -u calls)
+  2. hook-event-logger.sh trap is set after stdin read, not before
+  3. launch-session.mjs uses execFileSync with argument arrays for all tmux commands
+  4. launch-session.mjs uses node:util parseArgs instead of custom parser
+  5. launch-session.mjs main() is async with Promise-based timer
+  6. launch-session.mjs reads skip_permissions from agent registry
+  7. agent-registry.example.json has no _comment keys
+  8. package.json declares engines >=22 and bin entry
+  9. .gitignore covers node_modules/ and .env
+**Plans:** 2 plans
+
+Plans:
+- [ ] 01.1-01-PLAN.md — Refactor hook-event-logger.sh and update project config files (package.json, .gitignore)
+- [ ] 01.1-02-PLAN.md — Refactor launch-session.mjs, clean agent-registry example, create SCHEMA.md, fix SKILL.md and README.md
 
 ### Phase 2: Shared Library
 **Goal**: A Node.js shared lib exists at lib/ with agent resolution, gateway delivery, and JSON field extraction — importable by any event handler, with no code duplication across handlers
@@ -91,11 +112,12 @@ v4.0 rewrites the hook system from scratch with an event-folder architecture. Fi
 
 ## Progress
 
-**Execution Order:** 1 → 2 → 3 → 4 → 5
+**Execution Order:** 1 → 01.1 → 2 → 3 → 4 → 5
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Cleanup | 1/2 | In Progress|  |
+| 1. Cleanup | 2/2 | Complete | 2026-02-19 |
+| 01.1. Refactor (code review) | 0/2 | Not started | - |
 | 2. Shared Library | 0/TBD | Not started | - |
 | 3. Stop Event (Full Stack) | 0/TBD | Not started | - |
 | 4. AskUserQuestion Lifecycle (Full Stack) | 0/TBD | Not started | - |
