@@ -18,12 +18,11 @@ debug_log() {
     >> "${SKILL_LOG_DIR}/hooks.log" 2>/dev/null || true
 }
 
-# Safety trap: ensure Claude Code is never crashed by logger errors
-trap 'exit 0' ERR
-
 # 1. Consume all stdin immediately (before anything else)
 STDIN_JSON=$(cat)
-HOOK_ENTRY_MS=$(date +%s%3N)
+
+# Safety trap: from here forward, logger errors must never crash Claude Code
+trap 'exit 0' ERR
 
 # 2. Extract event name from payload
 EVENT_NAME=$(printf '%s' "$STDIN_JSON" | jq -r '.hook_event_name // "unknown"' 2>/dev/null || echo "unknown")
@@ -42,14 +41,14 @@ fi
 GSD_HOOK_LOG="${SKILL_LOG_DIR}/${SESSION_NAME}.log"
 
 # 6. Log structured entry to per-session .log file
+LOG_BLOCK_TIMESTAMP=$(date -u +'%Y-%m-%dT%H:%M:%SZ')
 {
-  printf '[%s] ===== HOOK EVENT: %s =====\n' "$(date -u +'%Y-%m-%dT%H:%M:%SZ')" "$EVENT_NAME"
-  printf '[%s] timestamp: %s\n' "$(date -u +'%Y-%m-%dT%H:%M:%SZ')" "$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
-  printf '[%s] session: %s\n' "$(date -u +'%Y-%m-%dT%H:%M:%SZ')" "$SESSION_NAME"
-  printf '[%s] stdin_bytes: %d\n' "$(date -u +'%Y-%m-%dT%H:%M:%SZ')" "$STDIN_BYTE_COUNT"
-  printf '[%s] payload:\n' "$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+  printf '[%s] ===== HOOK EVENT: %s =====\n' "$LOG_BLOCK_TIMESTAMP" "$EVENT_NAME"
+  printf '[%s] session: %s\n' "$LOG_BLOCK_TIMESTAMP" "$SESSION_NAME"
+  printf '[%s] stdin_bytes: %d\n' "$LOG_BLOCK_TIMESTAMP" "$STDIN_BYTE_COUNT"
+  printf '[%s] payload:\n' "$LOG_BLOCK_TIMESTAMP"
   printf '%s' "$STDIN_JSON" | jq '.' 2>/dev/null || printf '%s' "$STDIN_JSON"
-  printf '[%s] ===== END EVENT: %s =====\n' "$(date -u +'%Y-%m-%dT%H:%M:%SZ')" "$EVENT_NAME"
+  printf '[%s] ===== END EVENT: %s =====\n' "$LOG_BLOCK_TIMESTAMP" "$EVENT_NAME"
 } >> "$GSD_HOOK_LOG" 2>/dev/null || true
 
 debug_log "logged event=$EVENT_NAME to ${SESSION_NAME}.log"
