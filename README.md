@@ -41,6 +41,54 @@ events/           One folder per Claude Code hook event
     ask_user_question/  event, prompt
 ```
 
+## Hook Registration
+
+To activate the Phase 3 event handlers, add the following entries to `~/.claude/settings.json` under the appropriate hook arrays. Replace `/absolute/path/to` with the absolute path to the skill's installation directory.
+
+**Note:** The existing `hook-event-logger.sh` entries should remain alongside these — they provide debug logging. Phase 5 will deliver an automated registration script that manages these entries.
+
+**Timeouts:** Stop and SessionStart at 30 seconds (queue processing + gateway delivery); UserPromptSubmit at 10 seconds (fires on every user input — must be fast).
+
+```json
+{
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node /absolute/path/to/events/stop/event_stop.mjs",
+            "timeout": 30
+          }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node /absolute/path/to/events/session_start/event_session_start.mjs",
+            "timeout": 30
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node /absolute/path/to/events/user_prompt_submit/event_user_prompt_submit.mjs",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+
 ## Shared Library API
 
 All exports available via `import { ... } from './lib/index.mjs'`:
