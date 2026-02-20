@@ -72,7 +72,10 @@ Plans:
   3. `wakeAgentViaGateway()` invokes `openclaw agent --session-id` with content and prompt arguments
   4. `extractJsonField()` safely returns a named field from valid hook JSON and returns null for missing fields
   5. A single shared entry point exists that event handlers can import to get all three functions pre-wired
-**Plans**: TBD
+**Plans:** 2 plans
+Plans:
+- [ ] 02-01-PLAN.md — Build core lib modules: JSONL logger, JSON field extractor, retry utility, agent resolver
+- [ ] 02-02-PLAN.md — Build gateway delivery module and unified lib/index.mjs entry point
 
 ### Phase 3: Stop Event (Full Stack)
 **Goal**: The complete Stop event works end-to-end — handler extracts `last_assistant_message`, resolves agent, wakes it with prompt, and TUI driver types the chosen GSD slash command in the tmux pane. Testable and validated before proceeding.
@@ -118,7 +121,7 @@ Plans:
 |-------|----------------|--------|-----------|
 | 1. Cleanup | 2/2 | Complete | 2026-02-19 |
 | 01.1. Refactor (code review) | 2/2 | Complete    | 2026-02-20 |
-| 2. Shared Library | 0/TBD | Not started | - |
+| 2. Shared Library | 0/2 | Planned | - |
 | 3. Stop Event (Full Stack) | 0/TBD | Not started | - |
 | 4. AskUserQuestion Lifecycle (Full Stack) | 0/TBD | Not started | - |
 | 5. Registration and Documentation | 0/TBD | Not started | - |
