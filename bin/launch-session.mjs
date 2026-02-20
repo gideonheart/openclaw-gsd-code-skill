@@ -15,11 +15,12 @@
 import { readFileSync, existsSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { execSync } from 'node:child_process';
+import { execFileSync } from 'node:child_process';
+import { parseArgs } from 'node:util';
 
 const SKILL_ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
 const AGENT_REGISTRY_PATH = resolve(SKILL_ROOT, 'config', 'agent-registry.json');
-const TMUX_SESSION_STARTUP_DELAY_SECONDS = 3;
+const TMUX_SESSION_STARTUP_DELAY_MILLISECONDS = 3000;
 
 function logWithTimestamp(message) {
   const isoTimestamp = new Date().toISOString();
@@ -27,27 +28,17 @@ function logWithTimestamp(message) {
 }
 
 function parseCommandLineArguments(rawArguments) {
-  const positionalArguments = [];
-  const namedArguments = {};
-
-  let argumentIndex = 0;
-  while (argumentIndex < rawArguments.length) {
-    const currentArgument = rawArguments[argumentIndex];
-    if (currentArgument.startsWith('--')) {
-      const argumentName = currentArgument.slice(2);
-      const argumentValue = rawArguments[argumentIndex + 1];
-      if (argumentValue === undefined || argumentValue.startsWith('--')) {
-        throw new Error(`Option --${argumentName} requires a value`);
-      }
-      namedArguments[argumentName] = argumentValue;
-      argumentIndex += 2;
-    } else {
-      positionalArguments.push(currentArgument);
-      argumentIndex += 1;
-    }
-  }
-
-  return { positionalArguments, namedArguments };
+  const { values, positionals } = parseArgs({
+    args: rawArguments,
+    options: {
+      workdir: { type: 'string' },
+      'first-command': { type: 'string' },
+      help: { type: 'boolean' },
+    },
+    allowPositionals: true,
+    strict: false,
+  });
+  return { positionalArguments: positionals, namedArguments: values };
 }
 
 function readAgentRegistry() {
@@ -111,7 +102,7 @@ function readSystemPromptFile(systemPromptFilePath) {
 
 function checkTmuxSessionExists(sessionName) {
   try {
-    execSync(`tmux has-session -t ${sessionName} 2>/dev/null`, { stdio: 'pipe' });
+    execFileSync('tmux', ['has-session', '-t', sessionName], { stdio: 'pipe' });
     return true;
   } catch {
     return false;
@@ -119,36 +110,44 @@ function checkTmuxSessionExists(sessionName) {
 }
 
 function createTmuxSession(sessionName, workingDirectory) {
-  execSync(`tmux new-session -d -s ${sessionName} -c ${workingDirectory}`, {
+  execFileSync('tmux', ['new-session', '-d', '-s', sessionName, '-c', workingDirectory], {
     stdio: 'inherit',
   });
 }
 
 function sendTmuxKeys(sessionName, keysToSend) {
-  execSync(`tmux send-keys -t ${sessionName} ${JSON.stringify(keysToSend)} Enter`, {
+  execFileSync('tmux', ['send-keys', '-t', sessionName, keysToSend, 'Enter'], {
     stdio: 'inherit',
   });
 }
 
-function sleepSeconds(numberOfSeconds) {
-  execSync(`sleep ${numberOfSeconds}`);
+function sleepMilliseconds(durationInMilliseconds) {
+  return new Promise((resolve) => setTimeout(resolve, durationInMilliseconds));
 }
 
-function main() {
+function buildClaudeStartCommand(systemPromptText, shouldSkipPermissions) {
+  // Single-quote escape: replace each ' with '\'' (end quote, escaped quote, restart quote)
+  const shellEscapedPrompt = systemPromptText.replace(/'/g, "'\\''");
+  const permissionsFlag = shouldSkipPermissions ? ' --dangerously-skip-permissions' : '';
+  return `claude${permissionsFlag} --system-prompt '${shellEscapedPrompt}'`;
+}
+
+async function main() {
   const commandLineArguments = process.argv.slice(2);
 
-  if (commandLineArguments.length === 0 || commandLineArguments[0] === '--help') {
+  const { positionalArguments, namedArguments } = parseCommandLineArguments(commandLineArguments);
+
+  if (positionalArguments.length === 0 || namedArguments.help) {
     process.stdout.write(
       'Usage: node bin/launch-session.mjs <agent-id> [--workdir <path>] [--first-command <command>]\n\n' +
       'Arguments:\n' +
       '  agent-id            ID of the agent to launch (must exist in config/agent-registry.json)\n' +
       '  --workdir <path>    Override the working directory from the registry\n' +
-      '  --first-command     Shell command to send to Claude Code after startup (e.g. a /gsd command)\n'
+      '  --first-command     Shell command to send to Claude Code after startup (e.g. a /gsd command)\n' +
+      '  --help              Show this help message\n'
     );
     process.exit(0);
   }
-
-  const { positionalArguments, namedArguments } = parseCommandLineArguments(commandLineArguments);
 
   const agentIdentifier = positionalArguments[0];
   if (!agentIdentifier) {
@@ -177,15 +176,20 @@ function main() {
   createTmuxSession(sessionName, workingDirectory);
 
   logWithTimestamp('Starting Claude Code...');
-  sendTmuxKeys(sessionName, `claude --dangerously-skip-permissions --system-prompt "${systemPromptText}"`);
+  const shouldSkipPermissions = agentConfiguration.skip_permissions !== false;
+  const claudeStartCommand = buildClaudeStartCommand(systemPromptText, shouldSkipPermissions);
+  sendTmuxKeys(sessionName, claudeStartCommand);
 
   if (optionalFirstCommand !== null) {
-    logWithTimestamp(`Waiting ${TMUX_SESSION_STARTUP_DELAY_SECONDS}s then sending first command...`);
-    sleepSeconds(TMUX_SESSION_STARTUP_DELAY_SECONDS);
+    logWithTimestamp(`Waiting ${TMUX_SESSION_STARTUP_DELAY_MILLISECONDS}ms then sending first command...`);
+    await sleepMilliseconds(TMUX_SESSION_STARTUP_DELAY_MILLISECONDS);
     sendTmuxKeys(sessionName, optionalFirstCommand);
   }
 
   logWithTimestamp(`Session ready. Attach with: tmux attach -t ${sessionName}`);
 }
 
-main();
+main().catch((error) => {
+  process.stderr.write(`Error: ${error.message}\n`);
+  process.exit(1);
+});
