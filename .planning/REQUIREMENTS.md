@@ -18,17 +18,17 @@ Requirements for v4.0 Event-Driven Hook Architecture. Each maps to roadmap phase
 
 ### TUI Drivers
 
-- [ ] **TUI-01**: A generic `bin/tui-driver.mjs` handles TUI interaction for all event types — accepts a session name and command array, creates a queue, and types the first command
+- [x] **TUI-01**: A generic `bin/tui-driver.mjs` handles TUI interaction for all event types — accepts a session name and command array, creates a queue, and types the first command
 - [x] **TUI-02**: Stop TUI driver knows how to type a GSD slash command, tab-complete, and press enter in the tmux pane
 - [ ] **TUI-03**: AskUserQuestion TUI driver knows how to navigate options (arrow keys), select (space for multiSelect, enter for single-select), and submit
 - [ ] **TUI-04**: TUI drivers replace monolithic menu-driver.sh for hook-driven interactions
-- [ ] **TUI-05**: TUI drivers are referenced in prompt templates so the agent knows which driver to call
+- [x] **TUI-05**: TUI drivers are referenced in prompt templates so the agent knows which driver to call
 
 ### Stop Event
 
-- [ ] **STOP-01**: Stop event handler extracts `last_assistant_message` from hook JSON and sends it to the resolved agent via OpenClaw gateway with the prompt template
-- [ ] **STOP-02**: Stop event prompt template instructs agent to read the response content, decide which GSD slash command to type, and call the TUI driver
-- [ ] **STOP-03**: Stop event handler skips processing when `stop_hook_active` is true (infinite loop guard)
+- [x] **STOP-01**: Stop event handler extracts `last_assistant_message` from hook JSON and sends it to the resolved agent via OpenClaw gateway with the prompt template
+- [x] **STOP-02**: Stop event prompt template instructs agent to read the response content, decide which GSD slash command to type, and call the TUI driver
+- [x] **STOP-03**: Stop event handler skips processing when `stop_hook_active` is true (infinite loop guard)
 
 ### AskUserQuestion Lifecycle
 
@@ -93,14 +93,14 @@ Requirements for v4.0 Event-Driven Hook Architecture. Each maps to roadmap phase
 | ARCH-04 | Phase 3 | Complete |
 | ARCH-05 | Phase 2 | Complete |
 | ARCH-06 | Phase 2 | Complete |
-| TUI-01 | Phase 3 | Pending |
+| TUI-01 | Phase 3 | Complete |
 | TUI-02 | Phase 3 | Complete |
 | TUI-03 | Phase 4 | Pending |
 | TUI-04 | Phase 4 | Pending |
-| TUI-05 | Phase 3 | Pending |
-| STOP-01 | Phase 3 | Pending |
-| STOP-02 | Phase 3 | Pending |
-| STOP-03 | Phase 3 | Pending |
+| TUI-05 | Phase 3 | Complete |
+| STOP-01 | Phase 3 | Complete |
+| STOP-02 | Phase 3 | Complete |
+| STOP-03 | Phase 3 | Complete |
 | ASK-01 | Phase 4 | Pending |
 | ASK-02 | Phase 4 | Pending |
 | ASK-03 | Phase 4 | Pending |
