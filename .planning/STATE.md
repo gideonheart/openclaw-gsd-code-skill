@@ -5,23 +5,23 @@
 See: .planning/PROJECT.md (updated 2026-02-19)
 
 **Core value:** When Claude Code fires any hook event, the right agent wakes up with the right context and knows exactly which GSD slash command to type next
-**Current focus:** Phase 02 — Shared Library
+**Current focus:** Phase 02 complete — ready for Phase 03
 
 ## Current Position
 
-Phase: 02 of 5 (Shared Library)
-Plan: 1 of 2 in current phase
-Status: Plan 01 complete
-Last activity: 2026-02-20 - Completed 02-01: Shared library foundation (logger, json-extractor, retry, agent-resolver)
+Phase: 03 of 5 (Stop Event)
+Plan: 0 of ? in current phase
+Status: Phase 02 complete, Phase 03 not started
+Last activity: 2026-02-20 - Completed 02-02: Gateway delivery module and unified lib entry point
 
-Progress: [█████░░░░░] 45%
+Progress: [██████░░░░] 55%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 5
+- Total plans completed: 6
 - Average duration: 2 min
-- Total execution time: 0.13 hours
+- Total execution time: 0.16 hours
 
 **By Phase:**
 
@@ -29,7 +29,7 @@ Progress: [█████░░░░░] 45%
 |-------|-------|-------|----------|
 | 01-cleanup | 2 | 5 min | 2.5 min |
 | 01.1-refactor | 2 | 3 min | 1.5 min |
-| 02-shared-library | 1 | 2 min | 2 min |
+| 02-shared-library | 2 | 4 min | 2 min |
 
 **Recent Trend:** On track
 
@@ -65,6 +65,9 @@ Recent decisions affecting current work:
 - 02-01: O_APPEND atomic writes instead of flock — guaranteed atomic on Linux for writes under PIPE_BUF, simpler in Node.js
 - 02-01: Default log file prefix 'lib-events' when no session name — keeps lib logging separate from session logs
 - 02-01: resolveAgentFromSession checks enabled internally — returns null for disabled agents, caller does not need to check
+- 02-02: Combined message format: metadata first, content second, instructions last — agent sees context before instructions
+- 02-02: Prompt file read at call time (not cached) — prompt edits take effect immediately without restart
+- 02-02: No retry wrapping inside gateway — caller uses retryWithBackoff externally, separation of concerns
 
 ### Pending Todos
 
@@ -88,5 +91,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-02-20
-Stopped at: Completed 02-01-PLAN.md
-Resume file: .planning/phases/02-shared-library/02-01-SUMMARY.md
+Stopped at: Completed 02-02-PLAN.md (Phase 02 complete)
+Resume file: .planning/phases/02-shared-library/02-02-SUMMARY.md

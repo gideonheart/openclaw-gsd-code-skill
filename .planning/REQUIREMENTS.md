@@ -10,10 +10,10 @@ Requirements for v4.0 Event-Driven Hook Architecture. Each maps to roadmap phase
 ### Event Architecture
 
 - [x] **ARCH-01**: Shared Node.js lib provides `resolveAgentFromSession()` that reads `session` field from hook JSON and looks up agent in agent-registry.json
-- [ ] **ARCH-02**: Shared lib provides `wakeAgentViaGateway()` that sends content + prompt to agent's OpenClaw session via `openclaw agent --session-id`
+- [x] **ARCH-02**: Shared lib provides `wakeAgentViaGateway()` that sends content + prompt to agent's OpenClaw session via `openclaw agent --session-id`
 - [x] **ARCH-03**: Shared lib provides `extractJsonField()` for safe extraction of any field from hook JSON stdin
 - [ ] **ARCH-04**: Event folders follow `events/{event_type}/{subtype}/` hierarchy with `event_{name}.js` handler + `prompt_{name}.md` template per event
-- [ ] **ARCH-05**: Each event handler imports a single shared entry point that loads the lib, reads JSON stdin, and resolves the agent
+- [x] **ARCH-05**: Each event handler imports a single shared entry point that loads the lib, reads JSON stdin, and resolves the agent
 - [x] **ARCH-06**: All event handlers and libs are Node.js (not bash) for cross-platform compatibility (Windows, macOS, Linux)
 
 ### TUI Drivers
@@ -88,10 +88,10 @@ Requirements for v4.0 Event-Driven Hook Architecture. Each maps to roadmap phase
 | Requirement | Phase | Status |
 |-------------|-------|--------|
 | ARCH-01 | Phase 2 | Complete |
-| ARCH-02 | Phase 2 | Pending |
+| ARCH-02 | Phase 2 | Complete |
 | ARCH-03 | Phase 2 | Complete |
 | ARCH-04 | Phase 3 | Pending |
-| ARCH-05 | Phase 2 | Pending |
+| ARCH-05 | Phase 2 | Complete |
 | ARCH-06 | Phase 2 | Complete |
 | TUI-01 | Phase 3 | Pending |
 | TUI-02 | Phase 3 | Pending |
