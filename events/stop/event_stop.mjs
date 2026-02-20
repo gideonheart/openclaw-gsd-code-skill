@@ -13,8 +13,8 @@
  * builds messageContent, and wakes the agent via wakeAgentViaGateway.
  */
 
-import { resolve, dirname } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { resolve } from 'node:path';
+import { SKILL_ROOT } from '../../lib/paths.mjs';
 import {
   readHookContext,
   retryWithBackoff,
@@ -27,6 +27,8 @@ async function main() {
   const hookContext = readHookContext('event_stop');
   if (!hookContext) process.exit(0);
   const { hookPayload, sessionName, resolvedAgent } = hookContext;
+
+  const promptFilePath = resolve(SKILL_ROOT, 'events', 'stop', 'prompt_stop.md');
 
   if (hookPayload.stop_hook_active === true) {
     appendJsonlEntry({ level: 'debug', source: 'event_stop', message: 'Re-entrancy guard — stop_hook_active is true', session: sessionName }, sessionName);
@@ -48,7 +50,6 @@ async function main() {
 
   if (queueResult.action === 'queue-complete') {
     const messageContent = JSON.stringify(queueResult.summary, null, 2);
-    const promptFilePath = resolve(dirname(fileURLToPath(import.meta.url)), 'prompt_stop.md');
 
     await retryWithBackoff(
       () => wakeAgentViaGateway({
@@ -90,8 +91,6 @@ async function main() {
       ? suggestedCommands.map(command => `- \`${command}\``).join('\n')
       : '_No commands detected in response._',
   ].join('\n');
-
-  const promptFilePath = resolve(dirname(fileURLToPath(import.meta.url)), 'prompt_stop.md');
 
   await retryWithBackoff(
     () => wakeAgentViaGateway({
