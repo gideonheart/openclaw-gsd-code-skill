@@ -5,16 +5,16 @@
 See: .planning/PROJECT.md (updated 2026-02-19)
 
 **Core value:** When Claude Code fires any hook event, the right agent wakes up with the right context and knows exactly which GSD slash command to type next
-**Current focus:** Phase 03 in progress — Plans 01-02 complete, ready for Plan 03 (SessionStart + UserPromptSubmit handlers + hook registration)
+**Current focus:** Phase 03 complete — All 3 plans done. Ready for Phase 04 (PreToolUse/PostToolUse AskUserQuestion handlers)
 
 ## Current Position
 
 Phase: 3 of 5 (Stop Event - Full Stack)
-Plan: 2 of 3 in current phase
-Status: Phase 3 executing — 2 of 3 plans complete
-Last activity: 2026-02-20 - Completed 03-02-PLAN.md: Stop handler + TUI driver (event_stop.mjs, prompt_stop.md, bin/tui-driver.mjs)
+Plan: 3 of 3 in current phase
+Status: Phase 3 complete — all 3 plans done
+Last activity: 2026-02-20 - Completed 03-03-PLAN.md: SessionStart + UserPromptSubmit handlers + README.md hook registration
 
-Progress: [███████░░░] 60%
+Progress: [████████░░] 75%
 
 ## Performance Metrics
 
@@ -37,6 +37,7 @@ Progress: [███████░░░] 60%
 *Updated after each plan completion*
 | Phase 03-stop-event-full-stack P01 | 2 | 2 tasks | 3 files |
 | Phase 03-stop-event-full-stack P02 | 2 | 2 tasks | 3 files |
+| Phase 03-stop-event-full-stack P03 | 2 | 3 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -80,6 +81,8 @@ Recent decisions affecting current work:
 - [Phase 03-stop-event-full-stack]: Queue-complete path reuses prompt_stop.md (not separate prompt file) — 'When to do nothing' guidance covers this case
 - [Phase 03-stop-event-full-stack]: sessionName resolved at handler runtime via tmux display-message -p '#S' — hook payload session_id is a UUID, not tmux session name
 - [Phase 03-stop-event-full-stack]: TUI driver resolveAwaitsForCommand: /clear -> SessionStart+clear, /gsd:* and unknown -> Stop+null (safe default)
+- [Phase 03-stop-event-full-stack]: SessionStart and UserPromptSubmit reuse prompt_stop.md — no dedicated prompts needed for pure queue-advance handlers
+- [Phase 03-stop-event-full-stack]: UserPromptSubmit stdin payload parsed but unused — session resolved via tmux display-message, consistent with other handlers
 
 ### Pending Todos
 
@@ -108,5 +111,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-02-20
-Stopped at: Completed 03-02-PLAN.md — Stop handler + TUI driver (event_stop.mjs, prompt_stop.md, bin/tui-driver.mjs)
-Resume file: .planning/phases/03-stop-event-full-stack/03-02-SUMMARY.md
+Stopped at: Completed 03-03-PLAN.md — SessionStart + UserPromptSubmit handlers + README.md hook registration
+Resume file: .planning/phases/03-stop-event-full-stack/03-03-SUMMARY.md
