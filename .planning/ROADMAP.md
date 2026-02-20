@@ -19,7 +19,7 @@ v4.0 rewrites the hook system from scratch with an event-folder architecture. Fi
 
 ### Phase Checklist
 
-- [ ] **Phase 1: Cleanup** - Delete all v1-v3 hook scripts, old lib, old prompts, dead docs, rename registry
+- [x] **Phase 1: Cleanup** - Delete all v1-v3 hook scripts, old lib, old prompts, dead docs, rename registry
 - [x] **Phase 2: Shared Library** - Build the Node.js shared lib with agent resolution, gateway delivery, and JSON extraction
 - [x] **Phase 02.1: Refactor (lib review)** - Fix retry defaults, logger error handling, shared SKILL_ROOT (completed 2026-02-20)
 - [x] **Phase 3: Stop Event (Full Stack)** - Build event folder, handler, prompt, and TUI driver for Stop — test end-to-end (completed 2026-02-20)
@@ -75,8 +75,8 @@ Plans:
   5. A single shared entry point exists that event handlers can import to get all three functions pre-wired
 **Plans:** 2 plans
 Plans:
-- [ ] 02-01-PLAN.md — Build core lib modules: JSONL logger, JSON field extractor, retry utility, agent resolver
-- [ ] 02-02-PLAN.md — Build gateway delivery module and unified lib/index.mjs entry point
+- [x] 02-01-PLAN.md — Build core lib modules: JSONL logger, JSON field extractor, retry utility, agent resolver
+- [x] 02-02-PLAN.md — Build gateway delivery module and unified lib/index.mjs entry point
 
 ### Phase 02.1: Refactor Phase 2 shared library based on code review findings (INSERTED)
 
@@ -91,7 +91,7 @@ Plans:
 **Plans:** 1/1 plans complete
 
 Plans:
-- [ ] 02.1-01-PLAN.md — Refactor lib: shared SKILL_ROOT, discriminated logger errors, safe retry defaults
+- [x] 02.1-01-PLAN.md — Refactor lib: shared SKILL_ROOT, discriminated logger errors, safe retry defaults
 
 ### Phase 3: Stop Event (Full Stack)
 **Goal**: The complete Stop event works end-to-end — handler extracts `last_assistant_message`, resolves agent, wakes it with prompt, and TUI driver types the chosen GSD slash command in the tmux pane. Testable and validated before proceeding.
@@ -106,9 +106,9 @@ Plans:
 **Plans:** 3/3 plans complete
 
 Plans:
-- [ ] 03-01-PLAN.md — Shared lib foundation: tui-common.mjs (tmux send-keys wrapper) + queue-processor.mjs (hook-agnostic queue read/advance/complete/cancel) + index.mjs update
-- [ ] 03-02-PLAN.md — Stop event handler (event_stop.mjs + prompt_stop.md) and generic TUI driver (bin/tui-driver.mjs)
-- [ ] 03-03-PLAN.md — Supporting event handlers (session_start, user_prompt_submit) + manual hook registration in README
+- [x] 03-01-PLAN.md — Shared lib foundation: tui-common.mjs (tmux send-keys wrapper) + queue-processor.mjs (hook-agnostic queue read/advance/complete/cancel) + index.mjs update
+- [x] 03-02-PLAN.md — Stop event handler (event_stop.mjs + prompt_stop.md) and generic TUI driver (bin/tui-driver.mjs)
+- [x] 03-03-PLAN.md — Supporting event handlers (session_start, user_prompt_submit) + manual hook registration in README
 
 ### Phase 4: AskUserQuestion Lifecycle (Full Stack)
 **Goal**: The full PreToolUse → PostToolUse verification loop works end-to-end — PreToolUse handler extracts questions/options/multiSelect, wakes agent with prompt, TUI driver navigates and submits the answer, PostToolUse handler verifies the answer matches. Testable and validated before proceeding.
@@ -144,7 +144,7 @@ Plans:
 | 01.1. Refactor (code review) | 2/2 | Complete | 2026-02-20 |
 | 2. Shared Library | 2/2 | Complete | 2026-02-20 |
 | 02.1. Refactor (lib review) | 1/1 | Complete    | 2026-02-20 |
-| 3. Stop Event (Full Stack) | 0/3 | Complete    | 2026-02-20 |
+| 3. Stop Event (Full Stack) | 3/3 | Complete    | 2026-02-20 |
 | 4. AskUserQuestion Lifecycle (Full Stack) | 0/TBD | Not started | - |
 | 5. Registration and Documentation | 0/TBD | Not started | - |
 
