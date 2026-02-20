@@ -14,7 +14,7 @@ When Claude Code fires any hook event, the right agent wakes up with the right c
 
 **Target features:**
 - `events/{event_type}/{subtype}/` nested folder structure matching Claude Code's event + matcher hierarchy
-- `event_{descriptive_name}.js` handler scripts that read Claude Code's structured JSON stdin
+- `event_{descriptive_name}.mjs` handler scripts that read Claude Code's structured JSON stdin
 - `prompt_{descriptive_name}.md` templates that tell the agent what to do with the event
 - Agent resolution from `session` field in hook JSON via `agent-registry.json` (renamed from recovery-registry.json)
 - OpenClaw gateway delivery: wake agent with content + event-specific prompt
@@ -23,7 +23,7 @@ When Claude Code fires any hook event, the right agent wakes up with the right c
 - Subtype routing: PreToolUse by `tool_name`, Notification by `notification_type`, SubagentStart/Stop by `agent_type`
 - Shared lib for DRY agent resolution, gateway delivery, and JSON extraction
 - Hook registration script for `~/.claude/settings.json` with proper matchers
-- Linux-targeted (Ubuntu 24 — tmux, flock, bash are Linux-only dependencies; SKILL.md os: linux)
+- Linux-targeted (Ubuntu 24 — tmux, bash are Linux-only dependencies; SKILL.md os: linux)
 
 ## Requirements
 
@@ -41,16 +41,16 @@ When Claude Code fires any hook event, the right agent wakes up with the right c
 
 <!-- v4.0 scope. Building toward these. -->
 
-- [ ] Event-folder architecture with handler + prompt per event
-- [ ] Agent resolution from structured JSON `session` field via agent-registry.json
-- [ ] OpenClaw gateway delivery with `last_assistant_message` + prompt
-- [ ] Stop event handler: wake agent with response content, agent picks GSD command
+- [x] Event-folder architecture with handler + prompt per event
+- [x] Agent resolution from structured JSON `session` field via agent-registry.json
+- [x] OpenClaw gateway delivery with `last_assistant_message` + prompt
+- [x] Stop event handler: wake agent with response content, agent picks GSD command
 - [ ] PreToolUse/AskUserQuestion handler: forward questions + options, agent decides answer and sends keystrokes to tmux pane
 - [ ] PostToolUse verification: confirm agent's submitted answer matches what agent decided (feedback loop)
 - [ ] Notification handlers (idle, permission): wake agent with context-specific prompt
-- [ ] Shared lib for agent resolution, gateway delivery, JSON field extraction
+- [x] Shared lib for agent resolution, gateway delivery, JSON field extraction
 - [ ] Hook registration script for all events in `~/.claude/settings.json`
-- [ ] Delete all v1.0-v3.2 hook scripts, prompts, and dead code
+- [x] Delete all v1.0-v3.2 hook scripts, prompts, and dead code
 - [x] agent-registry.json replaces recovery-registry.json
 
 ### Out of Scope
@@ -70,7 +70,7 @@ When Claude Code fires any hook event, the right agent wakes up with the right c
 - **Agent architecture:** Gideon (orchestrator), Warden (coding), Forge (infra) — each with tmux sessions
 - **Integration points:** Claude Code hooks API (JSON stdin), OpenClaw gateway (`openclaw agent --session-id`), tmux, menu-driver.sh for TUI
 - **v1.0-v3.2 shipped but being replaced:** 7 monolithic hook scripts with pane scraping, state regex, transcript parsing — replaced by clean JSON-based handlers
-- **Linux-targeted:** Runs on Ubuntu 24 under the forge user. tmux and flock are Linux-only dependencies.
+- **Linux-targeted:** Runs on Ubuntu 24 under the forge user. tmux and bash are Linux-only dependencies.
 
 ## Constraints
 
@@ -78,20 +78,20 @@ When Claude Code fires any hook event, the right agent wakes up with the right c
 - **DRY/SRP**: Each file does one thing. Shared logic lives in lib. No code duplication.
 - **No dead code**: Fresh start — delete everything from v1.0-v3.2 that isn't explicitly needed
 - **Structured data only**: Match and route based on JSON fields from Claude Code, never regex on rendered text
-- **Linux-targeted**: The runtime depends on tmux, flock, and bash. SKILL.md declares os: linux. If cross-platform becomes a goal, these dependencies would need abstraction.
+- **Linux-targeted**: The runtime depends on tmux and bash. SKILL.md declares os: linux. If cross-platform becomes a goal, these dependencies would need abstraction.
 
 ## Key Decisions
 
 | Decision | Rationale | Outcome |
 |----------|-----------|---------|
 | Rewrite from scratch (v4.0) | v1.0-v3.2 hook system grew complex with pane scraping, state regex, transcript parsing — all replaced by Claude Code's `last_assistant_message` field | Implemented — Phase 1 deleted all v1-v3 artifacts |
-| `events/{event_name}/` folder structure | SRP: each event gets its own handler + prompt. Easy to add new events, easy to find code. | — Pending |
+| `events/{event_name}/` folder structure | SRP: each event gets its own handler + prompt. Easy to add new events, easy to find code. | Implemented — Phase 3 created events/stop/, events/session_start/, events/user_prompt_submit/ |
 | `agent-registry.json` replaces `recovery-registry.json` | Clearer name, focused purpose: maps sessions to agents | Implemented — Phase 1 plan 01-02 |
 | `last_assistant_message` as primary content source | Claude Code provides the full response text in structured JSON — no need for pane scraping or transcript parsing | Adopted — old pane scraping code deleted in Phase 1 |
 | Tool-specific PreToolUse handlers (e.g., AskUserQuestion) | PreToolUse JSON includes `tool_name` and `tool_input` — prompt should teach agent how to interact with specific TUI element (multiSelect awareness) | — Pending |
 | PreToolUse → PostToolUse verification loop | PreToolUse: agent reads question, decides answer, sends keystrokes. PostToolUse: agent confirms submitted answer matches decision. Closed-loop control. | — Pending |
-| Full-stack delivery per event | Each event phase delivers all 3 files (handler + prompt + TUI driver) and validates end-to-end before moving on. No separate TUI phase. | — Pending |
-| Node.js for all handlers and TUI drivers | Linux-targeted (tmux, flock, bash are Linux-only; cross-platform is not a goal). TUI drivers use child_process.execFileSync for tmux send-keys. | Adopted — launch-session.mjs is ESM, package.json type: module |
+| Full-stack delivery per event | Each event phase delivers all 3 files (handler + prompt + TUI driver) and validates end-to-end before moving on. No separate TUI phase. | Implemented — Phase 3 delivered handler + prompt + TUI driver for Stop |
+| Node.js for all handlers and TUI drivers | Linux-targeted (tmux, bash are Linux-only; cross-platform is not a goal). TUI drivers use child_process.execFileSync for tmux send-keys. | Adopted — all event handlers are .mjs (Phase 1-3) |
 
 ---
-*Last updated: 2026-02-19 after v4.0 milestone start*
+*Last updated: 2026-02-20 after Phase 03 completion*
