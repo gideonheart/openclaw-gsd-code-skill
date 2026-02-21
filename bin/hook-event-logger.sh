@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # bin/hook-event-logger.sh — Universal debug logger for all 15 Claude Code hook events.
-# Reads raw stdin JSON payload and writes it to per-session log files for analysis.
+# Reads raw stdin JSON payload and writes it to per-session JSONL files for analysis.
 # This script does NOT do registry lookup, wake delivery, or session state detection.
 # It is purely a raw event logger for debugging and hook payload inspection.
 
@@ -14,7 +14,7 @@ mkdir -p "$SKILL_LOG_DIR" 2>/dev/null || true
 SCRIPT_NAME="hook-event-logger.sh"
 
 debug_log() {
-  printf '[%s] [%s] %s\n' "$(date -u +'%Y-%m-%dT%H:%M:%SZ')" "$SCRIPT_NAME" "$*" \
+  printf '[%s] [%s] %s\n' "$TIMESTAMP_ISO" "$SCRIPT_NAME" "$*" \
     >> "${SKILL_LOG_DIR}/hooks.log" 2>/dev/null || true
 }
 
@@ -24,67 +24,55 @@ STDIN_JSON=$(cat)
 # Safety trap: from here forward, logger errors must never crash Claude Code
 trap 'exit 0' ERR
 
-# 2. Extract event name from payload
+# 2. Extract event name and session_id from payload
 EVENT_NAME=$(printf '%s' "$STDIN_JSON" | jq -r '.hook_event_name // "unknown"' 2>/dev/null || echo "unknown")
+SESSION_ID=$(printf '%s' "$STDIN_JSON" | jq -r '.session_id // ""' 2>/dev/null || echo "")
 STDIN_BYTE_COUNT=${#STDIN_JSON}
 
-# 3. Log to global hooks.log via debug_log
-debug_log "EVENT=$EVENT_NAME bytes=$STDIN_BYTE_COUNT"
+# 3. Compute timestamp once — reused in all logging and JSONL record
+TIMESTAMP_ISO=$(date -u +'%Y-%m-%dT%H:%M:%SZ')
 
-# 4. Detect tmux session name — fall back to "no-tmux" if not in tmux
-SESSION_NAME=$(tmux display-message -p '#S' 2>/dev/null || echo "")
-if [ -z "$SESSION_NAME" ]; then
-  SESSION_NAME="no-tmux"
+# 4. Log to global hooks.log
+debug_log "EVENT=$EVENT_NAME bytes=$STDIN_BYTE_COUNT session_id=$SESSION_ID"
+
+# 5. Build unique log prefix from tmux session name + Claude session_id
+#    This guarantees separate log files per Claude Code instance, even when
+#    multiple instances share the same tmux session or run outside tmux.
+TMUX_SESSION_NAME=$(tmux display-message -p '#S' 2>/dev/null || echo "")
+SHORT_SESSION_ID="${SESSION_ID:0:8}"
+
+if [ -n "$TMUX_SESSION_NAME" ] && [ -n "$SHORT_SESSION_ID" ]; then
+  LOG_FILE_PREFIX="${TMUX_SESSION_NAME}-${SHORT_SESSION_ID}"
+elif [ -n "$TMUX_SESSION_NAME" ]; then
+  LOG_FILE_PREFIX="${TMUX_SESSION_NAME}"
+elif [ -n "$SHORT_SESSION_ID" ]; then
+  LOG_FILE_PREFIX="session-${SHORT_SESSION_ID}"
+else
+  LOG_FILE_PREFIX="unknown-session"
 fi
 
-# 5. Set per-session log file path
-GSD_HOOK_LOG="${SKILL_LOG_DIR}/${SESSION_NAME}.log"
-
-# 6. Log structured entry to per-session .log file
-LOG_BLOCK_TIMESTAMP=$(date -u +'%Y-%m-%dT%H:%M:%SZ')
-{
-  printf '[%s] ===== HOOK EVENT: %s =====\n' "$LOG_BLOCK_TIMESTAMP" "$EVENT_NAME"
-  printf '[%s] session: %s\n' "$LOG_BLOCK_TIMESTAMP" "$SESSION_NAME"
-  printf '[%s] stdin_bytes: %d\n' "$LOG_BLOCK_TIMESTAMP" "$STDIN_BYTE_COUNT"
-  printf '[%s] payload:\n' "$LOG_BLOCK_TIMESTAMP"
-  printf '%s' "$STDIN_JSON" | jq '.' 2>/dev/null || printf '%s' "$STDIN_JSON"
-  printf '[%s] ===== END EVENT: %s =====\n' "$LOG_BLOCK_TIMESTAMP" "$EVENT_NAME"
-} >> "$GSD_HOOK_LOG" 2>/dev/null || true
-
-debug_log "logged event=$EVENT_NAME to ${SESSION_NAME}.log"
-
-# 7. Append compact JSONL line to per-session raw events file (atomic via flock)
-RAW_EVENTS_FILE="${SKILL_LOG_DIR}/${SESSION_NAME}-raw-events.jsonl"
-JSONL_LOCK_FILE="${SKILL_LOG_DIR}/${SESSION_NAME}-raw-events.lock"
+# 6. Append compact JSONL line to per-session raw events file
+RAW_EVENTS_FILE="${SKILL_LOG_DIR}/${LOG_FILE_PREFIX}-raw-events.jsonl"
 
 # Build JSONL record — handle invalid JSON gracefully
-TIMESTAMP_ISO=$(date -u +'%Y-%m-%dT%H:%M:%SZ')
 if printf '%s' "$STDIN_JSON" | jq empty 2>/dev/null; then
-  # Valid JSON: use --argjson for structured payload
-  JSONL_RECORD=$(jq -cn \
-    --arg event "$EVENT_NAME" \
-    --arg timestamp "$TIMESTAMP_ISO" \
-    --arg session "$SESSION_NAME" \
-    --argjson payload "$STDIN_JSON" \
-    '{timestamp: $timestamp, event: $event, session: $session, payload: $payload}' 2>/dev/null || echo "")
+  PAYLOAD_FLAG="--argjson"
 else
-  # Invalid JSON: store raw stdin as string
-  JSONL_RECORD=$(jq -cn \
-    --arg event "$EVENT_NAME" \
-    --arg timestamp "$TIMESTAMP_ISO" \
-    --arg session "$SESSION_NAME" \
-    --arg payload "$STDIN_JSON" \
-    '{timestamp: $timestamp, event: $event, session: $session, payload: $payload}' 2>/dev/null || echo "")
+  PAYLOAD_FLAG="--arg"
 fi
 
-# Atomic append via flock if record was built successfully
+JSONL_RECORD=$(jq -cn \
+  --arg event "$EVENT_NAME" \
+  --arg timestamp "$TIMESTAMP_ISO" \
+  --arg session "$LOG_FILE_PREFIX" \
+  $PAYLOAD_FLAG payload "$STDIN_JSON" \
+  '{timestamp: $timestamp, event: $event, session: $session, payload: $payload}' 2>/dev/null || echo "")
+
+# Direct append — no locking needed since each session writes to its own file
 if [ -n "$JSONL_RECORD" ]; then
-  (
-    flock -x 9
-    printf '%s\n' "$JSONL_RECORD" >> "$RAW_EVENTS_FILE"
-  ) 9>"$JSONL_LOCK_FILE" 2>/dev/null || true
+  printf '%s\n' "$JSONL_RECORD" >> "$RAW_EVENTS_FILE" 2>/dev/null || true
 fi
 
-debug_log "appended to ${SESSION_NAME}-raw-events.jsonl"
+debug_log "appended to ${LOG_FILE_PREFIX}-raw-events.jsonl"
 
 exit 0
