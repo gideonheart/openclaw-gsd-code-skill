@@ -12,7 +12,7 @@ See: .planning/PROJECT.md (updated 2026-02-20)
 Phase: 3 of 5 (Stop Event - Full Stack)
 Plan: 3 of 3 in current phase
 Status: Phase 3 complete — all 3 plans done
-Last activity: 2026-02-20 - Completed quick task 11: Update stale README.md and SKILL.md to reflect Phase 03 completion
+Last activity: 2026-02-21 - Completed quick task 13: DRY/SRP refactor of hook-event-logger.sh
 
 Progress: [████████░░] 75%
 
@@ -60,7 +60,7 @@ Recent decisions affecting current work:
 - 01-02: launch-session.mjs is idempotent — exits 0 if session exists, errors loudly if agent is disabled
 - 01-02: ESM launchers use import.meta.url + dirname(fileURLToPath()) for SKILL_ROOT resolution
 - 01.1-01: Trap moved after stdin read — broken pipe surfaces as error during development, not swallowed
-- 01.1-01: LOG_BLOCK_TIMESTAMP pattern — capture timestamp once per log block, reuse throughout
+- 01.1-01: LOG_BLOCK_TIMESTAMP pattern — capture timestamp once per log block, reuse throughout (superseded by quick-13: TIMESTAMP_ISO)
 - 01.1-01: No test script stub in package.json — empty echo stubs are noise with no value
 - 01.1-02: skip_permissions !== false default — flag included unless explicitly false, backward compatible
 - 01.1-02: Single-quote escaping for tmux send-keys system prompt — handles shell metacharacters safely
@@ -83,6 +83,7 @@ Recent decisions affecting current work:
 - [Phase 03-stop-event-full-stack]: TUI driver resolveAwaitsForCommand: /clear -> SessionStart+clear, /gsd:* and unknown -> Stop+null (safe default)
 - [Phase 03-stop-event-full-stack]: SessionStart and UserPromptSubmit reuse prompt_stop.md — no dedicated prompts needed for pure queue-advance handlers
 - [Phase 03-stop-event-full-stack]: UserPromptSubmit stdin payload parsed but unused — session resolved via tmux display-message, consistent with other handlers
+- [Phase quick-13]: debug_log uses global TIMESTAMP_ISO instead of subshell date call — fewer forks, consistent timestamps
 
 ### Pending Todos
 
@@ -113,9 +114,10 @@ None yet.
 | 10 | Extract wakeAgentWithRetry helper — DRY refactor for 5 retryWithBackoff+gateway call sites across 3 handlers | 2026-02-20 | 7de9f06 | [10-extract-wakeagentwithretry-helper-dry-re](./quick/10-extract-wakeagentwithretry-helper-dry-re/) |
 | 11 | Update stale README.md and SKILL.md to reflect Phase 03 completion — fix exports, file lists, structure | 2026-02-20 | 80a2536 | [11-update-stale-readme-md-and-skill-md-to-r](./quick/11-update-stale-readme-md-and-skill-md-to-r/) |
 | 12 | Fix 7 stale issues in PROJECT.md (6 fixes: .mjs extension, flock removal, Key Decisions outcomes, requirements checkboxes, date) and REQUIREMENTS.md (REG-01 checkbox) | 2026-02-20 | c715a49 | [12-update-stale-planning-md-files-fix-proje](./quick/12-update-stale-planning-md-files-fix-proje/) |
+| 13 | DRY/SRP refactor of hook-event-logger.sh: single timestamp, collapsed JSONL builder, removed .log output and flock | 2026-02-21 | c1fafc5 | [13-dry-srp-refactor-hook-event-logger-sh-si](./quick/13-dry-srp-refactor-hook-event-logger-sh-si/) |
 
 ## Session Continuity
 
-Last session: 2026-02-20
-Stopped at: Completed quick task 12 — PROJECT.md and REQUIREMENTS.md updated with Phase 03 reality
-Resume file: .planning/quick/12-update-stale-planning-md-files-fix-proje/12-SUMMARY.md
+Last session: 2026-02-21
+Stopped at: Completed quick task 13 — DRY/SRP refactor of hook-event-logger.sh
+Resume file: .planning/quick/13-dry-srp-refactor-hook-event-logger-sh-si/13-SUMMARY.md
