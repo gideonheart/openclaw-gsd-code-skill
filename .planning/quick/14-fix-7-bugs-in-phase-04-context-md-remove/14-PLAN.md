@@ -11,25 +11,31 @@ requirements: []
 
 must_haves:
   truths:
-    - "PreToolUse Prompt Format section lists session name, questions, answer format examples, TUI driver syntax — no queue or project context references"
-    - "All function list comments use actual handler filenames consistently"
-    - "A concrete example of formatQuestionsForAgent output exists in the document"
-    - "Escalation Policy section states AskUserQuestion is blocking"
-    - "A Prerequisites section references Phase 3.1 refactor deliverables"
-    - "Claude's Discretion is split into implementation details vs TUI unknowns"
-    - "wakeAgentWithRetry appears in Shared Library function list and Deferred section"
-    - "Data Flow section has no 'project context' injection reference"
+    - "No 'active queue command' or 'GSD phase type' references exist in PreToolUse Prompt Format or Handler Architecture sections"
+    - "No 'Project context: STATE.md, ROADMAP.md' injection references exist — OpenClaw agent already has project context in its session"
+    - "All function list entries use actual handler filenames (handle_ask_user_question.mjs, handle_post_ask_user_question.mjs, bin/tui-driver-ask.mjs)"
+    - "A concrete Gateway Message Format section shows exactly what formatQuestionsForAgent produces for the OpenClaw agent"
+    - "A Mismatch Correction Prompt section shows exactly what the OpenClaw agent receives on verification failure"
+    - "AskUserQuestion is blocking statement appears in the document"
+    - "A Prerequisites section references Phase 3.1 refactor deliverables (wakeAgentWithRetry, readHookContext, guard-failure logging)"
+    - "Implementation Details (Claude's Discretion) section is separate from TUI testing items"
+    - "Items Needing Live Testing section lists all 5 TUI unknowns"
+    - "wakeAgentWithRetry appears in Prerequisites and Data Flow sections"
+    - "Data Flow section uses formatQuestionsForAgent() — no stale project context injection"
+    - "File Structure marks existing vs NEW vs MODIFIED files"
   artifacts:
     - path: ".planning/phases/04-askuserquestion-lifecycle-full-stack/04-CONTEXT.md"
-      provides: "Corrected Phase 4 context document"
+      provides: "Corrected Phase 4 context document — full rewrite incorporating all discussion decisions"
       contains: "wakeAgentWithRetry"
   key_links: []
 ---
 
 <objective>
-Apply 7 targeted fixes to the Phase 04 CONTEXT.md document: remove queue/project-context references from PreToolUse prompt format, fix naming consistency in function comments, add gateway message example, add blocking note, add Phase 3.1 prerequisites, split Claude's Discretion into two sections, and add wakeAgentWithRetry references.
+Full rewrite of Phase 04 CONTEXT.md incorporating all decisions from the discuss session. The original CONTEXT.md had 7 issues: stale queue/project-context references in PreToolUse prompt, inconsistent function comment naming, no gateway message example, no mismatch prompt example, missing blocking note, no Phase 3.1 prerequisites, and unsplit Claude's Discretion section.
 
-Purpose: Ensure the Phase 4 planning document accurately reflects the actual architecture (no stale queue references, correct filenames, prerequisite awareness) before plan-phase begins.
+Rather than applying 7 targeted edits to the existing file, produce a complete corrected document that reflects the full discussion output — including new sections (Gateway Message Format, Mismatch Correction Prompt, Prerequisites) and restructured content (TUI unknowns separated to Items Needing Live Testing).
+
+Purpose: Ensure the Phase 4 planning document accurately reflects the actual architecture before plan-phase begins.
 Output: Corrected `.planning/phases/04-askuserquestion-lifecycle-full-stack/04-CONTEXT.md`
 </objective>
 
@@ -45,134 +51,63 @@ Output: Corrected `.planning/phases/04-askuserquestion-lifecycle-full-stack/04-C
 <tasks>
 
 <task type="auto">
-  <name>Task 1: Apply all 7 fixes to 04-CONTEXT.md</name>
+  <name>Task 1: Full rewrite of 04-CONTEXT.md with all corrections</name>
   <files>.planning/phases/04-askuserquestion-lifecycle-full-stack/04-CONTEXT.md</files>
   <action>
-Read the file fully, then apply these 7 edits in a single Write:
+Replace the entire file with the corrected version. Key changes from the original:
 
-**Fix 1 — PreToolUse Prompt Format (lines 133-141):**
-Replace the current bullet list under "Agent receives:" with:
-- Session name
-- All questions with 0-indexed options, descriptions, multiSelect flags
-- Answer format examples per action type (select, type, multi-select, chat)
-- TUI driver call syntax: `node bin/tui-driver-ask.mjs --session <name> '<decisions JSON>'`
+**Structural changes (new sections added):**
+1. **Prerequisites section** (after domain, before decisions) — references Phase 3.1 refactor deliverables: `wakeAgentWithRetry`, `readHookContext`, guard-failure debug logging
+2. **Gateway Message Format section** (inside decisions, after Shared Library) — concrete example showing what `formatQuestionsForAgent(toolInput)` produces, including the full prompt the OpenClaw agent receives with answer format examples and TUI driver call syntax
+3. **Mismatch Correction Prompt section** (after Gateway Message Format) — concrete example showing what the OpenClaw agent receives when PostToolUse detects a verification mismatch
+4. **Items Needing Live Testing section** (after Data Flow, end of document) — the 5 TUI unknowns extracted from the original Claude's Discretion section
 
-Remove these three lines entirely:
-- "Active queue command (read from queue file...)"
-- "GSD phase type (discuss/plan/execute/verify)"
-- "Project context: STATE.md, ROADMAP.md, prior CONTEXT.md references"
+**Content fixes (stale references removed):**
+5. **PreToolUse prompt** — removed "active queue command", "GSD phase type", "project context injection". Handler delivers only the question. OpenClaw agent already has project context in its own session.
+6. **Data Flow** — changed step 2 from "include active queue command + project context" to "Format questions into readable prompt via formatQuestionsForAgent()"
+7. **Shared Library function table** — all 8 functions use actual filenames (`handle_ask_user_question.mjs`, `handle_post_ask_user_question.mjs`, `bin/tui-driver-ask.mjs`) not generic "PreToolUse handler" / "PostToolUse handler"
+8. **File Structure** — marks each file as existing / NEW / MODIFIED for clarity
+9. **Deferred section** — added `Notification(permission_prompt)` (fires while AskUserQuestion waits) and explicit note about SubagentStart/SubagentStop being GSD-related
 
-The OpenClaw agent already has project context in its session — the handler should NOT inject it.
-
-**Fix 2 — Naming consistency (line 125 area):**
-In the Shared Library functions list, each function comment says which file uses it. Ensure all comments use actual filenames:
-- `saveQuestionMetadata` — used by `handle_ask_user_question.mjs` (not "PreToolUse handler")
-- `readQuestionMetadata` — used by `bin/tui-driver-ask.mjs` (not "TUI driver")
-- `deleteQuestionMetadata` — used by `handle_post_ask_user_question.mjs` (not "PostToolUse handler")
-- `savePendingAnswer` — used by `bin/tui-driver-ask.mjs`
-- `readPendingAnswer` — used by `handle_post_ask_user_question.mjs`
-- `deletePendingAnswer` — used by `handle_post_ask_user_question.mjs`
-- `compareAnswerWithIntent` — used by `handle_post_ask_user_question.mjs`
-- `formatQuestionsForAgent` — used by `handle_ask_user_question.mjs` + `handle_post_ask_user_question.mjs` (mismatch prompt)
-
-**Fix 3 — Add explicit gateway message example:**
-After the Shared Library section (or within Data Flow), add a concrete example showing what `formatQuestionsForAgent(toolInput)` produces. Example:
-
-```
-Input toolInput:
-{
-  "questions": [
-    { "question": "How should we handle auth?", "options": ["JWT tokens", "Session cookies", "You decide"], "multiSelect": false },
-    { "question": "Which features to include?", "options": ["Login", "Register", "Password reset"], "multiSelect": true }
-  ]
-}
-
-formatQuestionsForAgent output:
-Question 0: How should we handle auth?
-  [0] JWT tokens
-  [1] Session cookies
-  [2] You decide
-  multiSelect: false
-
-Question 1: Which features to include?
-  [0] Login
-  [1] Register
-  [2] Password reset
-  multiSelect: true
-```
-
-Also fix Data Flow line 216: change "Format questions for agent prompt (include active queue command + project context)" to "Format questions for agent prompt via formatQuestionsForAgent(toolInput)"
-
-**Fix 4 — Add blocking note to Escalation Policy (after line 81):**
-Add a bullet: "**AskUserQuestion is blocking** — Claude Code waits for the answer before continuing. No concurrent question handling needed. Each question is independent and sequential."
-
-**Fix 5 — Add Prerequisites section:**
-Add a `## Prerequisites` section before the File Structure section (before line 184):
-
-```markdown
-## Prerequisites
-
-- **Phase 3.1 refactor complete** — the following shared utilities must exist:
-  - `wakeAgentWithRetry` helper in `lib/gateway.mjs` (DRY wrapper for retry+gateway pattern)
-  - `readHookContext` shared boilerplate in `lib/hook-context.mjs` (session/agent resolution)
-  - Guard-failure debug logging via `lib/logger.mjs`
-```
-
-**Fix 6 — Split "Claude's Discretion" (lines 143-149):**
-Replace the single section with two:
-
-```markdown
-### Implementation Details (Claude's Discretion)
-
-- Comparison logic implementation details per action type
-- Error handling in question/pending-answer file read/write/delete operations
-- Prompt wording for mismatch correction notification
-
-### TUI Unknowns (Resolve via Live Testing)
-
-- `action: chat` exact Down count to reach "Chat about this" — does separator count as navigable element?
-- Annotation text entry mechanics in multi-select (deferred to post-Phase 4 v1)
-- Tab auto-advance behavior between questions in multi-question tabbed forms
-- Cursor starting position (assumed: option 0)
-- "Type something" submission scope — submits that question only, or entire form?
-```
-
-**Fix 7 — Add wakeAgentWithRetry references:**
-In the Shared Library functions list, add a note after the function list:
-"Handlers use `wakeAgentWithRetry` from `lib/gateway.mjs` for all gateway calls (established in Phase 3.1 refactor, quick-10)."
-
-In the Deferred section, add:
-"- **`wakeAgentWithRetry` as prerequisite** — Phase 3.1 refactor (quick-10) already extracted this helper to `lib/gateway.mjs`. Phase 4 handlers MUST use it, not raw retry+gateway calls."
+**Restructured sections:**
+10. **Implementation Details (Claude's Discretion)** — now contains only implementation-level decisions (error handling, comparison edge cases, chat Down count). TUI unknowns moved to dedicated "Items Needing Live Testing" section at document end.
   </action>
   <verify>
-Verify all 7 fixes applied:
+Verify all changes applied:
 1. Grep for "active queue command" — should return 0 matches
-2. Grep for "GSD phase type" — should return 0 matches
-3. Grep for "Project context:" (as a bullet item) — should return 0 matches
-4. Grep for "handle_ask_user_question.mjs" — should appear in function comments
-5. Grep for "formatQuestionsForAgent output" — should appear (example section)
-6. Grep for "AskUserQuestion is blocking" — should appear in Escalation Policy
-7. Grep for "Prerequisites" — should appear as section header
-8. Grep for "Implementation Details" and "TUI Unknowns" — both should appear
-9. Grep for "wakeAgentWithRetry" — should appear in both Shared Library and Deferred sections
+2. Grep for "GSD phase type" as a bullet item — should return 0 matches
+3. Grep for "Project context:" as a bullet item under PreToolUse Prompt — should return 0 matches
+4. Grep for "handle_ask_user_question.mjs" — should appear in function table
+5. Grep for "Gateway Message Format" — should appear as section header
+6. Grep for "Mismatch Correction Prompt" — should appear as section header
+7. Grep for "AskUserQuestion is blocking" — should appear
+8. Grep for "Prerequisites" — should appear as section header
+9. Grep for "Implementation Details" — should appear as section header
+10. Grep for "Items Needing Live Testing" — should appear as section header
+11. Grep for "wakeAgentWithRetry" — should appear in Prerequisites and Data Flow
+12. Grep for "NEW:" — should appear in File Structure section
+13. Grep for "formatQuestionsForAgent" — should appear in Gateway Message Format, Shared Library, and Data Flow
   </verify>
-  <done>All 7 fixes applied to 04-CONTEXT.md: queue/project-context references removed from PreToolUse prompt, filenames consistent in function comments, gateway message example added, blocking note in Escalation Policy, Prerequisites section exists, Claude's Discretion split into two sections, wakeAgentWithRetry referenced in library and deferred sections</done>
+  <done>Full rewrite of 04-CONTEXT.md complete: stale queue/project-context references removed, gateway message and mismatch prompt examples added, prerequisites section added, TUI unknowns separated to Items Needing Live Testing, all function comments use actual filenames, file structure shows NEW/MODIFIED/existing markers</done>
 </task>
 
 </tasks>
 
 <verification>
 - No stale references to "active queue command", "GSD phase type", or "Project context:" injection remain
-- Function comments use actual filenames (handle_ask_user_question.mjs, handle_post_ask_user_question.mjs, bin/tui-driver-ask.mjs)
-- formatQuestionsForAgent example shows concrete input/output
-- Escalation Policy includes the blocking note
-- Prerequisites section references Phase 3.1 deliverables
-- Two separate sections replace "Claude's Discretion"
-- wakeAgentWithRetry appears in Shared Library and Deferred sections
+- Function table uses actual filenames throughout
+- Gateway Message Format shows concrete formatQuestionsForAgent output with answer format examples
+- Mismatch Correction Prompt shows concrete agent notification with question/intended/received details
+- Escalation Policy or Phase Boundary includes blocking note
+- Prerequisites section references all 3 Phase 3.1 deliverables
+- Implementation Details is separate from Items Needing Live Testing
+- wakeAgentWithRetry referenced in Prerequisites and Data Flow
+- File Structure marks NEW/MODIFIED/existing files
+- Data Flow has no project context injection — uses formatQuestionsForAgent()
 </verification>
 
 <success_criteria>
-All 7 fixes applied in a single clean edit. The document is internally consistent — no stale references, all filenames match the File Structure section, and new sections are placed logically within the document flow.
+Complete rewrite produces an internally consistent document with no stale references. All new sections (Prerequisites, Gateway Message Format, Mismatch Correction Prompt, Items Needing Live Testing) exist and contain concrete examples. The document accurately reflects the architecture as discussed.
 </success_criteria>
 
 <output>
