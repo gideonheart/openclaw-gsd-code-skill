@@ -12,7 +12,7 @@ See: .planning/PROJECT.md (updated 2026-02-20)
 Phase: 4 of 5 (AskUserQuestion Lifecycle - Full Stack)
 Plan: 3 of 3 in current phase (COMPLETE)
 Status: Phase 4 Plan 03 complete — PostToolUse router + AskUserQuestion verification handler + mismatch prompt built
-Last activity: 2026-02-22 - Completed Phase 04 Plan 03: PostToolUse verification handler closes AskUserQuestion loop
+Last activity: 2026-02-22 - Completed quick task 15: Hook installer + AskUserQuestion handler wiring
 
 Progress: [█████████░] 90%
 
@@ -130,6 +130,7 @@ None yet.
 | 12 | Fix 7 stale issues in PROJECT.md (6 fixes: .mjs extension, flock removal, Key Decisions outcomes, requirements checkboxes, date) and REQUIREMENTS.md (REG-01 checkbox) | 2026-02-20 | c715a49 | [12-update-stale-planning-md-files-fix-proje](./quick/12-update-stale-planning-md-files-fix-proje/) |
 | 13 | DRY/SRP refactor of hook-event-logger.sh: single timestamp, collapsed JSONL builder, removed .log output and flock | 2026-02-21 | c1fafc5 | [13-dry-srp-refactor-hook-event-logger-sh-si](./quick/13-dry-srp-refactor-hook-event-logger-sh-si/) |
 | 14 | Fix 7 bugs in Phase 04 CONTEXT.md: remove stale queue/project-context from PreToolUse prompt, standardize function comment filenames, add formatQuestionsForAgent example, blocking note, prerequisites, split Claude's Discretion, add wakeAgentWithRetry references | 2026-02-22 | 6bb9190 | [14-fix-7-bugs-in-phase-04-context-md-remove](./quick/14-fix-7-bugs-in-phase-04-context-md-remove/) |
+| 15 | Hook installer + fix AskUserQuestion handler wiring (config/hooks.json, bin/install-hooks.mjs, logger session fix) | 2026-02-22 | PENDING | [15-investigate-and-fix-askuserquestion-pret](./quick/15-investigate-and-fix-askuserquestion-pret/) |
 
 ## Session Continuity
 

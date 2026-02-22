@@ -36,9 +36,13 @@ TIMESTAMP_ISO=$(date -u +'%Y-%m-%dT%H:%M:%SZ')
 debug_log "EVENT=$EVENT_NAME bytes=$STDIN_BYTE_COUNT session_id=$SESSION_ID"
 
 # 5. Build unique log prefix from tmux session name + Claude session_id
-#    This guarantees separate log files per Claude Code instance, even when
-#    multiple instances share the same tmux session or run outside tmux.
-TMUX_SESSION_NAME=$(tmux display-message -p '#S' 2>/dev/null || echo "")
+#    Deterministic: session_id comes from the JSON payload (unique per Claude session).
+#    Tmux session name is only used for human-readable grouping — skip the fork
+#    entirely when $TMUX is unset (hook not running inside a tmux session).
+TMUX_SESSION_NAME=""
+if [ -n "${TMUX:-}" ]; then
+  TMUX_SESSION_NAME=$(tmux display-message -p '#S' 2>/dev/null || echo "")
+fi
 SHORT_SESSION_ID="${SESSION_ID:0:8}"
 
 if [ -n "$TMUX_SESSION_NAME" ] && [ -n "$SHORT_SESSION_ID" ]; then

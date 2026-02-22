@@ -1,0 +1,245 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "{{SKILL_ROOT}}/bin/hook-event-logger.sh",
+            "timeout": 10
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node {{SKILL_ROOT}}/events/session_start/event_session_start.mjs",
+            "timeout": 30
+          }
+        ]
+      }
+    ],
+    "Setup": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "{{SKILL_ROOT}}/bin/hook-event-logger.sh",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "{{SKILL_ROOT}}/bin/hook-event-logger.sh",
+            "timeout": 10
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node {{SKILL_ROOT}}/events/user_prompt_submit/event_user_prompt_submit.mjs",
+            "timeout": 30
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "{{SKILL_ROOT}}/bin/hook-event-logger.sh",
+            "timeout": 10
+          }
+        ]
+      },
+      {
+        "matcher": "AskUserQuestion",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node {{SKILL_ROOT}}/events/pre_tool_use/event_pre_tool_use.mjs",
+            "timeout": 30
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "{{SKILL_ROOT}}/bin/hook-event-logger.sh",
+            "timeout": 10
+          }
+        ]
+      },
+      {
+        "matcher": "AskUserQuestion",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node {{SKILL_ROOT}}/events/post_tool_use/event_post_tool_use.mjs",
+            "timeout": 30
+          }
+        ]
+      }
+    ],
+    "PostToolUseFailure": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "{{SKILL_ROOT}}/bin/hook-event-logger.sh",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "SubagentStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "{{SKILL_ROOT}}/bin/hook-event-logger.sh",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "SubagentStop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "{{SKILL_ROOT}}/bin/hook-event-logger.sh",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "{{SKILL_ROOT}}/bin/hook-event-logger.sh",
+            "timeout": 10
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node {{SKILL_ROOT}}/events/stop/event_stop.mjs",
+            "timeout": 30
+          }
+        ]
+      }
+    ],
+    "TeammateIdle": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "{{SKILL_ROOT}}/bin/hook-event-logger.sh",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "TaskCompleted": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "{{SKILL_ROOT}}/bin/hook-event-logger.sh",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "PreCompact": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "{{SKILL_ROOT}}/bin/hook-event-logger.sh",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "{{SKILL_ROOT}}/bin/hook-event-logger.sh",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "Notification": [
+      {
+        "matcher": "auth_success",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "{{SKILL_ROOT}}/bin/hook-event-logger.sh",
+            "timeout": 10
+          }
+        ]
+      },
+      {
+        "matcher": "permission_prompt",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "{{SKILL_ROOT}}/bin/hook-event-logger.sh",
+            "timeout": 10
+          }
+        ]
+      },
+      {
+        "matcher": "idle_prompt",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "{{SKILL_ROOT}}/bin/hook-event-logger.sh",
+            "timeout": 10
+          }
+        ]
+      },
+      {
+        "matcher": "elicitation_dialog",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "{{SKILL_ROOT}}/bin/hook-event-logger.sh",
+            "timeout": 10
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "{{SKILL_ROOT}}/bin/hook-event-logger.sh",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}
