@@ -120,7 +120,12 @@ Plans:
   3. tui_driver_ask_user_question.mjs navigates with arrow keys, selects with space (multiSelect) or enter (single-select), and submits
   4. events/post_tool_use/ask_user_question/ exists with event_post_ask_user_question.mjs and prompt_post_ask_user_question.md
   5. PostToolUse prompt instructs agent to compare submitted answer against its decision and report mismatch
-**Plans**: TBD
+**Plans:** 3 plans
+
+Plans:
+- [ ] 04-01-PLAN.md — Shared domain library: lib/ask-user-question.mjs (8 functions for question metadata, pending answer, formatting, comparison) + lib/index.mjs re-exports
+- [ ] 04-02-PLAN.md — PreToolUse router + AskUserQuestion handler + prompt + bin/tui-driver-ask.mjs TUI navigator (4 action types)
+- [ ] 04-03-PLAN.md — PostToolUse router + AskUserQuestion verification handler + mismatch prompt (closes the verification loop)
 
 ### Phase 5: Registration and Documentation
 **Goal**: All v4.0 event handlers are registered in ~/.claude/settings.json via an idempotent script; install.sh reflects the new event-folder structure; SKILL.md and README.md describe v4.0 architecture accurately
@@ -145,7 +150,7 @@ Plans:
 | 2. Shared Library | 2/2 | Complete | 2026-02-20 |
 | 02.1. Refactor (lib review) | 1/1 | Complete    | 2026-02-20 |
 | 3. Stop Event (Full Stack) | 3/3 | Complete    | 2026-02-20 |
-| 4. AskUserQuestion Lifecycle (Full Stack) | 0/TBD | Not started | - |
+| 4. AskUserQuestion Lifecycle (Full Stack) | 0/3 | Planning complete | - |
 | 5. Registration and Documentation | 0/TBD | Not started | - |
 
 ---
