@@ -82,10 +82,14 @@ function parseCommandLineArguments() {
  * @returns {Object} Queue data object ready for JSON serialization.
  */
 function buildQueueData(commandTexts) {
+  const createdAt = new Date().toISOString();
+
   return {
+    created_at: createdAt,
     commands: commandTexts.map((commandText, index) => ({
       id: index + 1,
       command: commandText,
+      created_at: createdAt,
       status: index === 0 ? 'active' : 'pending',
       awaits: resolveAwaitsForCommand(commandText),
       result: null,
