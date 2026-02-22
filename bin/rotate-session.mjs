@@ -2,20 +2,24 @@
 /**
  * rotate-session.mjs
  *
- * Replace an agent's openclaw_session_id with a fresh UUID, archiving the old
- * ID into a session_history array for later reference.
+ * Rotate an agent's openclaw_session_id by reading the actual current sessionId
+ * from the agent's sessions.json (the most recently updated session for that agent),
+ * then archiving the old ID into session_history.
  *
  * Usage:
  *   node bin/rotate-session.mjs <agent-id> [--label <text>]
  *
  * Reads and writes config/agent-registry.json relative to the skill root.
  * The registry file is written atomically (tmp + rename) to prevent corruption.
+ *
+ * The new openclaw_session_id is the actual sessionId from the agent's OpenClaw
+ * session store — NOT a random UUID. This keeps the registry in sync with
+ * OpenClaw's own session tracking so --session-id routing is accurate.
  */
 
 import { readFileSync, writeFileSync, existsSync, renameSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { randomUUID } from 'node:crypto';
 import { parseArgs } from 'node:util';
 
 const SKILL_ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
@@ -79,6 +83,51 @@ function findAgentByIdentifier(registry, agentIdentifier) {
   return matchingAgent;
 }
 
+/**
+ * Read the most recently updated sessionId for an agent from OpenClaw's sessions.json.
+ *
+ * OpenClaw stores session metadata in agents/{agentId}/sessions/sessions.json as a
+ * map of session keys to session objects. Each session object has a sessionId (UUID)
+ * that matches the JSONL conversation log filename. This function finds the session
+ * with the highest updatedAt timestamp — that is the currently active conversation.
+ *
+ * Falls back to null if the sessions.json file does not exist or has no entries.
+ *
+ * @param {string} agentIdentifier - Agent ID (e.g. 'warden').
+ * @returns {string|null} The active sessionId UUID, or null if not found.
+ */
+function resolveActiveOpenclawSessionId(agentIdentifier) {
+  const sessionsFilePath = `${OPENCLAW_AGENTS_BASE_PATH}/${agentIdentifier}/sessions/sessions.json`;
+
+  if (!existsSync(sessionsFilePath)) {
+    return null;
+  }
+
+  let sessionsData;
+  try {
+    sessionsData = JSON.parse(readFileSync(sessionsFilePath, 'utf8'));
+  } catch {
+    return null;
+  }
+
+  if (typeof sessionsData !== 'object' || sessionsData === null) {
+    return null;
+  }
+
+  const sessionEntries = Object.values(sessionsData);
+  if (sessionEntries.length === 0) {
+    return null;
+  }
+
+  const mostRecentSession = sessionEntries.reduce((mostRecent, current) => {
+    const currentUpdatedAt = current.updatedAt ?? 0;
+    const mostRecentUpdatedAt = mostRecent.updatedAt ?? 0;
+    return currentUpdatedAt > mostRecentUpdatedAt ? current : mostRecent;
+  });
+
+  return mostRecentSession.sessionId ?? null;
+}
+
 function buildSessionHistoryEntry(oldSessionId, agentIdentifier, optionalLabel) {
   const sessionFilePath =
     `${OPENCLAW_AGENTS_BASE_PATH}/${agentIdentifier}/sessions/${oldSessionId}.jsonl`;
@@ -124,7 +173,23 @@ function main() {
   const agentConfiguration = findAgentByIdentifier(registry, agentIdentifier);
 
   const oldSessionId = agentConfiguration.openclaw_session_id;
-  const newSessionId = randomUUID();
+
+  const newSessionId = resolveActiveOpenclawSessionId(agentIdentifier);
+  if (!newSessionId) {
+    throw new Error(
+      `Could not resolve active OpenClaw session for agent "${agentIdentifier}".\n` +
+      `Expected sessions.json at: ${OPENCLAW_AGENTS_BASE_PATH}/${agentIdentifier}/sessions/sessions.json\n` +
+      `Ensure the agent has an active OpenClaw session before rotating.`
+    );
+  }
+
+  if (newSessionId === oldSessionId) {
+    logWithTimestamp(`Session already up to date for agent: ${agentIdentifier}`);
+    logWithTimestamp(`  Current: ${oldSessionId}`);
+    logWithTimestamp(`  No rotation needed.`);
+    process.exit(0);
+  }
+
   const optionalLabel = namedArguments['label'] || undefined;
 
   const historyEntry = buildSessionHistoryEntry(oldSessionId, agentIdentifier, optionalLabel);

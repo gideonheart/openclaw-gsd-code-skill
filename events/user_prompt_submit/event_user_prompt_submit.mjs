@@ -3,12 +3,19 @@
  *
  * Invoked by Claude Code when the user submits a prompt. Claude Code fires this
  * event for ALL terminal input — including automated tmux send-keys from
- * tui-driver.mjs. Before cancelling the queue, we check if the submitted prompt
- * matches the active queue command. If it does, the input came from the TUI driver
- * (not a human) and we skip cancellation entirely.
+ * tui-driver.mjs and tui-driver-ask.mjs. Before cancelling the queue, we check
+ * two guards:
  *
- * If a queue was cancelled by genuine human input, the agent is woken with a
- * cancellation summary describing how many commands completed and which remain.
+ * 1. isPromptFromTuiDriver: submitted text matches the active queue command →
+ *    tui-driver.mjs typed a /gsd:* command — skip cancellation.
+ *
+ * 2. isSessionInAskUserQuestionFlow: pending-answer-{session}.json exists →
+ *    tui-driver-ask.mjs is answering an AskUserQuestion TUI (typing Down/Enter/
+ *    Space/text keystrokes) — those keystrokes fire UserPromptSubmit but are NOT
+ *    a human manual takeover. Skip cancellation.
+ *
+ * If neither guard matches and a queue exists, it was cancelled by genuine human
+ * input. The agent is woken with a cancellation summary.
  */
 
 import { resolve } from 'node:path';
@@ -18,6 +25,7 @@ import {
   wakeAgentWithRetry,
   cancelQueueForSession,
   isPromptFromTuiDriver,
+  isSessionInAskUserQuestionFlow,
   appendJsonlEntry,
 } from '../../lib/index.mjs';
 
@@ -30,6 +38,11 @@ async function main() {
 
   if (isPromptFromTuiDriver(sessionName, submittedPrompt)) {
     appendJsonlEntry({ level: 'debug', source: 'event_user_prompt_submit', message: 'Prompt matches active queue command — TUI driver input, skipping cancellation', session: sessionName }, sessionName);
+    process.exit(0);
+  }
+
+  if (isSessionInAskUserQuestionFlow(sessionName)) {
+    appendJsonlEntry({ level: 'debug', source: 'event_user_prompt_submit', message: 'Pending answer file exists — AskUserQuestion TUI input, skipping cancellation', session: sessionName }, sessionName);
     process.exit(0);
   }
 
