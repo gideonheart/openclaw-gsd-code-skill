@@ -132,7 +132,7 @@ None yet.
 | 14 | Fix 7 bugs in Phase 04 CONTEXT.md: remove stale queue/project-context from PreToolUse prompt, standardize function comment filenames, add formatQuestionsForAgent example, blocking note, prerequisites, split Claude's Discretion, add wakeAgentWithRetry references | 2026-02-22 | 6bb9190 | [14-fix-7-bugs-in-phase-04-context-md-remove](./quick/14-fix-7-bugs-in-phase-04-context-md-remove/) |
 | 15 | Hook installer + fix AskUserQuestion handler wiring (config/hooks.json, bin/install-hooks.mjs, logger session fix) | 2026-02-22 | 95fe378 | [15-investigate-and-fix-askuserquestion-pret](./quick/15-investigate-and-fix-askuserquestion-pret/) |
 | 16 | Add session rotation CLI (bin/rotate-session.mjs) — atomic UUID swap with session_history archiving, schema docs, example config | 2026-02-22 | df177b8 | [16-add-session-rotation-to-agent-registry-r](./quick/16-add-session-rotation-to-agent-registry-r/) |
-| 17 | Update all .planning docs (PROJECT, ROADMAP, REQUIREMENTS, MILESTONES) to reflect Phase 4 completion + quick-15/16 features | 2026-02-22 | pending | [17-update-all-planning-docs-project-roadmap](./quick/17-update-all-planning-docs-project-roadmap/) |
+| 17 | Update all .planning docs (PROJECT, ROADMAP, REQUIREMENTS, MILESTONES) to reflect Phase 4 completion + quick-15/16 features | 2026-02-22 | 8ce975a | [17-update-all-planning-docs-project-roadmap](./quick/17-update-all-planning-docs-project-roadmap/) |
 
 ## Session Continuity
 
