@@ -23,7 +23,7 @@ v4.0 rewrites the hook system from scratch with an event-folder architecture. Fi
 - [x] **Phase 2: Shared Library** - Build the Node.js shared lib with agent resolution, gateway delivery, and JSON extraction
 - [x] **Phase 02.1: Refactor (lib review)** - Fix retry defaults, logger error handling, shared SKILL_ROOT (completed 2026-02-20)
 - [x] **Phase 3: Stop Event (Full Stack)** - Build event folder, handler, prompt, and TUI driver for Stop — test end-to-end (completed 2026-02-20)
-- [ ] **Phase 4: AskUserQuestion Lifecycle (Full Stack)** - PreToolUse and PostToolUse handlers, prompts, and TUI driver — test end-to-end
+- [x] **Phase 4: AskUserQuestion Lifecycle (Full Stack)** - PreToolUse and PostToolUse handlers, prompts, and TUI driver — test end-to-end (completed 2026-02-22)
 - [ ] **Phase 5: Registration and Documentation** - Register all handlers in settings.json, update install.sh, SKILL.md, README.md
 
 ## Phase Details
@@ -120,7 +120,7 @@ Plans:
   3. tui_driver_ask_user_question.mjs navigates with arrow keys, selects with space (multiSelect) or enter (single-select), and submits
   4. events/post_tool_use/ask_user_question/ exists with event_post_ask_user_question.mjs and prompt_post_ask_user_question.md
   5. PostToolUse prompt instructs agent to compare submitted answer against its decision and report mismatch
-**Plans:** 3 plans
+**Plans:** 3/3 plans complete
 
 Plans:
 - [ ] 04-01-PLAN.md — Shared domain library: lib/ask-user-question.mjs (8 functions for question metadata, pending answer, formatting, comparison) + lib/index.mjs re-exports
@@ -150,7 +150,7 @@ Plans:
 | 2. Shared Library | 2/2 | Complete | 2026-02-20 |
 | 02.1. Refactor (lib review) | 1/1 | Complete    | 2026-02-20 |
 | 3. Stop Event (Full Stack) | 3/3 | Complete    | 2026-02-20 |
-| 4. AskUserQuestion Lifecycle (Full Stack) | 0/3 | Planning complete | - |
+| 4. AskUserQuestion Lifecycle (Full Stack) | 3/3 | Complete   | 2026-02-22 |
 | 5. Registration and Documentation | 0/TBD | Not started | - |
 
 ---
