@@ -131,9 +131,10 @@ None yet.
 | 13 | DRY/SRP refactor of hook-event-logger.sh: single timestamp, collapsed JSONL builder, removed .log output and flock | 2026-02-21 | c1fafc5 | [13-dry-srp-refactor-hook-event-logger-sh-si](./quick/13-dry-srp-refactor-hook-event-logger-sh-si/) |
 | 14 | Fix 7 bugs in Phase 04 CONTEXT.md: remove stale queue/project-context from PreToolUse prompt, standardize function comment filenames, add formatQuestionsForAgent example, blocking note, prerequisites, split Claude's Discretion, add wakeAgentWithRetry references | 2026-02-22 | 6bb9190 | [14-fix-7-bugs-in-phase-04-context-md-remove](./quick/14-fix-7-bugs-in-phase-04-context-md-remove/) |
 | 15 | Hook installer + fix AskUserQuestion handler wiring (config/hooks.json, bin/install-hooks.mjs, logger session fix) | 2026-02-22 | 95fe378 | [15-investigate-and-fix-askuserquestion-pret](./quick/15-investigate-and-fix-askuserquestion-pret/) |
+| 16 | Add session rotation CLI (bin/rotate-session.mjs) — atomic UUID swap with session_history archiving, schema docs, example config | 2026-02-22 | 6554a0c | [16-add-session-rotation-to-agent-registry-r](./quick/16-add-session-rotation-to-agent-registry-r/) |
 
 ## Session Continuity
 
 Last session: 2026-02-22
-Stopped at: Completed Phase 04 Plan 03: PostToolUse verification handler closes AskUserQuestion lifecycle loop
+Stopped at: Completed quick task 16: session rotation CLI for agent registry
 Resume file: (Phase 04 complete — proceed to Phase 05)
