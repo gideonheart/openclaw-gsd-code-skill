@@ -7,7 +7,15 @@
       "working_directory": "/home/forge/.openclaw/workspace",
       "openclaw_session_id": "00000000-0000-0000-0000-000000000001",
       "system_prompt_file": "config/default-system-prompt.md",
-      "skip_permissions": true
+      "skip_permissions": true,
+      "session_history": [
+        {
+          "session_id": "00000000-0000-0000-0000-000000000000",
+          "session_file": "/home/forge/.openclaw/agents/gideon/sessions/00000000-0000-0000-0000-000000000000.jsonl",
+          "rotated_at": "2026-02-20T10:00:00Z",
+          "label": "switched to v4.0 branch"
+        }
+      ]
     },
     {
       "agent_id": "warden",
