@@ -20,8 +20,8 @@ Requirements for v4.0 Event-Driven Hook Architecture. Each maps to roadmap phase
 
 - [x] **TUI-01**: A generic `bin/tui-driver.mjs` handles TUI interaction for all event types — accepts a session name and command array, creates a queue, and types the first command
 - [x] **TUI-02**: Stop TUI driver knows how to type a GSD slash command, tab-complete, and press enter in the tmux pane
-- [ ] **TUI-03**: AskUserQuestion TUI driver knows how to navigate options (arrow keys), select (space for multiSelect, enter for single-select), and submit
-- [ ] **TUI-04**: TUI drivers replace monolithic menu-driver.sh for hook-driven interactions
+- [x] **TUI-03**: AskUserQuestion TUI driver knows how to navigate options (arrow keys), select (space for multiSelect, enter for single-select), and submit
+- [x] **TUI-04**: TUI drivers replace monolithic menu-driver.sh for hook-driven interactions
 - [x] **TUI-05**: TUI drivers are referenced in prompt templates so the agent knows which driver to call
 
 ### Stop Event
@@ -33,7 +33,7 @@ Requirements for v4.0 Event-Driven Hook Architecture. Each maps to roadmap phase
 ### AskUserQuestion Lifecycle
 
 - [x] **ASK-01**: PreToolUse(AskUserQuestion) handler extracts `tool_input.questions` array with question text, options, and multiSelect flag
-- [ ] **ASK-02**: PreToolUse(AskUserQuestion) prompt template instructs agent to read the question, decide the answer, and call the AskUserQuestion TUI driver with the chosen option
+- [x] **ASK-02**: PreToolUse(AskUserQuestion) prompt template instructs agent to read the question, decide the answer, and call the AskUserQuestion TUI driver with the chosen option
 - [x] **ASK-03**: PostToolUse(AskUserQuestion) handler extracts `tool_response.answers` object and the original `tool_input.questions`
 - [ ] **ASK-04**: PostToolUse(AskUserQuestion) prompt template instructs agent to verify that the submitted answer matches what agent decided, and report any mismatch
 
@@ -95,14 +95,14 @@ Requirements for v4.0 Event-Driven Hook Architecture. Each maps to roadmap phase
 | ARCH-06 | Phase 2 | Complete |
 | TUI-01 | Phase 3 | Complete |
 | TUI-02 | Phase 3 | Complete |
-| TUI-03 | Phase 4 | Pending |
-| TUI-04 | Phase 4 | Pending |
+| TUI-03 | Phase 4 | Complete |
+| TUI-04 | Phase 4 | Complete |
 | TUI-05 | Phase 3 | Complete |
 | STOP-01 | Phase 3 | Complete |
 | STOP-02 | Phase 3 | Complete |
 | STOP-03 | Phase 3 | Complete |
 | ASK-01 | Phase 4 | Complete |
-| ASK-02 | Phase 4 | Pending |
+| ASK-02 | Phase 4 | Complete |
 | ASK-03 | Phase 4 | Complete |
 | ASK-04 | Phase 4 | Pending |
 | REG-01 | Phase 1 | Complete |
