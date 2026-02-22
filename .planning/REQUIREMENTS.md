@@ -124,4 +124,4 @@ Requirements for v4.0 Event-Driven Hook Architecture. Each maps to roadmap phase
 
 ---
 *Requirements defined: 2026-02-19*
-*Last updated: 2026-02-20 — REG-01 checkbox fixed to match traceability table*
+*Last updated: 2026-02-22 — Phase 4 (ASK-01 through ASK-04) complete, quick-15 added install-hooks.mjs*

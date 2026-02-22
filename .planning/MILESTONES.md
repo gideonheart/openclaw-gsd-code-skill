@@ -5,7 +5,8 @@
 **Goal:** Rewrite hook system from scratch. Event-folder architecture where each Claude Code hook event maps to `./events/{event_name}/` with handler + prompt. Agent wakes via OpenClaw, responds with GSD slash commands.
 
 **Started:** 2026-02-19
-**Phases:** TBD (defining requirements)
+**Phases:** 5 (1-5), Phase 4 complete. Phase 5 (Registration and Documentation) remaining.
+**What's built so far:** Event-folder architecture, shared Node.js lib (13 exports), Stop event full stack, AskUserQuestion lifecycle (PreToolUse + TUI driver + PostToolUse verification), hook installer, session rotation CLI, 16 quick tasks for code review/refactoring/bug fixes
 
 ## v3.2 Per-Hook TUI Instruction Prompts (Shipped)
 
@@ -38,4 +39,4 @@
 **What shipped:** 5 hook scripts, per-agent system prompts, hook_settings, hybrid hook mode, menu-driver type action
 
 ---
-*Last updated: 2026-02-19 after v4.0 milestone start*
+*Last updated: 2026-02-22 — v4.0 Phase 4 complete, Phase 5 remaining*

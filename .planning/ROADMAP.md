@@ -123,9 +123,9 @@ Plans:
 **Plans:** 3/3 plans complete
 
 Plans:
-- [ ] 04-01-PLAN.md — Shared domain library: lib/ask-user-question.mjs (8 functions for question metadata, pending answer, formatting, comparison) + lib/index.mjs re-exports
-- [ ] 04-02-PLAN.md — PreToolUse router + AskUserQuestion handler + prompt + bin/tui-driver-ask.mjs TUI navigator (4 action types)
-- [ ] 04-03-PLAN.md — PostToolUse router + AskUserQuestion verification handler + mismatch prompt (closes the verification loop)
+- [x] 04-01-PLAN.md — Shared domain library: lib/ask-user-question.mjs (8 functions for question metadata, pending answer, formatting, comparison) + lib/index.mjs re-exports
+- [x] 04-02-PLAN.md — PreToolUse router + AskUserQuestion handler + prompt + bin/tui-driver-ask.mjs TUI navigator (4 action types)
+- [x] 04-03-PLAN.md — PostToolUse router + AskUserQuestion verification handler + mismatch prompt (closes the verification loop)
 
 ### Phase 5: Registration and Documentation
 **Goal**: All v4.0 event handlers are registered in ~/.claude/settings.json via an idempotent script; install.sh reflects the new event-folder structure; SKILL.md and README.md describe v4.0 architecture accurately
@@ -155,3 +155,4 @@ Plans:
 
 ---
 *Roadmap created: 2026-02-19 for v4.0 Event-Driven Hook Architecture*
+*Last updated: 2026-02-22 — Phase 4 plan checkboxes marked complete*
