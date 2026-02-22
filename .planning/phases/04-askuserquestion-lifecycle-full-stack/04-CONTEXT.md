@@ -67,6 +67,7 @@ The full PreToolUse → PostToolUse verification loop for AskUserQuestion tool c
 ### Escalation Policy
 
 - **Agent ALWAYS answers. No exceptions.** The OpenClaw agent IS the human. Deferring blocks the session and stops the autonomous loop.
+- **AskUserQuestion is blocking** — Claude Code waits for the answer before continuing. No concurrent question handling needed. Each question is independent and sequential.
 - **"Chat about this"** reserved for when the **question is WRONG** — contradicts project state, wrong phase, hallucinated requirement. Agent redirects Claude Code.
 - **Three-tier answer strategy:**
 
@@ -121,31 +122,63 @@ The full PreToolUse → PostToolUse verification loop for AskUserQuestion tool c
 
 - **`lib/ask-user-question.mjs`** — owns ALL AskUserQuestion domain knowledge
 - Functions:
-  - `formatQuestionsForAgent(toolInput)` — used by PreToolUse handler + PostToolUse mismatch prompt
-  - `saveQuestionMetadata(sessionName, toolInput, toolUseId)` — PreToolUse handler
-  - `readQuestionMetadata(sessionName)` — TUI driver
-  - `deleteQuestionMetadata(sessionName)` — PostToolUse handler
-  - `savePendingAnswer(sessionName, intent, toolUseId)` — TUI driver
-  - `readPendingAnswer(sessionName)` — PostToolUse handler
-  - `deletePendingAnswer(sessionName)` — PostToolUse handler
-  - `compareAnswerWithIntent(toolResponse, pendingAnswer, toolInput)` — PostToolUse handler
+  - `formatQuestionsForAgent(toolInput)` — used by `handle_ask_user_question.mjs` + `handle_post_ask_user_question.mjs` (mismatch prompt)
+  - `saveQuestionMetadata(sessionName, toolInput, toolUseId)` — used by `handle_ask_user_question.mjs`
+  - `readQuestionMetadata(sessionName)` — used by `bin/tui-driver-ask.mjs`
+  - `deleteQuestionMetadata(sessionName)` — used by `handle_post_ask_user_question.mjs`
+  - `savePendingAnswer(sessionName, intent, toolUseId)` — used by `bin/tui-driver-ask.mjs`
+  - `readPendingAnswer(sessionName)` — used by `handle_post_ask_user_question.mjs`
+  - `deletePendingAnswer(sessionName)` — used by `handle_post_ask_user_question.mjs`
+  - `compareAnswerWithIntent(toolResponse, pendingAnswer, toolInput)` — used by `handle_post_ask_user_question.mjs`
+
+Handlers use `wakeAgentWithRetry` from `lib/gateway.mjs` for all gateway calls (established in Phase 3.1 refactor, quick-10).
 
 ### PreToolUse Prompt Format
 
 Agent receives:
 - Session name
-- Active queue command (read from queue file — e.g., "/gsd:discuss-phase 3")
-- GSD phase type (discuss/plan/execute/verify)
 - All questions with 0-indexed options, descriptions, multiSelect flags
-- Project context: STATE.md, ROADMAP.md, prior CONTEXT.md references
-- TUI driver call syntax with answer format examples
+- Answer format examples per action type (select, type, multi-select, chat)
+- TUI driver call syntax: `node bin/tui-driver-ask.mjs --session <name> '<decisions JSON>'`
 
-### Claude's Discretion
+### formatQuestionsForAgent Example
 
-- `action: chat` exact Down count to reach "Chat about this" — test live (does separator count as navigable?)
+```
+Input toolInput:
+{
+  "questions": [
+    { "question": "How should we handle auth?", "options": ["JWT tokens", "Session cookies", "You decide"], "multiSelect": false },
+    { "question": "Which features to include?", "options": ["Login", "Register", "Password reset"], "multiSelect": true }
+  ]
+}
+
+formatQuestionsForAgent output:
+Question 0: How should we handle auth?
+  [0] JWT tokens
+  [1] Session cookies
+  [2] You decide
+  multiSelect: false
+
+Question 1: Which features to include?
+  [0] Login
+  [1] Register
+  [2] Password reset
+  multiSelect: true
+```
+
+### Implementation Details (Claude's Discretion)
+
 - Comparison logic implementation details per action type
-- Error handling in question/pending-answer file operations
-- Prompt wording for mismatch correction
+- Error handling in question/pending-answer file read/write/delete operations
+- Prompt wording for mismatch correction notification
+
+### TUI Unknowns (Resolve via Live Testing)
+
+- `action: chat` exact Down count to reach "Chat about this" — does separator count as navigable element?
+- Annotation text entry mechanics in multi-select (deferred to post-Phase 4 v1)
+- Tab auto-advance behavior between questions in multi-question tabbed forms
+- Cursor starting position (assumed: option 0)
+- "Type something" submission scope — submits that question only, or entire form?
 
 </decisions>
 
@@ -178,8 +211,16 @@ Agent receives:
 - **SubagentStart/SubagentStop hooks** — mentioned in autonomous loop context, future phase
 - **Notification/idle_prompt handler** — from Phase 3 deferred items, evaluate after Phase 4 testing
 - **Error/failure status in queue** — from Phase 3 deferred, keep plumbing dumb for now
+- **`wakeAgentWithRetry` as prerequisite** — Phase 3.1 refactor (quick-10) already extracted this helper to `lib/gateway.mjs`. Phase 4 handlers MUST use it, not raw retry+gateway calls.
 
 </deferred>
+
+## Prerequisites
+
+- **Phase 3.1 refactor complete** — the following shared utilities must exist:
+  - `wakeAgentWithRetry` helper in `lib/gateway.mjs` (DRY wrapper for retry+gateway pattern)
+  - `readHookContext` shared boilerplate in `lib/hook-context.mjs` (session/agent resolution)
+  - Guard-failure debug logging via `lib/logger.mjs`
 
 ## File Structure
 
@@ -213,7 +254,7 @@ logs/queues/                                    ← runtime, gitignored
 PreToolUse fires (AskUserQuestion)
   → Router dispatches to handle_ask_user_question.mjs
   → Save question metadata to logs/queues/question-{session}.json
-  → Format questions for agent prompt (include active queue command + project context)
+  → Format questions for agent prompt via formatQuestionsForAgent(toolInput)
   → Wake OpenClaw agent via gateway (fire-and-forget)
   → Exit 0
 
