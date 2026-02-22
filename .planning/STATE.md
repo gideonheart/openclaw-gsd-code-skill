@@ -133,9 +133,10 @@ None yet.
 | 15 | Hook installer + fix AskUserQuestion handler wiring (config/hooks.json, bin/install-hooks.mjs, logger session fix) | 2026-02-22 | 95fe378 | [15-investigate-and-fix-askuserquestion-pret](./quick/15-investigate-and-fix-askuserquestion-pret/) |
 | 16 | Add session rotation CLI (bin/rotate-session.mjs) — atomic UUID swap with session_history archiving, schema docs, example config | 2026-02-22 | df177b8 | [16-add-session-rotation-to-agent-registry-r](./quick/16-add-session-rotation-to-agent-registry-r/) |
 | 17 | Update all .planning docs (PROJECT, ROADMAP, REQUIREMENTS, MILESTONES) to reflect Phase 4 completion + quick-15/16 features | 2026-02-22 | 8ce975a | [17-update-all-planning-docs-project-roadmap](./quick/17-update-all-planning-docs-project-roadmap/) |
+| 18 | Fix gateway.mjs missing --agent flag: add agentId parameter to wakeAgentViaGateway, thread resolvedAgent.agent_id through wakeAgentWithRetry | 2026-02-22 | 6d60b60 | [18-fix-gateway-mjs-missing-agent-flag-pass-](./quick/18-fix-gateway-mjs-missing-agent-flag-pass-/) |
 
 ## Session Continuity
 
 Last session: 2026-02-22
-Stopped at: Completed quick task 17: planning docs refresh
+Stopped at: Completed quick task 18: fix gateway.mjs --agent flag
 Resume file: (Phase 04 complete — proceed to Phase 05)
