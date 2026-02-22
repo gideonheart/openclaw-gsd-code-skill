@@ -9,13 +9,12 @@
  * statusLine, enabledPlugins, etc.).
  *
  * Usage:
- *   node bin/install-hooks.mjs                # Install both logger + handlers
- *   node bin/install-hooks.mjs --handlers     # Install only event handlers (no logger)
- *   node bin/install-hooks.mjs --logger       # Install only debug logger (no handlers)
- *   node bin/install-hooks.mjs --remove       # Remove all hooks from settings.json
- *   node bin/install-hooks.mjs --dry-run      # Show what would change without writing
- *
- * Flags can be combined: --handlers --dry-run
+ *   node bin/install-hooks.mjs                  # Install handlers only (default)
+ *   node bin/install-hooks.mjs --logger         # Install handlers + debug logger
+ *   node bin/install-hooks.mjs --remove         # Remove all hooks
+ *   node bin/install-hooks.mjs --remove --handlers  # Remove only handlers, keep logger
+ *   node bin/install-hooks.mjs --remove --logger    # Remove only logger, keep handlers
+ *   node bin/install-hooks.mjs --dry-run        # Preview without writing
  */
 
 import { readFileSync, writeFileSync, renameSync } from 'node:fs';
@@ -28,14 +27,14 @@ const HOOKS_SOURCE_PATH = join(SKILL_ROOT, 'config', 'hooks.json');
 
 const removeMode = process.argv.includes('--remove');
 const dryRunMode = process.argv.includes('--dry-run');
-const handlersOnly = process.argv.includes('--handlers');
-const loggerOnly = process.argv.includes('--logger');
+const includeLogger = process.argv.includes('--logger');
+const handlersFlag = process.argv.includes('--handlers');
 
-function isLoggerHookEntry(hookEntry) {
+function isLoggerEntry(hookEntry) {
   return hookEntry.hooks?.some(hook => hook.command?.includes('hook-event-logger'));
 }
 
-function isHandlerHookEntry(hookEntry) {
+function isHandlerEntry(hookEntry) {
   return hookEntry.hooks?.some(hook => !hook.command?.includes('hook-event-logger'));
 }
 
@@ -53,21 +52,15 @@ function readCanonicalHooks() {
   return JSON.parse(resolvedContent).hooks;
 }
 
-function filterHookEntries(allHooks) {
-  if (!handlersOnly && !loggerOnly) return allHooks;
-
-  const filteredHooks = {};
+function filterEntries(allHooks, keepFilter) {
+  const filtered = {};
   for (const [eventName, eventEntries] of Object.entries(allHooks)) {
-    const kept = eventEntries.filter(entry => {
-      if (handlersOnly) return isHandlerHookEntry(entry);
-      if (loggerOnly) return isLoggerHookEntry(entry);
-      return true;
-    });
+    const kept = eventEntries.filter(keepFilter);
     if (kept.length > 0) {
-      filteredHooks[eventName] = kept;
+      filtered[eventName] = kept;
     }
   }
-  return filteredHooks;
+  return filtered;
 }
 
 function countByType(hooksObject) {
@@ -75,8 +68,8 @@ function countByType(hooksObject) {
   let handlerCount = 0;
   for (const eventEntries of Object.values(hooksObject)) {
     for (const entry of eventEntries) {
-      if (isLoggerHookEntry(entry)) loggerCount++;
-      if (isHandlerHookEntry(entry)) handlerCount++;
+      if (isLoggerEntry(entry)) loggerCount++;
+      if (isHandlerEntry(entry)) handlerCount++;
     }
   }
   return { loggerCount, handlerCount };
@@ -88,71 +81,102 @@ function writeSettingsAtomically(settingsObject) {
   renameSync(temporaryPath, SETTINGS_PATH);
 }
 
-function describeMode() {
-  if (handlersOnly) return 'handlers only';
-  if (loggerOnly) return 'logger only';
-  return 'all (logger + handlers)';
+function printHandlerList(hooksObject) {
+  for (const [eventName, eventEntries] of Object.entries(hooksObject)) {
+    for (const entry of eventEntries) {
+      if (!isHandlerEntry(entry)) continue;
+      const matcherLabel = entry.matcher ? ` [${entry.matcher}]` : '';
+      console.log(`  ${eventName}${matcherLabel}: ${entry.hooks[0].command}`);
+    }
+  }
 }
 
-// --- Main ---
-
-if (handlersOnly && loggerOnly) {
-  console.error('Cannot use --handlers and --logger together. Use neither for both.');
-  process.exit(1);
-}
-
-const settings = readSettingsFile();
-const previousEventCount = settings.hooks ? Object.keys(settings.hooks).length : 0;
+// --- Remove mode ---
 
 if (removeMode) {
+  const settings = readSettingsFile();
   if (!settings.hooks) {
     console.log('No hooks found in settings.json — nothing to remove.');
     process.exit(0);
   }
 
-  delete settings.hooks;
+  const selectiveRemove = handlersFlag || includeLogger;
 
-  if (dryRunMode) {
-    console.log(`[dry-run] Would remove ${previousEventCount} hook events from settings.json`);
+  if (!selectiveRemove) {
+    // --remove (no sub-flag) = remove everything
+    if (dryRunMode) {
+      console.log(`[dry-run] Would remove all ${Object.keys(settings.hooks).length} hook events`);
+      process.exit(0);
+    }
+    delete settings.hooks;
+    writeSettingsAtomically(settings);
+    console.log(`Removed all hooks from ${SETTINGS_PATH}`);
     process.exit(0);
   }
 
+  // Selective remove: keep entries of the OTHER type
+  const keepFilter = handlersFlag
+    ? (entry) => isLoggerEntry(entry)   // --remove --handlers → keep logger
+    : (entry) => isHandlerEntry(entry); // --remove --logger → keep handlers
+
+  const removingLabel = handlersFlag ? 'handlers' : 'logger';
+  const keepingLabel = handlersFlag ? 'logger' : 'handlers';
+  const remaining = filterEntries(settings.hooks, keepFilter);
+  const remainingEventCount = Object.keys(remaining).length;
+
+  if (dryRunMode) {
+    console.log(`[dry-run] Would remove ${removingLabel}, keeping ${keepingLabel}`);
+    console.log(`[dry-run] ${remainingEventCount} hook events would remain`);
+    process.exit(0);
+  }
+
+  if (remainingEventCount === 0) {
+    delete settings.hooks;
+  } else {
+    settings.hooks = remaining;
+  }
   writeSettingsAtomically(settings);
-  console.log(`Removed ${previousEventCount} hook events from ${SETTINGS_PATH}`);
+  console.log(`Removed ${removingLabel}, kept ${keepingLabel} (${remainingEventCount} events remain)`);
   process.exit(0);
 }
 
+// --- Install mode ---
+
+if (handlersFlag) {
+  console.error('--handlers flag is only used with --remove. Default install already installs handlers.');
+  process.exit(1);
+}
+
 const allCanonicalHooks = readCanonicalHooks();
-const filteredHooks = filterHookEntries(allCanonicalHooks);
-const eventCount = Object.keys(filteredHooks).length;
-const { loggerCount, handlerCount } = countByType(filteredHooks);
+
+// Default = handlers only. --logger = handlers + logger.
+const keepFilter = includeLogger
+  ? () => true
+  : (entry) => isHandlerEntry(entry);
+
+const selectedHooks = filterEntries(allCanonicalHooks, keepFilter);
+const eventCount = Object.keys(selectedHooks).length;
+const { loggerCount, handlerCount } = countByType(selectedHooks);
+const modeLabel = includeLogger ? 'handlers + logger' : 'handlers';
 
 if (dryRunMode) {
-  console.log(`[dry-run] Mode: ${describeMode()}`);
-  console.log(`[dry-run] Would install ${eventCount} hook events (${loggerCount} loggers, ${handlerCount} handlers)`);
+  console.log(`[dry-run] Mode: ${modeLabel}`);
+  console.log(`[dry-run] Would install ${eventCount} hook events (${handlerCount} handlers, ${loggerCount} loggers)`);
   console.log(`[dry-run] Target: ${SETTINGS_PATH}`);
-  console.log(`[dry-run] Source: ${HOOKS_SOURCE_PATH}`);
 
   if (handlerCount > 0) {
-    console.log('\nEvent handlers:');
-    for (const [eventName, eventEntries] of Object.entries(filteredHooks)) {
-      for (const entry of eventEntries) {
-        if (!isHandlerHookEntry(entry)) continue;
-        const matcherLabel = entry.matcher ? ` [${entry.matcher}]` : '';
-        const command = entry.hooks[0].command;
-        console.log(`  ${eventName}${matcherLabel}: ${command}`);
-      }
-    }
+    console.log('\nHandlers:');
+    printHandlerList(selectedHooks);
   }
-
   if (loggerCount > 0) {
     console.log(`\nLogger: ${loggerCount} events`);
   }
   process.exit(0);
 }
 
-settings.hooks = filteredHooks;
+const settings = readSettingsFile();
+settings.hooks = selectedHooks;
 writeSettingsAtomically(settings);
 
-console.log(`Installed ${eventCount} hook events (${loggerCount} loggers, ${handlerCount} handlers) — mode: ${describeMode()}`);
+console.log(`Installed ${eventCount} hook events (${handlerCount} handlers, ${loggerCount} loggers) — ${modeLabel}`);
 console.log(`Target: ${SETTINGS_PATH}`);
