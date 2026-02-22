@@ -32,9 +32,9 @@ Requirements for v4.0 Event-Driven Hook Architecture. Each maps to roadmap phase
 
 ### AskUserQuestion Lifecycle
 
-- [ ] **ASK-01**: PreToolUse(AskUserQuestion) handler extracts `tool_input.questions` array with question text, options, and multiSelect flag
+- [x] **ASK-01**: PreToolUse(AskUserQuestion) handler extracts `tool_input.questions` array with question text, options, and multiSelect flag
 - [ ] **ASK-02**: PreToolUse(AskUserQuestion) prompt template instructs agent to read the question, decide the answer, and call the AskUserQuestion TUI driver with the chosen option
-- [ ] **ASK-03**: PostToolUse(AskUserQuestion) handler extracts `tool_response.answers` object and the original `tool_input.questions`
+- [x] **ASK-03**: PostToolUse(AskUserQuestion) handler extracts `tool_response.answers` object and the original `tool_input.questions`
 - [ ] **ASK-04**: PostToolUse(AskUserQuestion) prompt template instructs agent to verify that the submitted answer matches what agent decided, and report any mismatch
 
 ### Registry and Registration
@@ -101,9 +101,9 @@ Requirements for v4.0 Event-Driven Hook Architecture. Each maps to roadmap phase
 | STOP-01 | Phase 3 | Complete |
 | STOP-02 | Phase 3 | Complete |
 | STOP-03 | Phase 3 | Complete |
-| ASK-01 | Phase 4 | Pending |
+| ASK-01 | Phase 4 | Complete |
 | ASK-02 | Phase 4 | Pending |
-| ASK-03 | Phase 4 | Pending |
+| ASK-03 | Phase 4 | Complete |
 | ASK-04 | Phase 4 | Pending |
 | REG-01 | Phase 1 | Complete |
 | REG-02 | Phase 5 | Pending |

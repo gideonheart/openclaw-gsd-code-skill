@@ -5,16 +5,16 @@
 See: .planning/PROJECT.md (updated 2026-02-20)
 
 **Core value:** When Claude Code fires any hook event, the right agent wakes up with the right context and knows exactly which GSD slash command to type next
-**Current focus:** Phase 03 complete — All 3 plans done. Ready for Phase 04 (PreToolUse/PostToolUse AskUserQuestion handlers)
+**Current focus:** Phase 04 in progress — Plan 01 (domain library) complete. Plans 02 (PreToolUse handler) and 03 (PostToolUse handler + TUI driver) remaining.
 
 ## Current Position
 
-Phase: 3 of 5 (Stop Event - Full Stack)
-Plan: 3 of 3 in current phase
-Status: Phase 3 complete — all 3 plans done
-Last activity: 2026-02-22 - Completed quick task 14: Fix 7 bugs in Phase 04 CONTEXT.md
+Phase: 4 of 5 (AskUserQuestion Lifecycle - Full Stack)
+Plan: 1 of 3 in current phase
+Status: Phase 4 Plan 01 complete — AskUserQuestion domain library (lib/ask-user-question.mjs) built
+Last activity: 2026-02-22 - Completed Phase 04 Plan 01: AskUserQuestion domain module
 
-Progress: [████████░░] 75%
+Progress: [████████░░] 80%
 
 ## Performance Metrics
 
@@ -38,6 +38,7 @@ Progress: [████████░░] 75%
 | Phase 03-stop-event-full-stack P01 | 2 | 2 tasks | 3 files |
 | Phase 03-stop-event-full-stack P02 | 2 | 2 tasks | 3 files |
 | Phase 03-stop-event-full-stack P03 | 2 | 3 tasks | 3 files |
+| Phase 04-askuserquestion-lifecycle-full-stack P01 | 2 | 2 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -84,6 +85,10 @@ Recent decisions affecting current work:
 - [Phase 03-stop-event-full-stack]: SessionStart and UserPromptSubmit reuse prompt_stop.md — no dedicated prompts needed for pure queue-advance handlers
 - [Phase 03-stop-event-full-stack]: UserPromptSubmit stdin payload parsed but unused — session resolved via tmux display-message, consistent with other handlers
 - [Phase quick-13]: debug_log uses global TIMESTAMP_ISO instead of subshell date call — fewer forks, consistent timestamps
+- [04-01]: compareAnswerWithIntent takes (pendingAnswer, toolResponse, toolInput) — pendingAnswer.answers stores intent by question index, label resolved at comparison time from toolInput
+- [04-01]: chat action in compareAnswerWithIntent always returns matched:true — breaks normal TUI flow, next event handles outcome, no special queue logic needed
+- [04-01]: resolveAnswerValueForQuestion: tries string-index key first, falls back to question-text key — addresses RESEARCH.md Open Question 1 with debug-level telemetry
+- [04-01]: tool_use_id mismatch in compareAnswerWithIntent logs warn but proceeds — per RESEARCH.md Pitfall 4, don't block on stale correlation IDs
 
 ### Pending Todos
 
@@ -120,5 +125,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-02-22
-Stopped at: Completed quick task 14: Fix 7 bugs in Phase 04 CONTEXT.md
-Resume file: .planning/phases/04-askuserquestion-lifecycle-full-stack/04-CONTEXT.md
+Stopped at: Completed Phase 04 Plan 01: AskUserQuestion domain module (lib/ask-user-question.mjs)
+Resume file: .planning/phases/04-askuserquestion-lifecycle-full-stack/04-02-PLAN.md
