@@ -86,14 +86,16 @@ Arguments:
 1. `parseCommandLineArguments(rawArguments)` — parse args, return { positionalArguments, namedArguments }
 2. `readAgentRegistry()` — read and parse config/agent-registry.json, throw if missing/invalid (same pattern as launch-session.mjs)
 3. `findAgentByIdentifier(registry, agentIdentifier)` — find agent, throw if not found (does NOT check enabled — rotating disabled agents is valid)
-4. `buildSessionHistoryEntry(oldSessionId, label)` — create the history entry object:
+4. `buildSessionHistoryEntry(oldSessionId, agentIdentifier, label)` — create the history entry object:
    ```json
    {
      "session_id": "<old-uuid>",
+     "session_file": "/home/forge/.openclaw/agents/<agent_id>/sessions/<old-uuid>.jsonl",
      "rotated_at": "<ISO timestamp>",
      "label": "<text or null — omit key entirely if null>"
    }
    ```
+   The `session_file` is the absolute path to the OpenClaw session JSONL file. This path is Ctrl+Click-able in terminals. Built from pattern: `/home/forge/.openclaw/agents/{agent_id}/sessions/{session_id}.jsonl`.
    NOTE: Use `rotated_at` only (no `created_at`). We do not know when the old session was created — the registry does not track creation timestamps. Including a fabricated value would be dishonest. The `rotated_at` timestamp is sufficient for history purposes.
 5. `writeRegistryAtomically(registry)` — JSON.stringify with 2-space indent, write to tmp file (same directory, `.tmp` suffix), then renameSync over the original. This is the established atomic write pattern from this project.
 6. `main()` — orchestrates: parse args, read registry, find agent, archive old ID to session_history, generate new UUID, write back, print summary.
@@ -105,14 +107,14 @@ Arguments:
 
 **stdout output after successful rotation:**
 ```
-[ISO] Rotated session for agent: gideon
-[ISO]   Old: 00000000-0000-0000-0000-000000000001
+[ISO] Rotated session for agent: warden
+[ISO]   Old: 0ab5ef5c-c3ba-4f49-8265-4129b3c36a59
 [ISO]   New: a1b2c3d4-e5f6-7890-abcd-ef1234567890
 [ISO]   History: 3 entries
-[ISO]   Review old session: http://localhost:3434/sessions/00000000-0000-0000-0000-000000000001
+[ISO]   Old session file: /home/forge/.openclaw/agents/warden/sessions/0ab5ef5c-c3ba-4f49-8265-4129b3c36a59.jsonl
 ```
 
-The review URL uses the pattern `http://localhost:3434/sessions/{session_id}`. This provides a clickable Ctrl+Click link in the terminal.
+The session file path follows the pattern `/home/forge/.openclaw/agents/{agent_id}/sessions/{session_id}.jsonl`. This provides a clickable Ctrl+Click link in the terminal to review the old session's conversation history.
 
 **Error handling:**
 - Missing agent-id argument: print usage and exit 1
@@ -152,6 +154,7 @@ Add `session_history` array to the first agent (gideon) with one example entry s
       "session_history": [
         {
           "session_id": "00000000-0000-0000-0000-000000000000",
+          "session_file": "/home/forge/.openclaw/agents/gideon/sessions/00000000-0000-0000-0000-000000000000.jsonl",
           "rotated_at": "2026-02-20T10:00:00Z",
           "label": "switched to v4.0 branch"
         }
@@ -185,6 +188,7 @@ Each object in the `session_history` array has these fields:
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `session_id` | string | yes | The retired OpenClaw session UUID that was replaced during rotation. |
+| `session_file` | string | yes | Absolute path to the OpenClaw session JSONL file (`/home/forge/.openclaw/agents/{agent_id}/sessions/{session_id}.jsonl`). Ctrl+Click-able in terminals to review conversation history. |
 | `rotated_at` | string | yes | ISO 8601 timestamp of when this session was retired and replaced with a new one. |
 | `label` | string | no | Optional human-readable reason for the rotation (e.g., "switched to v4.0 branch"). Omitted when no label was provided. |
 ```

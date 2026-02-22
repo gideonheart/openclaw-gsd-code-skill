@@ -9,8 +9,26 @@
  * Usage:
  *   node bin/tui-driver.mjs --session <session-name> '<json-command-array>'
  *
- * Example:
+ * Examples:
  *   node bin/tui-driver.mjs --session warden-main-4 '["/clear", "/gsd:plan-phase 3"]'
+ *   node bin/tui-driver.mjs --session warden-main-4 '["/gsd:quick @logs/prompts/task-123.md"]'
+ *
+ * Long content (multiline prompts, task descriptions):
+ *   Commands are typed into the Claude Code TUI via tmux send-keys. Newlines
+ *   in the text act as Enter keypresses, which submits the input prematurely.
+ *   For any content longer than a single line, write it to a file and use
+ *   Claude Code's @file reference syntax:
+ *
+ *     1. Write content to:  logs/prompts/<descriptive-name>.md
+ *     2. Reference it in the command:  "/gsd:quick @logs/prompts/<descriptive-name>.md"
+ *
+ *   The logs/prompts/ directory is gitignored (under logs/) and holds
+ *   ephemeral prompt files written by OpenClaw before sending to a session.
+ *   Claude Code expands @file references at input time, so the full content
+ *   reaches the skill as $ARGUMENTS. The tui-driver only types the short
+ *   single-line command string.
+ *
+ *   NEVER pass multiline text directly in the command array — it will break.
  *
  * The command array is a JSON string of slash commands to execute in order.
  * The awaits hook for each command is resolved automatically from its type:

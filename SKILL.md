@@ -12,7 +12,7 @@ v4.0 event-driven architecture. Each Claude Code hook event has its own folder u
 
 - `bin/hook-event-logger.sh` — Universal debug logger for all Claude Code hook events. Reads stdin JSON payload and writes structured entries to per-session log files. Self-contained bootstrapping with no external library dependencies.
 - `bin/launch-session.mjs` — Launch a Claude Code session in a named tmux session for a registered agent. Reads agent configuration from config/agent-registry.json, creates the tmux session, starts Claude Code with the agent's system prompt, and optionally sends an initial command after startup.
-- `bin/tui-driver.mjs` — Generic TUI command driver. Creates a command queue and types the first slash command into a named tmux session. Hook-driven queue processor advances subsequent commands automatically.
+- `bin/tui-driver.mjs` — Generic TUI command driver. Creates a command queue and types the first slash command into a named tmux session. Hook-driven queue processor advances subsequent commands automatically. **Long content:** Commands are typed via tmux send-keys — newlines act as Enter and submit prematurely. For multiline content (task descriptions, prompts), write to `logs/prompts/<name>.md` and use `@file` reference syntax (e.g. `"/gsd:quick @logs/prompts/task-123.md"`). The directory is gitignored. Claude Code expands the reference at input time.
 
 ## Shared Library
 
