@@ -29,29 +29,15 @@
  * Saves pending answer to logs/queues/pending-answer-{session}.json BEFORE
  * typing keystrokes — for PostToolUse verification.
  *
- * Pre-keystroke delay: The PreToolUse hook calls wakeAgentWithRetry which
- * uses execFileSync (synchronous/blocking). The hook process does NOT exit
- * until the openclaw CLI returns. Claude Code only renders the AskUserQuestion
- * TUI AFTER the PreToolUse hook exits. This driver is called by the agent
- * DURING the blocked hook execution — so keystrokes would arrive before the
- * TUI is visible. The PRE_KEYSTROKE_DELAY_MILLISECONDS constant adds a wait
- * after saving the pending answer and before sending keystrokes, giving Claude
- * Code time to render the TUI after the hook exits.
+ * Uses tmux pane polling (captureTmuxPaneContent) to detect when the
+ * AskUserQuestion TUI has rendered before sending keystrokes. Polls until the
+ * first question's text appears in the pane, with a 15s maximum timeout and
+ * graceful fallback (warn + proceed) if polling does not detect the TUI.
  */
 
 import { parseArgs } from 'node:util';
 import { readQuestionMetadata, savePendingAnswer, appendJsonlEntry } from '../lib/index.mjs';
-import { sendKeysToTmux, sendSpecialKeyToTmux, sleepMilliseconds } from '../lib/tui-common.mjs';
-
-/**
- * How long to wait (in milliseconds) after saving the pending answer and before
- * sending the first tmux keystroke. This delay allows the PreToolUse hook process
- * to exit and Claude Code to render the AskUserQuestion TUI before keystrokes arrive.
- *
- * From log evidence: keystrokes fired 2 seconds before the PreToolUse hook exited.
- * 3000ms provides a safe margin above that observed gap.
- */
-const PRE_KEYSTROKE_DELAY_MILLISECONDS = 3000;
+import { sendKeysToTmux, sendSpecialKeyToTmux, sleepMilliseconds, captureTmuxPaneContent } from '../lib/tui-common.mjs';
 
 /**
  * Parse CLI arguments from process.argv.
@@ -247,6 +233,47 @@ function dispatchDecisionToTuiAction(sessionName, decision, questionData) {
   }
 }
 
+/**
+ * Poll the tmux pane until the AskUserQuestion TUI is visible (first question text appears).
+ * Replaces the previous fixed-delay approach with adaptive polling
+ * so keystrokes are sent as soon as the TUI renders, not after an arbitrary wait.
+ *
+ * Proceeds even if the TUI is not detected within the maximum wait — better to
+ * attempt keystrokes than to abort the entire driver invocation.
+ *
+ * @param {string} sessionName - Target tmux session name.
+ * @param {Object} questionMetadata - Question metadata from readQuestionMetadata.
+ */
+async function waitForTuiContentToAppear(sessionName, questionMetadata) {
+  const POLL_INTERVAL_MILLISECONDS = 250;
+  const MAXIMUM_WAIT_MILLISECONDS = 15000;
+
+  const searchString = questionMetadata.questions[0].question;
+  const pollStartEpoch = Date.now();
+
+  while (Date.now() - pollStartEpoch < MAXIMUM_WAIT_MILLISECONDS) {
+    try {
+      const paneContent = captureTmuxPaneContent(sessionName);
+      if (paneContent.includes(searchString)) {
+        return;
+      }
+    } catch {
+      // tmux capture failed (session gone or not ready) — proceed to keystroke attempt
+      return;
+    }
+
+    sleepMilliseconds(POLL_INTERVAL_MILLISECONDS);
+  }
+
+  appendJsonlEntry({
+    level: 'warn',
+    source: 'tui-driver-ask',
+    message: `AskUserQuestion TUI not detected in pane within ${MAXIMUM_WAIT_MILLISECONDS}ms — proceeding with keystrokes anyway`,
+    session: sessionName,
+    search_string: searchString,
+  }, sessionName);
+}
+
 async function main() {
   const { sessionName, decisionsArrayString } = parseCommandLineArguments();
 
@@ -293,12 +320,8 @@ async function main() {
 
   savePendingAnswer(sessionName, pendingAnswers, pendingAnswerAction, questionMetadata.tool_use_id);
 
-  // Wait for the AskUserQuestion TUI to render before sending keystrokes.
-  // The PreToolUse hook process blocks on openclaw agent CLI (execFileSync).
-  // This driver runs while that hook is still blocked — meaning Claude Code
-  // has not yet rendered the AskUserQuestion TUI (it renders AFTER the hook exits).
-  // Without this delay, keystrokes arrive before the TUI appears and go to the void.
-  sleepMilliseconds(PRE_KEYSTROKE_DELAY_MILLISECONDS);
+  // Poll the tmux pane until the AskUserQuestion TUI is visible before sending keystrokes.
+  await waitForTuiContentToAppear(sessionName, questionMetadata);
 
   // Type keystrokes for each question
   for (const [questionIndex, decision] of decisions.entries()) {
