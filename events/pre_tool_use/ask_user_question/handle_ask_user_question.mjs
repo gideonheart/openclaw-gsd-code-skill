@@ -15,7 +15,6 @@ import {
   formatQuestionsForAgent,
   saveQuestionMetadata,
   wakeAgentWithRetry,
-  appendJsonlEntry,
 } from '../../../lib/index.mjs';
 
 /**
@@ -28,7 +27,7 @@ import {
  * @param {Object} params.hookPayload - The parsed PreToolUse hook payload.
  * @param {string} params.sessionName - The tmux session name.
  * @param {Object} params.resolvedAgent - The resolved agent object with openclaw_session_id.
- * @returns {Promise<void>}
+ * @returns {Promise<{decisionPath: string, outcome: Object}>}
  */
 export async function handleAskUserQuestion({ hookPayload, sessionName, resolvedAgent }) {
   const toolInput = hookPayload.tool_input;
@@ -42,12 +41,11 @@ export async function handleAskUserQuestion({ hookPayload, sessionName, resolved
 
   await wakeAgentWithRetry({ resolvedAgent, messageContent: formattedQuestions, promptFilePath, eventType: 'PreToolUse', sessionName });
 
-  appendJsonlEntry({
-    level: 'info',
-    source: 'handle_ask_user_question',
-    message: 'Agent woken via gateway for AskUserQuestion PreToolUse event',
-    session: sessionName,
-    tool_use_id: toolUseId,
-    question_count: toolInput.questions.length,
-  }, sessionName);
+  return {
+    decisionPath: 'ask-user-question',
+    outcome: {
+      tool_use_id: toolUseId,
+      question_count: toolInput.questions.length,
+    },
+  };
 }

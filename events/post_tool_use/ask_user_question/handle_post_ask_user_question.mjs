@@ -23,7 +23,6 @@ import {
   deleteQuestionMetadata,
   compareAnswerWithIntent,
   wakeAgentWithRetry,
-  appendJsonlEntry,
 } from '../../../lib/index.mjs';
 
 /**
@@ -37,55 +36,41 @@ import {
  * @param {Object} params.hookPayload - The parsed PostToolUse hook payload.
  * @param {string} params.sessionName - The tmux session name.
  * @param {Object} params.resolvedAgent - The resolved agent object with openclaw_session_id.
- * @returns {Promise<void>}
+ * @returns {Promise<{decisionPath: string, outcome: Object}>}
  */
 export async function handlePostAskUserQuestion({ hookPayload, sessionName, resolvedAgent }) {
   const pendingAnswer = readPendingAnswer(sessionName);
 
   if (!pendingAnswer) {
-    appendJsonlEntry({
-      level: 'warn',
-      source: 'handle_post_ask_user_question',
-      message: `No pending-answer file for session ${sessionName} — TUI driver may not have been called or file was already cleaned up`,
-      session: sessionName,
-    }, sessionName);
-
     // Cleanup question metadata in case it was left behind
     deleteQuestionMetadata(sessionName);
-    return;
+    return {
+      decisionPath: 'ask-user-question-no-pending',
+      outcome: { reason: 'No pending-answer file found' },
+    };
   }
 
   const toolResponse = hookPayload.tool_response;
   const toolInput = hookPayload.tool_input;
 
   if (!toolResponse || !toolResponse.answers) {
-    appendJsonlEntry({
-      level: 'warn',
-      source: 'handle_post_ask_user_question',
-      message: 'PostToolUse payload missing tool_response.answers',
-      session: sessionName,
-      tool_use_id: pendingAnswer.tool_use_id,
-    }, sessionName);
-
     deletePendingAnswer(sessionName);
     deleteQuestionMetadata(sessionName);
-    return;
+    return {
+      decisionPath: 'ask-user-question-missing-response',
+      outcome: { tool_use_id: pendingAnswer.tool_use_id, reason: 'Missing tool_response.answers' },
+    };
   }
 
   const comparisonResult = compareAnswerWithIntent(pendingAnswer, toolResponse, toolInput);
 
   if (comparisonResult.matched) {
-    appendJsonlEntry({
-      level: 'info',
-      source: 'handle_post_ask_user_question',
-      message: 'AskUserQuestion verified — answer matches intent',
-      session: sessionName,
-      tool_use_id: pendingAnswer.tool_use_id,
-    }, sessionName);
-
     deletePendingAnswer(sessionName);
     deleteQuestionMetadata(sessionName);
-    return;
+    return {
+      decisionPath: 'ask-user-question-verified',
+      outcome: { tool_use_id: pendingAnswer.tool_use_id },
+    };
   }
 
   // Mismatch path — wake agent with specific correction details
@@ -107,17 +92,12 @@ export async function handlePostAskUserQuestion({ hookPayload, sessionName, reso
     sessionName,
   });
 
-  appendJsonlEntry({
-    level: 'warn',
-    source: 'handle_post_ask_user_question',
-    message: 'AskUserQuestion mismatch detected',
-    session: sessionName,
-    tool_use_id: pendingAnswer.tool_use_id,
-    reason: comparisonResult.reason,
-  }, sessionName);
-
   deletePendingAnswer(sessionName);
   deleteQuestionMetadata(sessionName);
+  return {
+    decisionPath: 'ask-user-question-mismatch',
+    outcome: { tool_use_id: pendingAnswer.tool_use_id, reason: comparisonResult.reason },
+  };
 }
 
 /**

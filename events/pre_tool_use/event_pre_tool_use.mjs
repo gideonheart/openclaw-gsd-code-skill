@@ -17,23 +17,34 @@ async function main() {
   if (!hookContext) process.exit(0);
   const { hookPayload, sessionName, resolvedAgent } = hookContext;
 
-  appendJsonlEntry({ level: 'debug', source: 'event_pre_tool_use', message: 'Hook payload received', session: sessionName, hook_payload: hookPayload }, sessionName);
-
   const toolName = hookPayload.tool_name;
+  const handlerTrace = { decisionPath: null, outcome: {} };
 
-  if (toolName === 'AskUserQuestion') {
-    await handleAskUserQuestion({ hookPayload, sessionName, resolvedAgent });
-    process.exit(0);
+  try {
+    if (toolName === 'AskUserQuestion') {
+      const domainResult = await handleAskUserQuestion({ hookPayload, sessionName, resolvedAgent });
+      handlerTrace.decisionPath = domainResult.decisionPath;
+      handlerTrace.outcome = domainResult.outcome;
+      return;
+    }
+
+    // No handler registered for this tool — exit cleanly
+    handlerTrace.decisionPath = 'no-handler';
+    handlerTrace.outcome = { tool_name: toolName };
+  } finally {
+    const warnPaths = ['ask-user-question-mismatch', 'ask-user-question-no-pending', 'ask-user-question-missing-response'];
+    const logLevel = warnPaths.includes(handlerTrace.decisionPath) ? 'warn' : 'info';
+
+    appendJsonlEntry({
+      level: logLevel,
+      source: 'event_pre_tool_use',
+      message: `Handler complete: ${handlerTrace.decisionPath}`,
+      session: sessionName,
+      hook_payload: hookPayload,
+      decision_path: handlerTrace.decisionPath,
+      outcome: handlerTrace.outcome,
+    }, sessionName);
   }
-
-  // No handler registered for this tool — exit cleanly
-  appendJsonlEntry({
-    level: 'debug',
-    source: 'event_pre_tool_use',
-    message: `No handler for tool_name: ${toolName}`,
-    session: sessionName,
-  }, sessionName);
-  process.exit(0);
 }
 
 main().catch((caughtError) => {
