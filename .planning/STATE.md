@@ -141,9 +141,10 @@ None yet.
 | 21 | DRY refactor: move QUEUES_DIRECTORY + resolvePendingAnswerFilePath to lib/paths.mjs; commit TMUX guard in hook-context.mjs | 2026-02-23 | 9447c87 | [21-dry-refactor-move-resolvependinganswerfi](./quick/21-dry-refactor-move-resolvependinganswerfi/) |
 | 22 | Restore full hook payload logging: flip install-hooks.mjs default to logger-on, add --no-logger flag, reinstall all 14 hook events + logger | 2026-02-23 | 2449649 | [22-restore-full-claude-code-hook-payload-lo](./quick/22-restore-full-claude-code-hook-payload-lo/) |
 | 23 | Add full hookPayload debug log to all 5 event handler entry points (stop, session_start, user_prompt_submit, pre_tool_use, post_tool_use) | 2026-02-23 | fdffdfc | [23-add-full-hookpayload-to-all-event-handle](./quick/23-add-full-hookpayload-to-all-event-handle/) |
+| 24 | Consolidate handler logs: replace 24 scattered appendJsonlEntry calls with 5 single-trace entries using try/finally; domain handlers return { decisionPath, outcome } structs | 2026-02-23 | f0cc258 | [24-consolidate-handler-logs-into-single-end](./quick/24-consolidate-handler-logs-into-single-end/) |
 
 ## Session Continuity
 
 Last session: 2026-02-23
-Stopped at: Completed quick task 23: add hook_payload debug log to all 5 event handler entry points
+Stopped at: Completed quick task 24: consolidate handler logs into single trace per execution
 Resume file: (Phase 04 complete — proceed to Phase 05)
