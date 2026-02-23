@@ -9,8 +9,8 @@
  * statusLine, enabledPlugins, etc.).
  *
  * Usage:
- *   node bin/install-hooks.mjs                  # Install handlers + logger (default)
- *   node bin/install-hooks.mjs --no-logger      # Install handlers only (no debug logger)
+ *   node bin/install-hooks.mjs                  # Install handlers only (default)
+ *   node bin/install-hooks.mjs --logger         # Install handlers + debug logger
  *   node bin/install-hooks.mjs --remove         # Remove all hooks
  *   node bin/install-hooks.mjs --remove --handlers  # Remove only handlers, keep logger
  *   node bin/install-hooks.mjs --remove --logger    # Remove only logger, keep handlers
@@ -28,7 +28,6 @@ const HOOKS_SOURCE_PATH = join(SKILL_ROOT, 'config', 'hooks.json');
 const removeMode = process.argv.includes('--remove');
 const dryRunMode = process.argv.includes('--dry-run');
 const includeLogger = process.argv.includes('--logger');
-const noLoggerOnInstall = process.argv.includes('--no-logger');
 const handlersFlag = process.argv.includes('--handlers');
 
 function isLoggerEntry(hookEntry) {
@@ -150,15 +149,15 @@ if (handlersFlag) {
 
 const allCanonicalHooks = readCanonicalHooks();
 
-// Default = handlers + logger. --no-logger = handlers only.
-const keepFilter = noLoggerOnInstall
-  ? (entry) => isHandlerEntry(entry)
-  : () => true;
+// Default = handlers only. --logger = handlers + logger.
+const keepFilter = includeLogger
+  ? () => true
+  : (entry) => isHandlerEntry(entry);
 
 const selectedHooks = filterEntries(allCanonicalHooks, keepFilter);
 const eventCount = Object.keys(selectedHooks).length;
 const { loggerCount, handlerCount } = countByType(selectedHooks);
-const modeLabel = noLoggerOnInstall ? 'handlers only' : 'handlers + logger';
+const modeLabel = includeLogger ? 'handlers + logger' : 'handlers';
 
 if (dryRunMode) {
   console.log(`[dry-run] Mode: ${modeLabel}`);
