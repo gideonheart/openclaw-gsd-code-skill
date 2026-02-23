@@ -12,7 +12,7 @@ See: .planning/PROJECT.md (updated 2026-02-20)
 Phase: 4 of 5 (AskUserQuestion Lifecycle - Full Stack)
 Plan: 3 of 3 in current phase (COMPLETE)
 Status: Phase 4 Plan 03 complete — PostToolUse router + AskUserQuestion verification handler + mismatch prompt built
-Last activity: 2026-02-22 - Completed quick task 19: add human-readable date/time to queue files
+Last activity: 2026-02-23 - Completed quick task 21: DRY refactor — move QUEUES_DIRECTORY + resolvePendingAnswerFilePath to paths.mjs, commit TMUX guard
 
 Progress: [█████████░] 90%
 
@@ -98,6 +98,8 @@ Recent decisions affecting current work:
 - [04-03]: buildMismatchMessageContent extracted as private SRP helper — handler stays thin, formatting logic separated
 - [04-03]: formatQuestionsForMismatchContext handles missing/malformed toolInput gracefully with fallback string — defensive but non-crashing
 - [04-03]: PostToolUse router is a structural mirror of PreToolUse router — enforces consistent extension path for future tool handlers
+- [quick-21]: QUEUES_DIRECTORY and resolvePendingAnswerFilePath now defined exactly once in lib/paths.mjs — circular dependency claim in old comment was incorrect
+- [quick-21]: TMUX guard committed to hook-context.mjs — correct position as first check before tmux display-message call
 
 ### Pending Todos
 
@@ -136,6 +138,7 @@ None yet.
 | 18 | Fix gateway.mjs missing --agent flag: add agentId parameter to wakeAgentViaGateway, thread resolvedAgent.agent_id through wakeAgentWithRetry | 2026-02-22 | 6d60b60 | [18-fix-gateway-mjs-missing-agent-flag-pass-](./quick/18-fix-gateway-mjs-missing-agent-flag-pass-/) |
 | 19 | Add human-readable ISO created_at timestamps to queue files (top-level + per-command) and queue-complete summary payloads | 2026-02-22 | 8423502 | [19-add-human-readable-date-time-to-queue-fi](./quick/19-add-human-readable-date-time-to-queue-fi/) |
 | 20 | Fix rotate-session.mjs: replace passive sessions.json read with active session creation via openclaw agent CLI | 2026-02-23 | a81b043 | [20-fix-rotate-session-mjs-add-force-flag-to](./quick/20-fix-rotate-session-mjs-add-force-flag-to/) |
+| 21 | DRY refactor: move QUEUES_DIRECTORY + resolvePendingAnswerFilePath to lib/paths.mjs; commit TMUX guard in hook-context.mjs | 2026-02-23 | 9447c87 | [21-dry-refactor-move-resolvependinganswerfi](./quick/21-dry-refactor-move-resolvependinganswerfi/) |
 
 ## Session Continuity
 
