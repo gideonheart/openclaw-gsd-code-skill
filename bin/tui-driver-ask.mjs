@@ -31,8 +31,10 @@
  *
  * Uses tmux pane polling (captureTmuxPaneContent) to detect when the
  * AskUserQuestion TUI has rendered before sending keystrokes. Polls until the
- * first question's text appears in the pane, with a 15s maximum timeout and
+ * first option label appears in the pane, with a 15s maximum timeout and
  * graceful fallback (warn + proceed) if polling does not detect the TUI.
+ * Uses a short option label (not full question text) to avoid line-wrap
+ * mismatches from tmux capture-pane.
  */
 
 import { parseArgs } from 'node:util';
@@ -234,7 +236,7 @@ function dispatchDecisionToTuiAction(sessionName, decision, questionData) {
 }
 
 /**
- * Poll the tmux pane until the AskUserQuestion TUI is visible (first question text appears).
+ * Poll the tmux pane until the AskUserQuestion TUI is visible (first option label appears).
  * Replaces the previous fixed-delay approach with adaptive polling
  * so keystrokes are sent as soon as the TUI renders, not after an arbitrary wait.
  *
@@ -248,7 +250,10 @@ async function waitForTuiContentToAppear(sessionName, questionMetadata) {
   const POLL_INTERVAL_MILLISECONDS = 250;
   const MAXIMUM_WAIT_MILLISECONDS = 15000;
 
-  const searchString = questionMetadata.questions[0].question;
+  // Use the first option label — short enough to fit within a single tmux line.
+  // The full question text wraps across pane lines (capture-pane inserts newlines
+  // at wrap points), so .includes() never finds a 100+ char string as contiguous match.
+  const searchString = questionMetadata.questions[0].options[0].label;
   const pollStartEpoch = Date.now();
 
   while (Date.now() - pollStartEpoch < MAXIMUM_WAIT_MILLISECONDS) {
