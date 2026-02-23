@@ -139,9 +139,10 @@ None yet.
 | 19 | Add human-readable ISO created_at timestamps to queue files (top-level + per-command) and queue-complete summary payloads | 2026-02-22 | 8423502 | [19-add-human-readable-date-time-to-queue-fi](./quick/19-add-human-readable-date-time-to-queue-fi/) |
 | 20 | Fix rotate-session.mjs: replace passive sessions.json read with active session creation via openclaw agent CLI | 2026-02-23 | a81b043 | [20-fix-rotate-session-mjs-add-force-flag-to](./quick/20-fix-rotate-session-mjs-add-force-flag-to/) |
 | 21 | DRY refactor: move QUEUES_DIRECTORY + resolvePendingAnswerFilePath to lib/paths.mjs; commit TMUX guard in hook-context.mjs | 2026-02-23 | 9447c87 | [21-dry-refactor-move-resolvependinganswerfi](./quick/21-dry-refactor-move-resolvependinganswerfi/) |
+| 22 | Restore full hook payload logging: flip install-hooks.mjs default to logger-on, add --no-logger flag, reinstall all 14 hook events + logger | 2026-02-23 | 2449649 | [22-restore-full-claude-code-hook-payload-lo](./quick/22-restore-full-claude-code-hook-payload-lo/) |
 
 ## Session Continuity
 
 Last session: 2026-02-23
-Stopped at: Completed quick task 20: fix rotate-session.mjs to create new sessions via openclaw CLI
+Stopped at: Completed quick task 22: restore hook-event-logger.sh for all events, flip install-hooks.mjs default to logger-on
 Resume file: (Phase 04 complete — proceed to Phase 05)
