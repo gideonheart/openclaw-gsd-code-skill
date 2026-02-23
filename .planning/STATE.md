@@ -135,9 +135,10 @@ None yet.
 | 17 | Update all .planning docs (PROJECT, ROADMAP, REQUIREMENTS, MILESTONES) to reflect Phase 4 completion + quick-15/16 features | 2026-02-22 | 8ce975a | [17-update-all-planning-docs-project-roadmap](./quick/17-update-all-planning-docs-project-roadmap/) |
 | 18 | Fix gateway.mjs missing --agent flag: add agentId parameter to wakeAgentViaGateway, thread resolvedAgent.agent_id through wakeAgentWithRetry | 2026-02-22 | 6d60b60 | [18-fix-gateway-mjs-missing-agent-flag-pass-](./quick/18-fix-gateway-mjs-missing-agent-flag-pass-/) |
 | 19 | Add human-readable ISO created_at timestamps to queue files (top-level + per-command) and queue-complete summary payloads | 2026-02-22 | 8423502 | [19-add-human-readable-date-time-to-queue-fi](./quick/19-add-human-readable-date-time-to-queue-fi/) |
+| 20 | Fix rotate-session.mjs: replace passive sessions.json read with active session creation via openclaw agent CLI | 2026-02-23 | a81b043 | [20-fix-rotate-session-mjs-add-force-flag-to](./quick/20-fix-rotate-session-mjs-add-force-flag-to/) |
 
 ## Session Continuity
 
-Last session: 2026-02-22
-Stopped at: Completed quick task 19: add created_at timestamps to queue files
+Last session: 2026-02-23
+Stopped at: Completed quick task 20: fix rotate-session.mjs to create new sessions via openclaw CLI
 Resume file: (Phase 04 complete — proceed to Phase 05)
