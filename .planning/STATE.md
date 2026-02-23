@@ -140,9 +140,10 @@ None yet.
 | 20 | Fix rotate-session.mjs: replace passive sessions.json read with active session creation via openclaw agent CLI | 2026-02-23 | a81b043 | [20-fix-rotate-session-mjs-add-force-flag-to](./quick/20-fix-rotate-session-mjs-add-force-flag-to/) |
 | 21 | DRY refactor: move QUEUES_DIRECTORY + resolvePendingAnswerFilePath to lib/paths.mjs; commit TMUX guard in hook-context.mjs | 2026-02-23 | 9447c87 | [21-dry-refactor-move-resolvependinganswerfi](./quick/21-dry-refactor-move-resolvependinganswerfi/) |
 | 22 | Restore full hook payload logging: flip install-hooks.mjs default to logger-on, add --no-logger flag, reinstall all 14 hook events + logger | 2026-02-23 | 2449649 | [22-restore-full-claude-code-hook-payload-lo](./quick/22-restore-full-claude-code-hook-payload-lo/) |
+| 23 | Add full hookPayload debug log to all 5 event handler entry points (stop, session_start, user_prompt_submit, pre_tool_use, post_tool_use) | 2026-02-23 | fdffdfc | [23-add-full-hookpayload-to-all-event-handle](./quick/23-add-full-hookpayload-to-all-event-handle/) |
 
 ## Session Continuity
 
 Last session: 2026-02-23
-Stopped at: Completed quick task 22: restore hook-event-logger.sh for all events, flip install-hooks.mjs default to logger-on
+Stopped at: Completed quick task 23: add hook_payload debug log to all 5 event handler entry points
 Resume file: (Phase 04 complete — proceed to Phase 05)
