@@ -7,7 +7,7 @@
  * then archiving the old ID into session_history.
  *
  * Usage:
- *   node bin/rotate-session.mjs <agent-id> [--label <text>] [--force]
+ *   node bin/rotate-session.mjs <agent-id> [--label <text>]
  *
  * Reads and writes config/agent-registry.json relative to the skill root.
  * The registry file is written atomically (tmp + rename) to prevent corruption.
@@ -37,7 +37,6 @@ function parseCommandLineArguments(rawArguments) {
     options: {
       label: { type: 'string' },
       help: { type: 'boolean' },
-      force: { type: 'boolean' },
     },
     allowPositionals: true,
     strict: false,
@@ -159,11 +158,10 @@ function main() {
 
   if (positionalArguments.length === 0 || namedArguments.help) {
     process.stdout.write(
-      'Usage: node bin/rotate-session.mjs <agent-id> [--label <text>] [--force]\n\n' +
+      'Usage: node bin/rotate-session.mjs <agent-id> [--label <text>]\n\n' +
       'Arguments:\n' +
       '  agent-id         ID of the agent whose session to rotate\n' +
       '  --label <text>   Optional label/reason for the rotation\n' +
-      '  --force          Force rotation even if session ID is unchanged\n' +
       '  --help           Show this help message\n'
     );
     process.exit(0);
@@ -186,13 +184,10 @@ function main() {
   }
 
   if (newSessionId === oldSessionId) {
-    if (!namedArguments.force) {
-      logWithTimestamp(`Session already up to date for agent: ${agentIdentifier}`);
-      logWithTimestamp(`  Current: ${oldSessionId}`);
-      logWithTimestamp(`  No rotation needed. Use --force to rotate anyway.`);
-      process.exit(0);
-    }
-    logWithTimestamp(`Force rotating session for agent: ${agentIdentifier} (session ID unchanged)`);
+    logWithTimestamp(`Session already up to date for agent: ${agentIdentifier}`);
+    logWithTimestamp(`  Current: ${oldSessionId}`);
+    logWithTimestamp(`  No rotation needed.`);
+    process.exit(0);
   }
 
   const optionalLabel = namedArguments['label'] || undefined;
