@@ -2,9 +2,8 @@
 /**
  * rotate-session.mjs
  *
- * Rotate an agent's openclaw_session_id by reading the actual current sessionId
- * from the agent's sessions.json (the most recently updated session for that agent),
- * then archiving the old ID into session_history.
+ * Rotate an agent's openclaw_session_id by creating a NEW OpenClaw session
+ * via the `openclaw agent` CLI, then archiving the old ID into session_history.
  *
  * Usage:
  *   node bin/rotate-session.mjs <agent-id> [--label <text>]
@@ -12,15 +11,16 @@
  * Reads and writes config/agent-registry.json relative to the skill root.
  * The registry file is written atomically (tmp + rename) to prevent corruption.
  *
- * The new openclaw_session_id is the actual sessionId from the agent's OpenClaw
- * session store — NOT a random UUID. This keeps the registry in sync with
- * OpenClaw's own session tracking so --session-id routing is accurate.
+ * The new openclaw_session_id is obtained by calling:
+ *   openclaw agent --agent <agentId> --message "<label>" --json
+ * which starts a fresh session and returns JSON containing the new session ID.
  */
 
 import { readFileSync, writeFileSync, existsSync, renameSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
+import { execFileSync } from 'node:child_process';
 
 const SKILL_ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
 const AGENT_REGISTRY_PATH = resolve(SKILL_ROOT, 'config', 'agent-registry.json');
@@ -84,48 +84,51 @@ function findAgentByIdentifier(registry, agentIdentifier) {
 }
 
 /**
- * Read the most recently updated sessionId for an agent from OpenClaw's sessions.json.
+ * Create a new OpenClaw session for an agent via the `openclaw agent` CLI.
  *
- * OpenClaw stores session metadata in agents/{agentId}/sessions/sessions.json as a
- * map of session keys to session objects. Each session object has a sessionId (UUID)
- * that matches the JSONL conversation log filename. This function finds the session
- * with the highest updatedAt timestamp — that is the currently active conversation.
+ * Calls: openclaw agent --agent <agentIdentifier> --message <initialMessage> --json
  *
- * Falls back to null if the sessions.json file does not exist or has no entries.
+ * The CLI returns a JSON object with the new session ID at:
+ *   response.result.meta.agentMeta.sessionId
  *
  * @param {string} agentIdentifier - Agent ID (e.g. 'warden').
- * @returns {string|null} The active sessionId UUID, or null if not found.
+ * @param {string} initialMessage  - Message to start the new session with.
+ * @returns {string} The newly created session ID (UUID).
+ * @throws {Error} If the CLI call fails or the session ID is missing from the response.
  */
-function resolveActiveOpenclawSessionId(agentIdentifier) {
-  const sessionsFilePath = `${OPENCLAW_AGENTS_BASE_PATH}/${agentIdentifier}/sessions/sessions.json`;
-
-  if (!existsSync(sessionsFilePath)) {
-    return null;
-  }
-
-  let sessionsData;
+function createNewOpenclawSession(agentIdentifier, initialMessage) {
+  let rawOutput;
   try {
-    sessionsData = JSON.parse(readFileSync(sessionsFilePath, 'utf8'));
-  } catch {
-    return null;
+    rawOutput = execFileSync(
+      'openclaw',
+      ['agent', '--agent', agentIdentifier, '--message', initialMessage, '--json'],
+      { encoding: 'utf8' }
+    );
+  } catch (execError) {
+    throw new Error(
+      `openclaw agent CLI call failed for agent "${agentIdentifier}":\n${execError.message}`
+    );
   }
 
-  if (typeof sessionsData !== 'object' || sessionsData === null) {
-    return null;
+  let parsedResponse;
+  try {
+    parsedResponse = JSON.parse(rawOutput);
+  } catch (parseError) {
+    throw new Error(
+      `Failed to parse openclaw agent response as JSON: ${parseError.message}\n` +
+      `Raw output: ${rawOutput}`
+    );
   }
 
-  const sessionEntries = Object.values(sessionsData);
-  if (sessionEntries.length === 0) {
-    return null;
+  const newSessionId = parsedResponse?.result?.meta?.agentMeta?.sessionId;
+  if (!newSessionId || typeof newSessionId !== 'string') {
+    throw new Error(
+      `openclaw agent response is missing session ID at response.result.meta.agentMeta.sessionId.\n` +
+      `Parsed response: ${JSON.stringify(parsedResponse, null, 2)}`
+    );
   }
 
-  const mostRecentSession = sessionEntries.reduce((mostRecent, current) => {
-    const currentUpdatedAt = current.updatedAt ?? 0;
-    const mostRecentUpdatedAt = mostRecent.updatedAt ?? 0;
-    return currentUpdatedAt > mostRecentUpdatedAt ? current : mostRecent;
-  });
-
-  return mostRecentSession.sessionId ?? null;
+  return newSessionId;
 }
 
 function buildSessionHistoryEntry(oldSessionId, agentIdentifier, optionalLabel) {
@@ -161,36 +164,24 @@ function main() {
       'Usage: node bin/rotate-session.mjs <agent-id> [--label <text>]\n\n' +
       'Arguments:\n' +
       '  agent-id         ID of the agent whose session to rotate\n' +
-      '  --label <text>   Optional label/reason for the rotation\n' +
-      '  --help           Show this help message\n'
+      '  --label <text>   Optional label/reason for the rotation (used as the initial message)\n' +
+      '  --help           Show this help message\n\n' +
+      'Creates a new OpenClaw session for the agent via the openclaw CLI and updates\n' +
+      'agent-registry.json with the new session ID, archiving the old one to session_history.\n'
     );
     process.exit(0);
   }
 
   const agentIdentifier = positionalArguments[0];
+  const optionalLabel = namedArguments['label'] || undefined;
 
   const registry = readAgentRegistry();
   const agentConfiguration = findAgentByIdentifier(registry, agentIdentifier);
 
   const oldSessionId = agentConfiguration.openclaw_session_id;
 
-  const newSessionId = resolveActiveOpenclawSessionId(agentIdentifier);
-  if (!newSessionId) {
-    throw new Error(
-      `Could not resolve active OpenClaw session for agent "${agentIdentifier}".\n` +
-      `Expected sessions.json at: ${OPENCLAW_AGENTS_BASE_PATH}/${agentIdentifier}/sessions/sessions.json\n` +
-      `Ensure the agent has an active OpenClaw session before rotating.`
-    );
-  }
-
-  if (newSessionId === oldSessionId) {
-    logWithTimestamp(`Session already up to date for agent: ${agentIdentifier}`);
-    logWithTimestamp(`  Current: ${oldSessionId}`);
-    logWithTimestamp(`  No rotation needed.`);
-    process.exit(0);
-  }
-
-  const optionalLabel = namedArguments['label'] || undefined;
+  const initialMessage = optionalLabel ?? 'Session rotated';
+  const newSessionId = createNewOpenclawSession(agentIdentifier, initialMessage);
 
   const historyEntry = buildSessionHistoryEntry(oldSessionId, agentIdentifier, optionalLabel);
 
