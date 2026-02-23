@@ -143,9 +143,10 @@ None yet.
 | 23 | Add full hookPayload debug log to all 5 event handler entry points (stop, session_start, user_prompt_submit, pre_tool_use, post_tool_use) | 2026-02-23 | fdffdfc | [23-add-full-hookpayload-to-all-event-handle](./quick/23-add-full-hookpayload-to-all-event-handle/) |
 | 24 | Consolidate handler logs: replace 24 scattered appendJsonlEntry calls with 5 single-trace entries using try/finally; domain handlers return { decisionPath, outcome } structs | 2026-02-23 | f0cc258 | [24-consolidate-handler-logs-into-single-end](./quick/24-consolidate-handler-logs-into-single-end/) |
 | 25 | Fix double-space arg drop in typeGsdCommandWithTabCompletion; replace fixed 3s delay with tmux pane polling in tui-driver-ask.mjs | 2026-02-23 | f7eb36a | [25-fix-tui-driver-queue-command-args-lost-a](./quick/25-fix-tui-driver-queue-command-args-lost-a/) |
+| 26 | Clean up waitForTuiContentToAppear: remove async/await, reduce timeout to 5s, add success/error/length-guard observability logs | 2026-02-23 | ef1c268 | [26-clean-up-waitfortuicontenttoappear-remov](./quick/26-clean-up-waitfortuicontenttoappear-remov/) |
 
 ## Session Continuity
 
 Last session: 2026-02-23
-Stopped at: Completed quick task 25: fix TUI driver double-space arg drop and AskUserQuestion polling
+Stopped at: Completed quick task 26: clean up waitForTuiContentToAppear — sync, 5s timeout, observability
 Resume file: (Phase 04 complete — proceed to Phase 05)
