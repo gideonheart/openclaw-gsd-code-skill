@@ -12,7 +12,7 @@ See: .planning/PROJECT.md (updated 2026-02-20)
 Phase: 4 of 5 (AskUserQuestion Lifecycle - Full Stack)
 Plan: 3 of 3 in current phase (COMPLETE)
 Status: Phase 4 Plan 03 complete — PostToolUse router + AskUserQuestion verification handler + mismatch prompt built
-Last activity: 2026-02-23 - Completed quick task 21: DRY refactor — move QUEUES_DIRECTORY + resolvePendingAnswerFilePath to paths.mjs, commit TMUX guard
+Last activity: 2026-02-23 - Completed quick task 22: Restore full hook payload logging in hook-event-logger.sh
 
 Progress: [█████████░] 90%
 
