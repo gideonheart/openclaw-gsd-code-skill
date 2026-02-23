@@ -34,51 +34,58 @@ async function main() {
   if (!hookContext) process.exit(0);
   const { hookPayload, sessionName, resolvedAgent } = hookContext;
 
-  appendJsonlEntry({ level: 'debug', source: 'event_user_prompt_submit', message: 'Hook payload received', session: sessionName, hook_payload: hookPayload }, sessionName);
-
   const submittedPrompt = hookPayload.prompt ?? '';
+  const handlerTrace = { decisionPath: null, outcome: {} };
 
-  if (isPromptFromTuiDriver(sessionName, submittedPrompt)) {
-    appendJsonlEntry({ level: 'debug', source: 'event_user_prompt_submit', message: 'Prompt matches active queue command — TUI driver input, skipping cancellation', session: sessionName }, sessionName);
-    process.exit(0);
+  try {
+    if (isPromptFromTuiDriver(sessionName, submittedPrompt)) {
+      handlerTrace.decisionPath = 'tui-driver-input';
+      return;
+    }
+
+    if (isSessionInAskUserQuestionFlow(sessionName)) {
+      handlerTrace.decisionPath = 'ask-user-question-flow';
+      return;
+    }
+
+    const cancellationResult = cancelQueueForSession(sessionName);
+
+    if (!cancellationResult) {
+      handlerTrace.decisionPath = 'no-queue';
+      return;
+    }
+
+    const { completedCount, totalCount, remainingCommands } = cancellationResult;
+    const remainingCommandList = remainingCommands.map(queuedCommand => queuedCommand.command).join(', ');
+
+    const messageContent = [
+      'Queue cancelled by manual input.',
+      `Completed: ${completedCount}/${totalCount} commands.`,
+      `Remaining commands: ${remainingCommandList}`,
+    ].join('\n');
+
+    const promptFilePath = resolve(SKILL_ROOT, 'events', 'stop', 'prompt_stop.md');
+
+    await wakeAgentWithRetry({ resolvedAgent, messageContent, promptFilePath, eventType: 'UserPromptSubmit', sessionName });
+
+    handlerTrace.decisionPath = 'queue-cancelled';
+    handlerTrace.outcome = {
+      completed_count: completedCount,
+      total_count: totalCount,
+      remaining_count: remainingCommands.length,
+      remaining_commands: remainingCommands.map(queuedCommand => queuedCommand.command),
+    };
+  } finally {
+    appendJsonlEntry({
+      level: 'info',
+      source: 'event_user_prompt_submit',
+      message: `Handler complete: ${handlerTrace.decisionPath}`,
+      session: sessionName,
+      hook_payload: hookPayload,
+      decision_path: handlerTrace.decisionPath,
+      outcome: handlerTrace.outcome,
+    }, sessionName);
   }
-
-  if (isSessionInAskUserQuestionFlow(sessionName)) {
-    appendJsonlEntry({ level: 'debug', source: 'event_user_prompt_submit', message: 'Pending answer file exists — AskUserQuestion TUI input, skipping cancellation', session: sessionName }, sessionName);
-    process.exit(0);
-  }
-
-  const cancellationResult = cancelQueueForSession(sessionName);
-
-  if (!cancellationResult) {
-    appendJsonlEntry({ level: 'debug', source: 'event_user_prompt_submit', message: 'No active queue to cancel — skipping', session: sessionName }, sessionName);
-    process.exit(0);
-  }
-
-  const { completedCount, totalCount, remainingCommands } = cancellationResult;
-  const remainingCommandList = remainingCommands.map(queuedCommand => queuedCommand.command).join(', ');
-
-  const messageContent = [
-    'Queue cancelled by manual input.',
-    `Completed: ${completedCount}/${totalCount} commands.`,
-    `Remaining commands: ${remainingCommandList}`,
-  ].join('\n');
-
-  const promptFilePath = resolve(SKILL_ROOT, 'events', 'stop', 'prompt_stop.md');
-
-  await wakeAgentWithRetry({ resolvedAgent, messageContent, promptFilePath, eventType: 'UserPromptSubmit', sessionName });
-
-  appendJsonlEntry({
-    level: 'info',
-    source: 'event_user_prompt_submit',
-    message: 'Queue cancelled by manual input — agent notified',
-    session: sessionName,
-    completed_count: completedCount,
-    total_count: totalCount,
-    remaining_count: remainingCommands.length,
-  }, sessionName);
-
-  process.exit(0);
 }
 
 main().catch((caughtError) => {

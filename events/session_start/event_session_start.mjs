@@ -28,49 +28,70 @@ async function main() {
   if (!hookContext) process.exit(0);
   const { hookPayload, sessionName, resolvedAgent } = hookContext;
 
-  appendJsonlEntry({ level: 'debug', source: 'event_session_start', message: 'Hook payload received', session: sessionName, hook_payload: hookPayload }, sessionName);
-
   const source = hookPayload.source;
   const promptFilePath = resolve(SKILL_ROOT, 'events', 'stop', 'prompt_stop.md');
+  const handlerTrace = { decisionPath: null, outcome: {} };
 
-  if (source === 'clear') {
-    const queueResult = processQueueForHook(sessionName, 'SessionStart', 'clear', null);
+  try {
+    if (source === 'clear') {
+      const queueResult = processQueueForHook(sessionName, 'SessionStart', 'clear', null);
 
-    if (queueResult.action === 'awaits-mismatch') {
-      appendJsonlEntry({ level: 'debug', source: 'event_session_start', message: 'Queue awaits-mismatch on clear — skipping wake', session: sessionName }, sessionName);
+      if (queueResult.action === 'awaits-mismatch') {
+        handlerTrace.decisionPath = 'clear-awaits-mismatch';
+        return;
+      }
+
+      if (queueResult.action === 'queue-complete') {
+        const messageContent = JSON.stringify(queueResult.summary, null, 2);
+
+        await wakeAgentWithRetry({ resolvedAgent, messageContent, promptFilePath, eventType: 'SessionStart', sessionName });
+
+        handlerTrace.decisionPath = 'clear-queue-complete';
+        handlerTrace.outcome = { summary: queueResult.summary };
+        return;
+      }
+
+      if (queueResult.action === 'advanced') {
+        handlerTrace.decisionPath = 'clear-queue-advanced';
+        return;
+      }
+
+      handlerTrace.decisionPath = 'clear-other';
+      handlerTrace.outcome = { queue_action: queueResult.action };
+      return;
     }
 
-    if (queueResult.action === 'queue-complete') {
-      const messageContent = JSON.stringify(queueResult.summary, null, 2);
+    if (source === 'startup') {
+      const hadStaleQueue = cleanupStaleQueueForSession(sessionName);
 
-      await wakeAgentWithRetry({ resolvedAgent, messageContent, promptFilePath, eventType: 'SessionStart', sessionName });
+      if (hadStaleQueue) {
+        const messageContent = 'Previous session had unfinished queue. Stale queue archived.';
+
+        await wakeAgentWithRetry({ resolvedAgent, messageContent, promptFilePath, eventType: 'SessionStart', sessionName });
+
+        handlerTrace.decisionPath = 'startup-stale-queue';
+        handlerTrace.outcome = { had_stale_queue: true };
+        return;
+      }
+
+      handlerTrace.decisionPath = 'startup-clean';
+      return;
     }
 
-    process.exit(0);
+    // Any other source value — no queue interaction needed
+    handlerTrace.decisionPath = 'unhandled-source';
+    handlerTrace.outcome = { source };
+  } finally {
+    appendJsonlEntry({
+      level: 'info',
+      source: 'event_session_start',
+      message: `Handler complete: ${handlerTrace.decisionPath}`,
+      session: sessionName,
+      hook_payload: hookPayload,
+      decision_path: handlerTrace.decisionPath,
+      outcome: handlerTrace.outcome,
+    }, sessionName);
   }
-
-  if (source === 'startup') {
-    const hadStaleQueue = cleanupStaleQueueForSession(sessionName);
-
-    if (hadStaleQueue) {
-      const messageContent = 'Previous session had unfinished queue. Stale queue archived.';
-
-      await wakeAgentWithRetry({ resolvedAgent, messageContent, promptFilePath, eventType: 'SessionStart', sessionName });
-
-      appendJsonlEntry({
-        level: 'info',
-        source: 'event_session_start',
-        message: 'Stale queue archived on startup — agent notified',
-        session: sessionName,
-      }, sessionName);
-    }
-
-    process.exit(0);
-  }
-
-  // Any other source value — no queue interaction needed
-  appendJsonlEntry({ level: 'debug', source: 'event_session_start', message: `Unhandled source value '${source}' — skipping`, session: sessionName }, sessionName);
-  process.exit(0);
 }
 
 main().catch((caughtError) => {

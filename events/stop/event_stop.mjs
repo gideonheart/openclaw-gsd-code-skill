@@ -27,70 +27,77 @@ async function main() {
   if (!hookContext) process.exit(0);
   const { hookPayload, sessionName, resolvedAgent } = hookContext;
 
-  appendJsonlEntry({ level: 'debug', source: 'event_stop', message: 'Hook payload received', session: sessionName, hook_payload: hookPayload }, sessionName);
-
   const promptFilePath = resolve(SKILL_ROOT, 'events', 'stop', 'prompt_stop.md');
+  const handlerTrace = { decisionPath: null, outcome: {} };
 
-  if (hookPayload.stop_hook_active === true) {
-    appendJsonlEntry({ level: 'debug', source: 'event_stop', message: 'Re-entrancy guard — stop_hook_active is true', session: sessionName }, sessionName);
-    process.exit(0);
-  }
+  try {
+    if (hookPayload.stop_hook_active === true) {
+      handlerTrace.decisionPath = 'reentrancy-guard';
+      return;
+    }
 
-  const lastAssistantMessage = hookPayload.last_assistant_message;
+    const lastAssistantMessage = hookPayload.last_assistant_message;
 
-  if (!lastAssistantMessage) {
-    appendJsonlEntry({ level: 'debug', source: 'event_stop', message: 'No last_assistant_message — skipping', session: sessionName }, sessionName);
-    process.exit(0);
-  }
+    if (!lastAssistantMessage) {
+      handlerTrace.decisionPath = 'no-message';
+      return;
+    }
 
-  const queueResult = processQueueForHook(sessionName, 'Stop', null, lastAssistantMessage);
+    const queueResult = processQueueForHook(sessionName, 'Stop', null, lastAssistantMessage);
 
-  if (queueResult.action === 'advanced') {
-    process.exit(0);
-  }
+    if (queueResult.action === 'advanced') {
+      handlerTrace.decisionPath = 'queue-advanced';
+      return;
+    }
 
-  if (queueResult.action === 'queue-complete') {
-    const messageContent = JSON.stringify(queueResult.summary, null, 2);
+    if (queueResult.action === 'queue-complete') {
+      const messageContent = JSON.stringify(queueResult.summary, null, 2);
+
+      await wakeAgentWithRetry({ resolvedAgent, messageContent, promptFilePath, eventType: 'Stop', sessionName });
+
+      handlerTrace.decisionPath = 'queue-complete';
+      handlerTrace.outcome = { summary: queueResult.summary };
+      return;
+    }
+
+    if (queueResult.action === 'awaits-mismatch') {
+      handlerTrace.decisionPath = 'awaits-mismatch';
+      return;
+    }
+
+    if (queueResult.action === 'no-active-command') {
+      handlerTrace.decisionPath = 'no-active-command';
+      return;
+    }
+
+    // queueResult.action === 'no-queue' — fresh wake path
+    const commandMatches = lastAssistantMessage.match(/\/(?:gsd:[a-z-]+(?:\s+[^\s`]+)?|clear)/g) || [];
+    const suggestedCommands = [...new Set(commandMatches)];
+
+    const messageContent = [
+      lastAssistantMessage,
+      '',
+      '## Suggested Commands',
+      suggestedCommands.length > 0
+        ? suggestedCommands.map(command => `- \`${command}\``).join('\n')
+        : '_No commands detected in response._',
+    ].join('\n');
 
     await wakeAgentWithRetry({ resolvedAgent, messageContent, promptFilePath, eventType: 'Stop', sessionName });
 
-    process.exit(0);
+    handlerTrace.decisionPath = 'fresh-wake';
+    handlerTrace.outcome = { suggested_commands: suggestedCommands };
+  } finally {
+    appendJsonlEntry({
+      level: 'info',
+      source: 'event_stop',
+      message: `Handler complete: ${handlerTrace.decisionPath}`,
+      session: sessionName,
+      hook_payload: hookPayload,
+      decision_path: handlerTrace.decisionPath,
+      outcome: handlerTrace.outcome,
+    }, sessionName);
   }
-
-  if (queueResult.action === 'awaits-mismatch') {
-    appendJsonlEntry({ level: 'debug', source: 'event_stop', message: 'Queue awaits-mismatch — skipping', session: sessionName }, sessionName);
-    process.exit(0);
-  }
-
-  if (queueResult.action === 'no-active-command') {
-    appendJsonlEntry({ level: 'debug', source: 'event_stop', message: 'Queue has no active command — skipping', session: sessionName }, sessionName);
-    process.exit(0);
-  }
-
-  // queueResult.action === 'no-queue' — fresh wake path
-  const commandMatches = lastAssistantMessage.match(/\/(?:gsd:[a-z-]+(?:\s+[^\s`]+)?|clear)/g) || [];
-  const suggestedCommands = [...new Set(commandMatches)];
-
-  const messageContent = [
-    lastAssistantMessage,
-    '',
-    '## Suggested Commands',
-    suggestedCommands.length > 0
-      ? suggestedCommands.map(command => `- \`${command}\``).join('\n')
-      : '_No commands detected in response._',
-  ].join('\n');
-
-  await wakeAgentWithRetry({ resolvedAgent, messageContent, promptFilePath, eventType: 'Stop', sessionName });
-
-  appendJsonlEntry({
-    level: 'info',
-    source: 'event_stop',
-    message: 'Agent woken via gateway for Stop event',
-    session: sessionName,
-    suggested_commands_count: suggestedCommands.length,
-  }, sessionName);
-
-  process.exit(0);
 }
 
 main().catch((caughtError) => {
