@@ -28,11 +28,30 @@
  * PreToolUse handler) to resolve option counts and labels for navigation.
  * Saves pending answer to logs/queues/pending-answer-{session}.json BEFORE
  * typing keystrokes — for PostToolUse verification.
+ *
+ * Pre-keystroke delay: The PreToolUse hook calls wakeAgentWithRetry which
+ * uses execFileSync (synchronous/blocking). The hook process does NOT exit
+ * until the openclaw CLI returns. Claude Code only renders the AskUserQuestion
+ * TUI AFTER the PreToolUse hook exits. This driver is called by the agent
+ * DURING the blocked hook execution — so keystrokes would arrive before the
+ * TUI is visible. The PRE_KEYSTROKE_DELAY_MILLISECONDS constant adds a wait
+ * after saving the pending answer and before sending keystrokes, giving Claude
+ * Code time to render the TUI after the hook exits.
  */
 
 import { parseArgs } from 'node:util';
 import { readQuestionMetadata, savePendingAnswer, appendJsonlEntry } from '../lib/index.mjs';
-import { sendKeysToTmux, sendSpecialKeyToTmux } from '../lib/tui-common.mjs';
+import { sendKeysToTmux, sendSpecialKeyToTmux, sleepMilliseconds } from '../lib/tui-common.mjs';
+
+/**
+ * How long to wait (in milliseconds) after saving the pending answer and before
+ * sending the first tmux keystroke. This delay allows the PreToolUse hook process
+ * to exit and Claude Code to render the AskUserQuestion TUI before keystrokes arrive.
+ *
+ * From log evidence: keystrokes fired 2 seconds before the PreToolUse hook exited.
+ * 3000ms provides a safe margin above that observed gap.
+ */
+const PRE_KEYSTROKE_DELAY_MILLISECONDS = 3000;
 
 /**
  * Parse CLI arguments from process.argv.
@@ -273,6 +292,13 @@ async function main() {
   const pendingAnswerAction = decisions.length === 1 ? decisions[0].action : decisions.map(decision => decision.action);
 
   savePendingAnswer(sessionName, pendingAnswers, pendingAnswerAction, questionMetadata.tool_use_id);
+
+  // Wait for the AskUserQuestion TUI to render before sending keystrokes.
+  // The PreToolUse hook process blocks on openclaw agent CLI (execFileSync).
+  // This driver runs while that hook is still blocked — meaning Claude Code
+  // has not yet rendered the AskUserQuestion TUI (it renders AFTER the hook exits).
+  // Without this delay, keystrokes arrive before the TUI appears and go to the void.
+  sleepMilliseconds(PRE_KEYSTROKE_DELAY_MILLISECONDS);
 
   // Type keystrokes for each question
   for (const [questionIndex, decision] of decisions.entries()) {
