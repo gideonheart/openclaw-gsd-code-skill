@@ -34,6 +34,8 @@ async function main() {
   if (!hookContext) process.exit(0);
   const { hookPayload, sessionName, resolvedAgent } = hookContext;
 
+  appendJsonlEntry({ level: 'debug', source: 'event_user_prompt_submit', message: 'Hook payload received', session: sessionName, hook_payload: hookPayload }, sessionName);
+
   const submittedPrompt = hookPayload.prompt ?? '';
 
   if (isPromptFromTuiDriver(sessionName, submittedPrompt)) {

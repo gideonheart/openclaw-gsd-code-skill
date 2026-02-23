@@ -28,6 +28,8 @@ async function main() {
   if (!hookContext) process.exit(0);
   const { hookPayload, sessionName, resolvedAgent } = hookContext;
 
+  appendJsonlEntry({ level: 'debug', source: 'event_session_start', message: 'Hook payload received', session: sessionName, hook_payload: hookPayload }, sessionName);
+
   const source = hookPayload.source;
   const promptFilePath = resolve(SKILL_ROOT, 'events', 'stop', 'prompt_stop.md');
 

@@ -17,6 +17,8 @@ async function main() {
   if (!hookContext) process.exit(0);
   const { hookPayload, sessionName, resolvedAgent } = hookContext;
 
+  appendJsonlEntry({ level: 'debug', source: 'event_post_tool_use', message: 'Hook payload received', session: sessionName, hook_payload: hookPayload }, sessionName);
+
   const toolName = hookPayload.tool_name;
 
   if (toolName === 'AskUserQuestion') {
