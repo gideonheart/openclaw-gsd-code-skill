@@ -31,7 +31,7 @@
  *
  * Uses tmux pane polling (captureTmuxPaneContent) to detect when the
  * AskUserQuestion TUI has rendered before sending keystrokes. Polls until the
- * first option label appears in the pane, with a 15s maximum timeout and
+ * first option label appears in the pane, with a 5s maximum timeout and
  * graceful fallback (warn + proceed) if polling does not detect the TUI.
  * Uses a short option label (not full question text) to avoid line-wrap
  * mismatches from tmux capture-pane.
@@ -246,9 +246,9 @@ function dispatchDecisionToTuiAction(sessionName, decision, questionData) {
  * @param {string} sessionName - Target tmux session name.
  * @param {Object} questionMetadata - Question metadata from readQuestionMetadata.
  */
-async function waitForTuiContentToAppear(sessionName, questionMetadata) {
+function waitForTuiContentToAppear(sessionName, questionMetadata) {
   const POLL_INTERVAL_MILLISECONDS = 250;
-  const MAXIMUM_WAIT_MILLISECONDS = 15000;
+  const MAXIMUM_WAIT_MILLISECONDS = 5000;
 
   // Use the first option label — short enough to fit within a single tmux line.
   // The full question text wraps across pane lines (capture-pane inserts newlines
@@ -256,14 +256,37 @@ async function waitForTuiContentToAppear(sessionName, questionMetadata) {
   const searchString = questionMetadata.questions[0].options[0].label;
   const pollStartEpoch = Date.now();
 
+  if (searchString.length > 60) {
+    appendJsonlEntry({
+      level: 'warn',
+      source: 'tui-driver-ask',
+      message: 'Search string may be too long for tmux pane line matching — line wrapping may cause .includes() to miss the string',
+      search_string: searchString,
+      search_string_length: searchString.length,
+    }, sessionName);
+  }
+
   while (Date.now() - pollStartEpoch < MAXIMUM_WAIT_MILLISECONDS) {
     try {
       const paneContent = captureTmuxPaneContent(sessionName);
       if (paneContent.includes(searchString)) {
+        appendJsonlEntry({
+          level: 'debug',
+          source: 'tui-driver-ask',
+          message: 'AskUserQuestion TUI detected in pane',
+          search_string: searchString,
+          elapsed_milliseconds: Date.now() - pollStartEpoch,
+        }, sessionName);
         return;
       }
-    } catch {
-      // tmux capture failed (session gone or not ready) — proceed to keystroke attempt
+    } catch (caughtError) {
+      appendJsonlEntry({
+        level: 'warn',
+        source: 'tui-driver-ask',
+        message: 'tmux capture-pane failed during TUI polling — proceeding with keystrokes',
+        error: caughtError.message,
+        session: sessionName,
+      }, sessionName);
       return;
     }
 
@@ -279,7 +302,7 @@ async function waitForTuiContentToAppear(sessionName, questionMetadata) {
   }, sessionName);
 }
 
-async function main() {
+function main() {
   const { sessionName, decisionsArrayString } = parseCommandLineArguments();
 
   if (!sessionName) {
@@ -326,7 +349,7 @@ async function main() {
   savePendingAnswer(sessionName, pendingAnswers, pendingAnswerAction, questionMetadata.tool_use_id);
 
   // Poll the tmux pane until the AskUserQuestion TUI is visible before sending keystrokes.
-  await waitForTuiContentToAppear(sessionName, questionMetadata);
+  waitForTuiContentToAppear(sessionName, questionMetadata);
 
   // Type keystrokes for each question
   for (const [questionIndex, decision] of decisions.entries()) {
@@ -348,7 +371,9 @@ async function main() {
   }, sessionName);
 }
 
-main().catch((caughtError) => {
+try {
+  main();
+} catch (caughtError) {
   process.stderr.write(`Error: ${caughtError.message}\n`);
   process.exit(1);
-});
+}
