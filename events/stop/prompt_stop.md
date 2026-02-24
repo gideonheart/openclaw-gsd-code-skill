@@ -36,9 +36,27 @@ Claude Code has finished and is waiting for OpenClaw input.
 - `/gsd:*` commands -> Claude responds -> awaits Stop
 - The TUI driver handles awaits automatically.
 
-## When to do nothing
-- If the work is complete and no next phase exists, try `/clear` and then `/gsd:resume-work`.
-- If you received a queue-complete summary, review the results and decide if more work is needed. I suggest you to use gh or git command to check Claude Codes commits, and mybe you see some issues, or you can ask claude code, to do analysi of his last work and ask, what he thinks, Claud Code did good, and what he would do diffrently, is he had a chande to rewrite his code. 
-- Listen to his response and make decidion, if it aligns with your own, reserch, if yes, ask, Claude Code to fix it.
-- Remember, 
-- The queue will not be created and the session stays idle.
+## When work appears complete — think before you act
+
+Before reaching for `/clear` and `/gsd:resume-work`, do the analysis:
+
+**Step 1: Check what was actually done.**
+Run `git log --oneline -10` and `git diff HEAD~3..HEAD --stat` to see recent commits and changed files.
+
+**Step 2: Ask Claude Code to self-reflect.**
+Use `/gsd:quick` with a question like:
+- "Review your last commits. What did you do well? What would you do differently if you rewrote it?"
+- "Are there any edge cases you didn't handle? Any tech debt introduced?"
+- "Look at your most recent changes — is there anything that should be refactored?"
+
+Listen to the response. If Claude Code identifies real issues, ask it to fix them before moving on.
+
+**Step 3: Check the suggested commands.**
+If the last assistant message suggested `/gsd:new-milestone`, `/gsd:quick`, or `/gsd:add-phase`, those commands exist for a reason — use them if they fit. These are more specific than a generic resume.
+
+**Step 4: Decide on next work.**
+- Is there a clear next phase? Use `/gsd:plan-phase <n>` or `/gsd:add-phase`.
+- Is there a specific fix or feature? Use `/gsd:quick`.
+- Starting a new major milestone? Use `/gsd:new-milestone`.
+
+**Last resort only:** `/clear` + `/gsd:resume-work` — use this ONLY when you have no specific direction and need Claude Code to orient itself from scratch. It is not a default action. Do not use it if the suggested commands already point to something concrete.

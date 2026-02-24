@@ -35,19 +35,19 @@ TIMESTAMP_ISO=$(date -u +'%Y-%m-%dT%H:%M:%SZ')
 # 4. Log to global hooks.log
 debug_log "EVENT=$EVENT_NAME bytes=$STDIN_BYTE_COUNT session_id=$SESSION_ID"
 
-# 5. Build unique log prefix from tmux session name + Claude session_id
-#    Deterministic: session_id comes from the JSON payload (unique per Claude session).
-#    Tmux session name is only used for human-readable grouping — skip the fork
-#    entirely when $TMUX is unset (hook not running inside a tmux session).
+# 5. Build log prefix from tmux session name only.
+#    Using the tmux session name as the stable identifier matches the Node.js logger
+#    (lib/logger.mjs) which also uses only the session name. This ensures all events
+#    for one tmux session — including across /clear restarts that create new Claude
+#    session_ids — land in a single JSONL file per session.
+#    Falls back to session_id when not in a tmux session (e.g. CI or standalone hooks).
 TMUX_SESSION_NAME=""
 if [ -n "${TMUX:-}" ]; then
   TMUX_SESSION_NAME=$(tmux display-message -p '#S' 2>/dev/null || echo "")
 fi
 SHORT_SESSION_ID="${SESSION_ID:0:8}"
 
-if [ -n "$TMUX_SESSION_NAME" ] && [ -n "$SHORT_SESSION_ID" ]; then
-  LOG_FILE_PREFIX="${TMUX_SESSION_NAME}-${SHORT_SESSION_ID}"
-elif [ -n "$TMUX_SESSION_NAME" ]; then
+if [ -n "$TMUX_SESSION_NAME" ]; then
   LOG_FILE_PREFIX="${TMUX_SESSION_NAME}"
 elif [ -n "$SHORT_SESSION_ID" ]; then
   LOG_FILE_PREFIX="session-${SHORT_SESSION_ID}"
