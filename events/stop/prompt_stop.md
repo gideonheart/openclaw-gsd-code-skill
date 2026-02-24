@@ -11,13 +11,14 @@ Claude Code has finished and is waiting for OpenClaw input.
 2. Review `suggested_commands` — these are what Claude Code recommended, but you decide.
    - You may use them as-is, skip some, or choose entirely different commands.
    - They are suggestions, not instructions.
-3. Decide your command array and call the TUI driver:
+3. **Context awareness:** If the session has run 2 or more commands since the last /clear (or has never had a /clear), always start your command array with `/clear`. High context degrades code quality. When in doubt, clear first.
+4. Decide your command array and call the TUI driver:
    ```
    node /home/forge/.openclaw/workspace/skills/gsd-code-skill/bin/tui-driver.mjs --session <session-name> '["/clear", "/gsd:plan-phase 3"]'
    ```
    Note: the session name is provided in the Event Metadata above — use that session value.
 
-4. **Long content (multiline prompts, task descriptions):**
+5. **Long content (multiline prompts, task descriptions):**
    Commands are typed via tmux send-keys — newlines act as Enter and submit prematurely.
    For any content longer than a single line, write it to a file first and use `@file` syntax:
    ```

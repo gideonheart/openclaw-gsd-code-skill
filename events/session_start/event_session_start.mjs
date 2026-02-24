@@ -23,6 +23,29 @@ import {
   appendJsonlEntry,
 } from '../../lib/index.mjs';
 
+/**
+ * Build a human-readable queue-complete message for SessionStart(source:clear) completion.
+ *
+ * When /clear is the final command in a queue, there is no last_assistant_message
+ * (the clear command produces no assistant output). The message shows which commands
+ * ran and their result previews from the queue summary.
+ *
+ * @param {Object} queueSummary - The summary object from buildQueueCompleteSummary.
+ * @returns {string} Human-readable message content for the agent.
+ */
+function buildSessionStartQueueCompleteMessageContent(queueSummary) {
+  const commandList = queueSummary.commands
+    .map(command => `- \`${command.command}\` (${command.status})`)
+    .join('\n');
+
+  return [
+    `## Queue Complete — ${queueSummary.summary}`,
+    '',
+    '### Commands ran',
+    commandList,
+  ].join('\n');
+}
+
 async function main() {
   const hookContext = readHookContext('event_session_start');
   if (!hookContext) process.exit(0);
@@ -42,7 +65,7 @@ async function main() {
       }
 
       if (queueResult.action === 'queue-complete') {
-        const messageContent = JSON.stringify(queueResult.summary, null, 2);
+        const messageContent = buildSessionStartQueueCompleteMessageContent(queueResult.summary);
 
         await wakeAgentWithRetry({ resolvedAgent, messageContent, promptFilePath, eventType: 'SessionStart', sessionName });
 

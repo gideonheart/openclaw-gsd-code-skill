@@ -22,6 +22,34 @@ import {
   appendJsonlEntry,
 } from '../../lib/index.mjs';
 
+/**
+ * Build a human-readable message for the agent when a command queue completes.
+ *
+ * The message leads with the full last_assistant_message (what Claude Code actually
+ * said for the final command), preceded by a compact header listing all commands that
+ * ran. This avoids sending a bloated JSON wrapper — the agent reads the output
+ * directly, not a JSON blob with results nested inside.
+ *
+ * @param {Object} queueSummary - The summary object from buildQueueCompleteSummary.
+ * @param {string} lastAssistantMessage - The full last assistant message for the final command.
+ * @returns {string} Human-readable message content for the agent.
+ */
+function buildQueueCompleteMessageContent(queueSummary, lastAssistantMessage) {
+  const commandList = queueSummary.commands
+    .map(command => `- \`${command.command}\` (${command.status})`)
+    .join('\n');
+
+  return [
+    `## Queue Complete — ${queueSummary.summary}`,
+    '',
+    '### Commands ran',
+    commandList,
+    '',
+    '### Last command output',
+    lastAssistantMessage,
+  ].join('\n');
+}
+
 async function main() {
   const hookContext = readHookContext('event_stop');
   if (!hookContext) process.exit(0);
@@ -51,7 +79,7 @@ async function main() {
     }
 
     if (queueResult.action === 'queue-complete') {
-      const messageContent = JSON.stringify(queueResult.summary, null, 2);
+      const messageContent = buildQueueCompleteMessageContent(queueResult.summary, lastAssistantMessage);
 
       await wakeAgentWithRetry({ resolvedAgent, messageContent, promptFilePath, eventType: 'Stop', sessionName });
 
