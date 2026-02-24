@@ -9,8 +9,8 @@
  * Enter to be eaten by the still-initializing TUI.
  *
  * This script runs AFTER the hook has returned. It polls the tmux pane until a
- * fresh empty prompt appears (the last non-blank line is exactly the prompt indicator
- * with no command text after it), then types the command and presses Enter.
+ * fresh empty prompt appears (any line starting with the prompt indicator followed
+ * only by whitespace), then types the command and presses Enter.
  *
  * Usage (called by processQueueForHook — do not call directly):
  *   node bin/type-command-deferred.mjs --session <name> --command <text>
@@ -47,27 +47,34 @@ function captureTmuxPaneContent(tmuxSessionName) {
  * Check whether the pane currently shows a fresh empty prompt.
  *
  * A "fresh" prompt means the TUI has fully initialized after /clear and is
- * waiting for input with nothing typed yet. We detect this by checking that
- * the last non-blank line of the pane content is exactly the prompt indicator
- * with no trailing command text.
+ * waiting for input with nothing typed yet. We detect this by finding any line
+ * that starts with the prompt indicator and contains only whitespace after it.
  *
- * This distinguishes the NEW post-/clear prompt from OLD prompt characters that
- * appear in the /clear output or in previous command text.
+ * We cannot rely on the last non-blank line because the TUI renders a status
+ * bar (model name, permissions) and a separator line BELOW the prompt line.
+ * The prompt itself uses a non-breaking space (\u00a0) after the indicator.
+ *
+ * We distinguish a "fresh" prompt (❯ with no command) from a "used" prompt
+ * (❯ /clear, ❯ /gsd:quick ...) by checking that nothing other than whitespace
+ * follows the prompt indicator on that line.
  *
  * @param {string} paneContent - Current pane text (already trimmed).
  * @returns {boolean} True if the pane shows a fresh empty prompt.
  */
 function isFreshEmptyPromptVisible(paneContent) {
-  const nonBlankLines = paneContent.split('\n').filter(line => line.trim().length > 0);
+  const lines = paneContent.split('\n');
 
-  if (nonBlankLines.length === 0) {
-    return false;
-  }
+  return lines.some((line) => {
+    if (!line.startsWith(PROMPT_INDICATOR)) {
+      return false;
+    }
 
-  const lastNonBlankLine = nonBlankLines[nonBlankLines.length - 1].trim();
+    const textAfterPrompt = line.slice(PROMPT_INDICATOR.length);
 
-  // The fresh prompt line is exactly the prompt indicator (possibly followed by a single space)
-  return lastNonBlankLine === PROMPT_INDICATOR || lastNonBlankLine === PROMPT_INDICATOR + ' ';
+    // Allow only whitespace (regular or non-breaking) after the prompt indicator.
+    // Any real characters (like a command being typed) disqualify this line.
+    return textAfterPrompt.trim().length === 0;
+  });
 }
 
 /**
