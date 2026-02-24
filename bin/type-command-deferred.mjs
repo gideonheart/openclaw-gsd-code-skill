@@ -10,7 +10,8 @@
  *
  * This script runs AFTER the hook has returned. It polls the tmux pane until a
  * fresh empty prompt appears (any line starting with the prompt indicator followed
- * only by whitespace), then types the command and presses Enter.
+ * only by whitespace), waits a stabilization delay for the TUI input handler to
+ * fully initialize, then types the command and presses Enter.
  *
  * Usage (called by processQueueForHook — do not call directly):
  *   node bin/type-command-deferred.mjs --session <name> --command <text>
@@ -28,6 +29,7 @@ import { sleepMilliseconds } from '../lib/tui-common.mjs';
 
 const FRESH_PROMPT_POLL_INTERVAL_MILLISECONDS = 150;
 const FRESH_PROMPT_TIMEOUT_MILLISECONDS = 15000;
+const POST_DETECT_STABILIZATION_DELAY_MILLISECONDS = 500;
 const PROMPT_INDICATOR = '\u276F';
 
 /**
@@ -169,6 +171,11 @@ async function main() {
     }, sessionName);
     process.exit(2);
   }
+
+  // The prompt indicator renders before the TUI input handler is fully wired.
+  // Without this delay, text chars buffer into the input field but Enter does
+  // not register as "submit" — it arrives before the handler is ready.
+  sleepMilliseconds(POST_DETECT_STABILIZATION_DELAY_MILLISECONDS);
 
   sendLiteralTextToTmux(sessionName, commandText);
   sendSpecialKeyToTmux(sessionName, 'Enter');
