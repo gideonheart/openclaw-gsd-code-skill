@@ -22,7 +22,7 @@ async function main() {
 
   try {
     if (toolName === 'AskUserQuestion') {
-      const domainResult = await handleAskUserQuestion({ hookPayload, sessionName, resolvedAgent });
+      const domainResult = handleAskUserQuestion({ hookPayload, sessionName, resolvedAgent });
       handlerTrace.decisionPath = domainResult.decisionPath;
       handlerTrace.outcome = domainResult.outcome;
       return;
