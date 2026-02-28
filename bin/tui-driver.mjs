@@ -39,7 +39,7 @@
 
 import { parseArgs } from 'node:util';
 import { existsSync } from 'node:fs';
-import { writeQueueFileAtomically, resolveQueueFilePath, typeCommandIntoTmuxSession, appendJsonlEntry } from '../lib/index.mjs';
+import { writeQueueFileAtomically, resolveQueueFilePath, spawnDetachedDeferredTyping, appendJsonlEntry } from '../lib/index.mjs';
 
 /**
  * Resolve the awaits mapping for a slash command.
@@ -92,6 +92,12 @@ function buildQueueData(commandTexts) {
       created_at: createdAt,
       status: index === 0 ? 'active' : 'pending',
       awaits: resolveAwaitsForCommand(commandText),
+      delivery: {
+        typed_at: null,
+        enter_sent_at: null,
+        enter_attempts: 0,
+        submit_confirmed_at: null,
+      },
       result: null,
       completed_at: null,
     })),
@@ -152,7 +158,10 @@ async function main() {
     first_command: commandTexts[0],
   }, sessionName);
 
-  typeCommandIntoTmuxSession(sessionName, commandTexts[0]);
+  // Use the same verified deferred typer used by queue advancement.
+  // This ensures Enter is retried/confirmed via UserPromptSubmit hook,
+  // fixing cases where text appears in TUI but Enter is swallowed.
+  spawnDetachedDeferredTyping(sessionName, commandTexts[0]);
 }
 
 main().catch((caughtError) => {
