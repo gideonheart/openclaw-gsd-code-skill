@@ -114,16 +114,43 @@ function waitForFreshEmptyPrompt(tmuxSessionName) {
  * @param {string} commandText - The command text that should be visible.
  * @returns {boolean} True if a prompt line contains the command text.
  */
+function normalizeForMatch(value) {
+  return value
+    .replace(/\u00a0/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function extractLastToken(commandText) {
+  const normalized = normalizeForMatch(commandText);
+  const tokens = normalized.split(' ').filter(Boolean);
+  return tokens.length ? tokens[tokens.length - 1] : '';
+}
+
 function isCommandTextVisibleInPane(paneContent, commandText) {
   const lines = paneContent.split('\n');
+  const normalizedCommand = normalizeForMatch(commandText);
+  const lastToken = extractLastToken(commandText);
 
-  return lines.some((line) => {
-    if (!line.startsWith(PROMPT_INDICATOR)) {
-      return false;
-    }
-
-    return line.includes(commandText);
+  // 1) Strong match: full normalized command on any prompt line.
+  const promptFullMatch = lines.some((line) => {
+    if (!line.startsWith(PROMPT_INDICATOR)) return false;
+    return normalizeForMatch(line).includes(normalizedCommand);
   });
+  if (promptFullMatch) return true;
+
+  // 2) Pragmatic fallback: last token visible in prompt/input area.
+  if (!lastToken) return false;
+
+  const promptTokenMatch = lines.some((line) => {
+    if (!line.startsWith(PROMPT_INDICATOR)) return false;
+    return normalizeForMatch(line).includes(lastToken);
+  });
+  if (promptTokenMatch) return true;
+
+  // 3) Final fallback: input field can render outside prompt line in some TUI states.
+  const tail = normalizeForMatch(lines.slice(-10).join(' '));
+  return tail.includes(lastToken);
 }
 
 /**
@@ -311,6 +338,13 @@ async function main() {
 
   for (let textAttempt = 0; textAttempt <= MAXIMUM_TEXT_RETRIES; textAttempt++) {
     if (textAttempt > 0) {
+      // If verification was a false negative and text is already present,
+      // do NOT retype (prevents duplicate pasted commands).
+      if (verifyTextAppearedInPane(sessionName, commandText)) {
+        textVerified = true;
+        break;
+      }
+
       appendJsonlEntry({
         level: 'warn',
         source: 'type-command-deferred',
