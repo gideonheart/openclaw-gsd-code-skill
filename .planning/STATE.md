@@ -12,7 +12,7 @@ See: .planning/PROJECT.md (updated 2026-02-20)
 Phase: 4 of 5 (AskUserQuestion Lifecycle - Full Stack)
 Plan: 3 of 3 in current phase (COMPLETE)
 Status: Phase 4 Plan 03 complete — PostToolUse router + AskUserQuestion verification handler + mismatch prompt built
-Last activity: 2026-02-23 - Completed quick task 26: clean up waitForTuiContentToAppear — remove async, add logging, reduce timeout
+Last activity: 2026-03-05 - Completed quick task 27: Add per-session auto-drive hooks toggle
 
 Progress: [█████████░] 90%
 
@@ -144,6 +144,7 @@ None yet.
 | 24 | Consolidate handler logs: replace 24 scattered appendJsonlEntry calls with 5 single-trace entries using try/finally; domain handlers return { decisionPath, outcome } structs | 2026-02-23 | f0cc258 | [24-consolidate-handler-logs-into-single-end](./quick/24-consolidate-handler-logs-into-single-end/) |
 | 25 | Fix double-space arg drop in typeGsdCommandWithTabCompletion; replace fixed 3s delay with tmux pane polling in tui-driver-ask.mjs | 2026-02-23 | f7eb36a | [25-fix-tui-driver-queue-command-args-lost-a](./quick/25-fix-tui-driver-queue-command-args-lost-a/) |
 | 26 | Clean up waitForTuiContentToAppear: remove async/await, reduce timeout to 5s, add success/error/length-guard observability logs | 2026-02-23 | ef1c268 | [26-clean-up-waitfortuicontenttoappear-remov](./quick/26-clean-up-waitfortuicontenttoappear-remov/) |
+| 27 | Add per-session auto-drive hooks toggle | 2026-03-05 | 1c881da | [27-add-per-session-auto-drive-hooks-toggle-](./quick/27-add-per-session-auto-drive-hooks-toggle-/) |
 
 ## Session Continuity
 
