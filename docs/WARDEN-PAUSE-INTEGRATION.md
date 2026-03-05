@@ -25,9 +25,11 @@ How to expose `bin/pause-session.mjs` as a per-agent toggle on [warden.kingdom.l
 ```
 
 **Data flow:**
-1. `GET /api/gsd/agents/live-status` already polls per agent — add `hooksPaused` field by reading `pause-state.json` directly (zero subprocess cost)
-2. `PATCH /api/gsd/sessions/:session/hooks-paused` toggles state via `bin/pause-session.mjs` (one subprocess on click)
+1. `GET /api/gsd/agents/live-status` already polls per agent — add `hooksPaused` field by reading `pause-state.json` directly (zero subprocess cost, read-only = no lock needed)
+2. `PATCH /api/gsd/sessions/:session/hooks-paused` toggles state via `bin/pause-session.mjs` (one subprocess on click, CLI handles exclusive locking internally)
 3. `AgentsTab.tsx` renders toggle using data already in `useAgentLiveStatus` — no new React hook
+
+**Concurrency safety:** Writes go through `setSessionPauseState` which acquires an exclusive file lock (O_CREAT|O_EXCL mutex) before the read-modify-write cycle. Reads are lock-free (fail-open). Warden never needs to implement its own locking — the CLI handles it.
 
 ---
 
@@ -122,8 +124,9 @@ router.patch('/api/gsd/sessions/:session/hooks-paused', async (request, response
 
   try {
     const action = paused ? 'on' : 'off';
-    await execFileAsync('node', [PAUSE_SESSION_SCRIPT, session, action]);
-    response.json({ session, paused });
+    const { stdout } = await execFileAsync('node', [PAUSE_SESSION_SCRIPT, session, action]);
+    const result = JSON.parse(stdout);
+    response.json(result);
   } catch (error) {
     console.error(`[GsdRoutes] Failed to toggle hooks-paused for ${session}:`, error);
     response.status(500).json({ error: 'Failed to toggle pause state' });
@@ -131,9 +134,12 @@ router.patch('/api/gsd/sessions/:session/hooks-paused', async (request, response
 });
 ```
 
+The CLI outputs JSON: `{ "session": "...", "paused": true }` — parse with `JSON.parse(stdout)`.
+
 **Why shell out to `bin/pause-session.mjs` instead of reading/writing the file directly:**
 - SRP — warden is the UI layer, gsd-code-skill owns the state format
-- Atomic write logic (tmp+rename) stays in one place
+- Exclusive file lock (O_CREAT|O_EXCL mutex) serializes concurrent writes — warden doesn't need to implement locking
+- Atomic write logic (tmp+rename inside lock) stays in one place
 - JSONL audit log entry is written automatically by `setSessionPauseState`
 - If the file format ever changes, warden doesn't need updating
 

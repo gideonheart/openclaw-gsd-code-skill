@@ -10,6 +10,9 @@
  *   on     — Pause the session (hooks log events but skip auto-drive processing)
  *   off    — Unpause the session (normal auto-drive behavior resumes)
  *   status — Query whether the session is currently paused
+ *
+ * Output: JSON to stdout — { "session": "...", "paused": true/false }
+ *   Machine-parseable for warden.kingdom.lv integration.
  */
 
 import { isSessionPaused, setSessionPauseState } from '../lib/index.mjs';
@@ -24,11 +27,11 @@ if (!sessionName || !subcommand || !['on', 'off', 'status'].includes(subcommand)
 
 if (subcommand === 'on') {
   setSessionPauseState(sessionName, true);
-  console.log(`Session '${sessionName}' paused.`);
+  console.log(JSON.stringify({ session: sessionName, paused: true }));
 } else if (subcommand === 'off') {
   setSessionPauseState(sessionName, false);
-  console.log(`Session '${sessionName}' unpaused.`);
+  console.log(JSON.stringify({ session: sessionName, paused: false }));
 } else if (subcommand === 'status') {
   const paused = isSessionPaused(sessionName);
-  console.log(`Session '${sessionName}' is ${paused ? 'paused' : 'not paused'}.`);
+  console.log(JSON.stringify({ session: sessionName, paused }));
 }
