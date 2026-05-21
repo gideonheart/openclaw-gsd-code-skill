@@ -103,6 +103,10 @@ function waitForFreshEmptyPrompt(tmuxSessionName) {
   return false;
 }
 
+function isAnyPromptVisible(paneContent) {
+  return paneContent.split('\n').some((line) => line.startsWith(PROMPT_INDICATOR));
+}
+
 /**
  * Check whether the typed command text is visible on a prompt line in the pane.
  *
@@ -323,14 +327,25 @@ async function main() {
   const freshPromptDetected = waitForFreshEmptyPrompt(sessionName);
 
   if (!freshPromptDetected) {
+    const paneContent = captureTmuxPaneContent(sessionName);
+    if (!isAnyPromptVisible(paneContent)) {
+      appendJsonlEntry({
+        level: 'error',
+        source: 'type-command-deferred',
+        message: `Fresh empty prompt not detected within ${FRESH_PROMPT_TIMEOUT_MILLISECONDS}ms and no prompt visible — command not typed`,
+        session: sessionName,
+        command: commandText,
+      }, sessionName);
+      process.exit(2);
+    }
+
     appendJsonlEntry({
-      level: 'error',
+      level: 'warn',
       source: 'type-command-deferred',
-      message: `Fresh empty prompt not detected within ${FRESH_PROMPT_TIMEOUT_MILLISECONDS}ms — command not typed`,
+      message: 'Fresh empty prompt not detected, but prompt is visible — continuing with fallback typing',
       session: sessionName,
       command: commandText,
     }, sessionName);
-    process.exit(2);
   }
 
   // --- Phase 1: Type text and verify it appeared in the pane ---

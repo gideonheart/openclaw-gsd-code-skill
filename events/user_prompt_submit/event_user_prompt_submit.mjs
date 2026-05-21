@@ -26,6 +26,7 @@ import {
   cancelQueueForSession,
   isPromptFromTuiDriver,
   isSessionInAskUserQuestionFlow,
+  writeSubmissionConfirmation,
   appendJsonlEntry,
 } from '../../lib/index.mjs';
 
@@ -39,7 +40,8 @@ async function main() {
 
   try {
     if (isPromptFromTuiDriver(sessionName, submittedPrompt)) {
-      handlerTrace.decisionPath = 'tui-driver-input';
+      writeSubmissionConfirmation(sessionName);
+      handlerTrace.decisionPath = 'tui-driver-input-confirmed';
       return;
     }
 

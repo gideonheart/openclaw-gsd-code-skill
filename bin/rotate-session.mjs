@@ -131,6 +131,48 @@ function createNewOpenclawSession(agentIdentifier, initialMessage) {
   return newSessionId;
 }
 
+/**
+ * Remove the agent's main session entry from the OpenClaw session store.
+ *
+ * OpenClaw 2026.2+ reuses the existing session if an `agent:<id>:main` key
+ * exists in sessions.json.  Deleting the key before calling `openclaw agent`
+ * forces the CLI to allocate a brand-new session ID.
+ *
+ * @param {string} agentIdentifier - Agent ID (e.g. 'warden').
+ */
+function removeMainSessionFromStore(agentIdentifier) {
+  const sessionStorePath = `${OPENCLAW_AGENTS_BASE_PATH}/${agentIdentifier}/sessions/sessions.json`;
+
+  if (!existsSync(sessionStorePath)) {
+    logWithTimestamp(`  Session store not found at ${sessionStorePath} — skipping removal`);
+    return;
+  }
+
+  const storeContents = readFileSync(sessionStorePath, 'utf8');
+  let store;
+  try {
+    store = JSON.parse(storeContents);
+  } catch {
+    logWithTimestamp(`  Warning: could not parse session store — skipping removal`);
+    return;
+  }
+
+  const mainKey = `agent:${agentIdentifier}:main`;
+  if (!(mainKey in store)) {
+    logWithTimestamp(`  No ${mainKey} entry in session store — skipping removal`);
+    return;
+  }
+
+  delete store[mainKey];
+
+  // Write atomically to prevent corruption
+  const temporaryPath = `${sessionStorePath}.tmp`;
+  writeFileSync(temporaryPath, JSON.stringify(store, null, 2), 'utf8');
+  renameSync(temporaryPath, sessionStorePath);
+
+  logWithTimestamp(`  Removed ${mainKey} from session store to force new session`);
+}
+
 function buildSessionHistoryEntry(oldSessionId, agentIdentifier, optionalLabel) {
   const sessionFilePath =
     `${OPENCLAW_AGENTS_BASE_PATH}/${agentIdentifier}/sessions/${oldSessionId}.jsonl`;
@@ -179,6 +221,9 @@ function main() {
   const agentConfiguration = findAgentByIdentifier(registry, agentIdentifier);
 
   const oldSessionId = agentConfiguration.openclaw_session_id;
+
+  // Remove existing main session from OpenClaw store so the CLI creates a fresh one
+  removeMainSessionFromStore(agentIdentifier);
 
   const initialMessage = optionalLabel ?? 'Session rotated';
   const newSessionId = createNewOpenclawSession(agentIdentifier, initialMessage);
